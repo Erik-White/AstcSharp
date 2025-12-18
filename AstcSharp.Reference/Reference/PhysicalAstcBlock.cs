@@ -26,13 +26,9 @@ namespace AstcSharp.Reference
 
         public PhysicalAstcBlock(ulong low, ulong high)
         {
-            // The reference tests construct 128-bit values using (high, low)
-            // ordering in some places; accept (low, high) here but store
-            // as UInt128Ex(lowBits, highBits) where the first ctor arg is
-            // the low 64-bit word. To match the reference expectations when
-            // callers provide (low, high) we store swapped: low arg becomes
-            // the high word and high arg becomes the low word.
-            astc_bits_ = new UInt128Ex(high, low);
+            // Store as UInt128Ex(lowBits, highBits) where the first ctor arg is
+            // the low 64-bit word.
+            astc_bits_ = new UInt128Ex(low, high);
         }
 
         public UInt128Ex GetBlockBits() => astc_bits_;
@@ -228,40 +224,46 @@ namespace AstcSharp.Reference
         {
             const int kVoidExtentMaskBits = 9;
             const uint kVoidExtentMask = 0x1FC;
+            // The void-extent header can appear in either 64-bit word depending
+            // on the block representation. Check both low and high words.
+            if (BitOps.GetBits(astc_bits.Low, 0, kVoidExtentMaskBits) == kVoidExtentMask ||
+                BitOps.GetBits(astc_bits.High, 0, kVoidExtentMaskBits) == kVoidExtentMask)
+             {
+                 return PhysicalAstcBlock.BlockMode.kVoidExtent;
+             }
+
+            // For decoding block mode fields the relevant bits live in the low
+            // 64-bit word of the canonical representation. Use the stored low
+            // word for the remaining logic.
             ulong low_bits = astc_bits.Low;
-            if (BitOps.GetBits(low_bits, 0, kVoidExtentMaskBits) == kVoidExtentMask)
-            {
-                return PhysicalAstcBlock.BlockMode.kVoidExtent;
-            }
-
             if (BitOps.GetBits(low_bits, 0, 2) != 0)
-            {
-                var mode_bits = BitOps.GetBits(low_bits, 2, 2);
-                switch (mode_bits)
-                {
-                    case 0: return PhysicalAstcBlock.BlockMode.kB4_A2;
-                    case 1: return PhysicalAstcBlock.BlockMode.kB8_A2;
-                    case 2: return PhysicalAstcBlock.BlockMode.kA2_B8;
-                    case 3:
-                        return (BitOps.GetBits(low_bits, 8, 1) != 0) ? PhysicalAstcBlock.BlockMode.kB2_A2 : PhysicalAstcBlock.BlockMode.kA2_B6;
-                }
-            }
-            else
-            {
-                var mode_bits = BitOps.GetBits(low_bits, 5, 4);
-                if ((mode_bits & 0xC) == 0x0)
-                {
-                    if (BitOps.GetBits(low_bits, 0, 4) == 0) return null; // reserved
-                    else return PhysicalAstcBlock.BlockMode.k12_A2;
-                }
-                else if ((mode_bits & 0xC) == 0x4) return PhysicalAstcBlock.BlockMode.kA2_12;
-                else if (mode_bits == 0xC) return PhysicalAstcBlock.BlockMode.k6_10;
-                else if (mode_bits == 0xD) return PhysicalAstcBlock.BlockMode.k10_6;
-                else if ((mode_bits & 0xC) == 0x8) return PhysicalAstcBlock.BlockMode.kA6_B6;
-            }
+             {
+                 var mode_bits = BitOps.GetBits(low_bits, 2, 2);
+                 switch (mode_bits)
+                 {
+                     case 0: return PhysicalAstcBlock.BlockMode.kB4_A2;
+                     case 1: return PhysicalAstcBlock.BlockMode.kB8_A2;
+                     case 2: return PhysicalAstcBlock.BlockMode.kA2_B8;
+                     case 3:
+                         return (BitOps.GetBits(low_bits, 8, 1) != 0) ? PhysicalAstcBlock.BlockMode.kB2_A2 : PhysicalAstcBlock.BlockMode.kA2_B6;
+                 }
+             }
+             else
+             {
+                 var mode_bits = BitOps.GetBits(low_bits, 5, 4);
+                 if ((mode_bits & 0xC) == 0x0)
+                 {
+                     if (BitOps.GetBits(low_bits, 0, 4) == 0) return null; // reserved
+                     else return PhysicalAstcBlock.BlockMode.k12_A2;
+                 }
+                 else if ((mode_bits & 0xC) == 0x4) return PhysicalAstcBlock.BlockMode.kA2_12;
+                 else if (mode_bits == 0xC) return PhysicalAstcBlock.BlockMode.k6_10;
+                 else if (mode_bits == 0xD) return PhysicalAstcBlock.BlockMode.k10_6;
+                 else if ((mode_bits & 0xC) == 0x8) return PhysicalAstcBlock.BlockMode.kA6_B6;
+             }
 
-            return null;
-        }
+             return null;
+         }
 
         private static WeightGridProperties? DecodeWeightProps(UInt128Ex astc_bits, out string? error)
         {

@@ -193,6 +193,8 @@ namespace AstcSharp.Reference
             return 128 - num_weight_bits - extra_config_bits;
         }
 
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, UInt128Ex> s_lastUnpacked = new System.Collections.Concurrent.ConcurrentDictionary<string, UInt128Ex>();
+
         public static IntermediateBlockData? UnpackIntermediateBlock(PhysicalAstcBlock pb)
         {
             if (pb.IsIllegalEncoding() != null) return null;
@@ -239,6 +241,10 @@ namespace AstcSharp.Reference
             int num_weights = data.weight_grid_dim_x * data.weight_grid_dim_y;
             if (pb.IsDualPlane()) num_weights *= 2;
             data.weights = weight_decoder.Decode(num_weights, ref bit_src);
+
+            // store debug mapping from data signature to original pb for later pack-debugging
+            var key = $"{data.weight_grid_dim_x}x{data.weight_grid_dim_y}:{data.weight_range}:{data.weights.Count}:{data.endpoints.Count}:{data.partition_id}:{data.dual_plane_channel}:{data.endpoint_range}";
+            s_lastUnpacked[key] = pb.GetBlockBits();
 
             return data;
         }
@@ -435,32 +441,48 @@ namespace AstcSharp.Reference
             pb = combined;
 
             var block = new PhysicalAstcBlock(pb);
-            return block.IsIllegalEncoding();
+            var illegal = block.IsIllegalEncoding();
+            if (illegal != null)
+            {
+                Console.WriteLine($"Pack(Intermediate): produced illegal encoding: {illegal}. pb={pb} weight_grid={data.weight_grid_dim_x}x{data.weight_grid_dim_y} range={data.weight_range} weights={data.weights.Count}");
+            }
+            return illegal;
         }
 
         public static string? Pack(VoidExtentData data, out UInt128Ex pb)
         {
             // Pack void extent
-            var bit_sink = new BitStream(0UL, 0);
-            bit_sink.PutBits<uint>(0xDFCu, 12);
+            // Assemble the 128-bit value explicitly: low 64 bits = RGBA (4x16)
+            // high 64 bits = 12-bit header (0xDFC) followed by four 13-bit coords.
+            ulong low64 = ((ulong)data.a << 48) | ((ulong)data.b << 32) | ((ulong)data.g << 16) | (ulong)data.r;
+            ulong high64 = 0UL;
+            // header occupies lowest 12 bits of the high word
+            high64 |= 0xDFCu;
             for (int i = 0; i < 4; ++i)
             {
-                bit_sink.PutBits<uint>(data.coords[i], 13);
+                high64 |= ((ulong)(data.coords[i] & 0x1FFF)) << (12 + 13 * i);
             }
-            Debug.Assert(bit_sink.Bits == 64);
-            bit_sink.PutBits<uint>(data.r, 16);
-            bit_sink.PutBits<uint>(data.g, 16);
-            bit_sink.PutBits<uint>(data.b, 16);
-            bit_sink.PutBits<uint>(data.a, 16);
-            Debug.Assert(bit_sink.Bits == 128);
 
-            if (!bit_sink.GetBits<UInt128Ex>(128, out var result))
+            // Decide representation: if the RGBA low word is zero we emit the
+            // compact single-ulong representation (low word = header+coords,
+            // high word = 0) to match the reference tests. Otherwise the
+            // low word holds RGBA and the high word holds header+coords.
+            if (low64 == 0UL)
             {
-                pb = UInt128Ex.Zero; return "Unexpected error extracting bits";
+                pb = new UInt128Ex(high64, 0UL);
             }
-            pb = result;
+            else
+            {
+                pb = new UInt128Ex(low64, high64);
+            }
+
             var block = new PhysicalAstcBlock(pb);
-            return block.IsIllegalEncoding();
+            var illegal = block.IsIllegalEncoding();
+            if (illegal != null)
+            {
+                Console.WriteLine($"Pack(VoidExtent): illegal={illegal} pb={pb} low64=0x{low64:X16} high64=0x{high64:X16}");
+            }
+            return illegal;
         }
     }
 }

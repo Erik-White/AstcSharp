@@ -88,7 +88,7 @@ namespace AstcSharp.Reference
                     }
                     else if (count == 128)
                     {
-                        // Return the full internal buffer as a natural (Low, High) pair
+                        // Return natural ordering Low=_low, High=_high
                         ures = new UInt128Ex(_low, _high);
                     }
                     else
