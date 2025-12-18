@@ -83,7 +83,13 @@ namespace AstcSharp.Reference
                     else if (count <= 64)
                     {
                         ulong lowPart = _low & MaskFor(count);
+                        // Keep lowPart in Low for small counts
                         ures = new UInt128Ex(lowPart, 0UL);
+                    }
+                    else if (count == 128)
+                    {
+                        // Return the full internal buffer as a natural (Low, High) pair
+                        ures = new UInt128Ex(_low, _high);
                     }
                     else
                     {
