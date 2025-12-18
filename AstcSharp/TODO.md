@@ -65,20 +65,20 @@ Steps
 - Deliverable: `AstcSharp/Reference/WeightInfill.cs` with clear, well-documented functions.
 - Tests: Port `decoder/test/weight_infill_test.cc`.
 
-10) `decoder/intermediate_astc_block.h` + `decoder/intermediate_astc_block.cc`
+10) `decoder/physical_astc_block.h` + `decoder/physical_astc_block.cc`
+- Objective: Implement physical block handling (the low-level block representation read from file) and conversion to logical/intermediate form.
+- Deliverable: `AstcSharp/Reference/PhysicalAstcBlock.cs`.
+- Tests: Port `decoder/test/physical_astc_block_test.cc` and relevant testdata inputs.
+
+11) `decoder/intermediate_astc_block.h` + `decoder/intermediate_astc_block.cc`
 - Objective: Port the intermediate representation of an ASTC block (the decoded representation prior to final pixel reconstruction).
 - Deliverable: `AstcSharp/Reference/IntermediateAstcBlock.cs` as a struct/class representing the decoded fields.
 - Tests: Port `decoder/test/intermediate_astc_block_test.cc`.
 
-11) `decoder/logical_astc_block.h` + `decoder/logical_astc_block.cc`
+12) `decoder/logical_astc_block.h` + `decoder/logical_astc_block.cc`
 - Objective: Port logical block-level operations (mapping to texel coordinate space, interpolation helpers).
 - Deliverable: `AstcSharp/Reference/LogicalAstcBlock.cs`.
 - Tests: Port `decoder/test/logical_astc_block_test.cc`.
-
-12) `decoder/physical_astc_block.h` + `decoder/physical_astc_block.cc`
-- Objective: Implement physical block handling (the low-level block representation read from file) and conversion to logical/intermediate form.
-- Deliverable: `AstcSharp/Reference/PhysicalAstcBlock.cs`.
-- Tests: Port `decoder/test/physical_astc_block_test.cc` and relevant testdata inputs.
 
 13) `decoder/codec.h` + `decoder/codec.cc`
 - Objective: Port the main codec logic that takes a compressed block, decodes endpoints and weights, and constructs final pixel values.

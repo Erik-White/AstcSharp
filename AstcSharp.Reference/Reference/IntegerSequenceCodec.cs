@@ -236,7 +236,7 @@ namespace AstcSharp.Reference
             }
         }
 
-        public static IEnumerable<int> ISERange() => kMaxRanges;
+        public static IReadOnlyList<int> ISERange() => kMaxRanges;
     }
 
     public class IntegerSequenceDecoder : IntegerSequenceCodec

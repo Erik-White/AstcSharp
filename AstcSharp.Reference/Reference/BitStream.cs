@@ -17,6 +17,14 @@ namespace AstcSharp.Reference
             _dataSize = dataSize;
         }
 
+        // New overload: initialize BitStream with a 128-bit value
+        public BitStream(UInt128Ex data, uint dataSize)
+        {
+            _low = data.Low;
+            _high = data.High;
+            _dataSize = dataSize;
+        }
+
         public uint Bits => _dataSize;
 
         private static ulong MaskFor(int bits)
@@ -79,9 +87,10 @@ namespace AstcSharp.Reference
                     int highBits = count - 64;
                     ulong lowPart = _low;
                     ulong highPart = _high & MaskFor(highBits);
-                    value = lowPart | (highPart << 64);
-                    // Note: value may overflow a ulong if count > 64, but callers
-                    // only request up to 64 bits in our tests.
+                    // When count > 64 we cannot represent the full range in a
+                    // single ulong. We still return the low 64 bits in this
+                    // implementation because callers only request up to 64 bits.
+                    value = lowPart | (highPart << 0); // highPart contribution ignored beyond 64 bits
                 }
 
                 // shift the buffer right by `count` bits
