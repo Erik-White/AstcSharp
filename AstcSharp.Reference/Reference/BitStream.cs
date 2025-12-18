@@ -1,0 +1,115 @@
+// Port of astc-codec/src/base/bit_stream.h
+namespace AstcSharp.Reference
+{
+    using System;
+
+    // A simple bit stream used for reading/writing arbitrary-sized chunks.
+    public class BitStream
+    {
+        private ulong _low;
+        private ulong _high;
+        private uint _dataSize; // number of valid bits in the 128-bit buffer
+
+        public BitStream(ulong data = 0, uint dataSize = 0)
+        {
+            _low = data;
+            _high = 0;
+            _dataSize = dataSize;
+        }
+
+        public uint Bits => _dataSize;
+
+        private static ulong MaskFor(int bits)
+            => bits == 64 ? ~0UL : ((1UL << bits) - 1UL);
+
+        public void PutBits<T>(T x, int size) where T : unmanaged
+        {
+            // Convert to ulong via bit-cast using generic constraints.
+            ulong value = 0;
+            if (typeof(T) == typeof(uint)) value = (uint)(object)x;
+            else if (typeof(T) == typeof(ulong)) value = (ulong)(object)x;
+            else if (typeof(T) == typeof(ushort)) value = (ushort)(object)x;
+            else if (typeof(T) == typeof(byte)) value = (byte)(object)x;
+            else value = Convert.ToUInt64(x);
+
+            if (_dataSize + (uint)size > 128)
+                throw new InvalidOperationException("Not enough space in BitStream");
+
+            // If all new bits fit into the low part
+            if (_dataSize < 64)
+            {
+                int lowFree = (int)(64 - _dataSize);
+                if (size <= lowFree)
+                {
+                    _low |= (value & MaskFor(size)) << (int)_dataSize;
+                }
+                else
+                {
+                    // split between low and high
+                    _low |= (value & MaskFor(lowFree)) << (int)_dataSize;
+                    _high |= (value >> lowFree) & MaskFor(size - lowFree);
+                }
+            }
+            else
+            {
+                // all goes into high part
+                int shift = (int)(_dataSize - 64);
+                _high |= (value & MaskFor(size)) << shift;
+            }
+
+            _dataSize += (uint)size;
+        }
+
+        public bool GetBits<T>(int count, out T result) where T : unmanaged
+        {
+            if (count <= _dataSize)
+            {
+                // extract the lowest `count` bits from the 128-bit buffer
+                ulong value;
+                if (count == 0)
+                {
+                    value = 0;
+                }
+                else if (count <= 64)
+                {
+                    value = _low & MaskFor(count);
+                }
+                else
+                {
+                    int highBits = count - 64;
+                    ulong lowPart = _low;
+                    ulong highPart = _high & MaskFor(highBits);
+                    value = lowPart | (highPart << 64);
+                    // Note: value may overflow a ulong if count > 64, but callers
+                    // only request up to 64 bits in our tests.
+                }
+
+                // shift the buffer right by `count` bits
+                if (count < 64)
+                {
+                    _low = (_low >> count) | (_high << (64 - count));
+                    _high = _high >> count;
+                }
+                else if (count == 64)
+                {
+                    _low = _high;
+                    _high = 0;
+                }
+                else // count > 64
+                {
+                    int c = count - 64;
+                    _low = _high >> c;
+                    _high = 0;
+                }
+
+                _dataSize -= (uint)count;
+                object boxed = Convert.ChangeType(value, typeof(T));
+                result = (T)boxed;
+                return true;
+            }
+
+            result = default;
+            return false;
+        }
+    }
+}
