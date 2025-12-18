@@ -46,6 +46,21 @@ namespace AstcSharp.Reference
         }
 
         public int[] ToArray() => new[] { R, G, B };
+
+        public int this[int i]
+        {
+            get => i switch { 0 => R, 1 => G, 2 => B, _ => throw new System.IndexOutOfRangeException() };
+            set
+            {
+                switch (i)
+                {
+                    case 0: R = value; break;
+                    case 1: G = value; break;
+                    case 2: B = value; break;
+                    default: throw new System.IndexOutOfRangeException();
+                }
+            }
+        }
     }
 
     public struct RgbaColor
@@ -61,6 +76,30 @@ namespace AstcSharp.Reference
         }
 
         public int[] ToArray() => new[] { R, G, B, A };
+
+        public int this[int i]
+        {
+            get => i switch { 0 => R, 1 => G, 2 => B, 3 => A, _ => throw new System.IndexOutOfRangeException() };
+            set
+            {
+                switch (i)
+                {
+                    case 0: R = value; break;
+                    case 1: G = value; break;
+                    case 2: B = value; break;
+                    case 3: A = value; break;
+                    default: throw new System.IndexOutOfRangeException();
+                }
+            }
+        }
+
+        public int[] ToArray4() => new[] { R, G, B, A };
+
+        public static RgbaColor FromArray(int[] arr)
+        {
+            if (arr == null || arr.Length < 4) throw new System.ArgumentException("Array must have length >= 4");
+            return new RgbaColor(arr[0], arr[1], arr[2], arr[3]);
+        }
     }
 
     // We intentionally do not create C# type aliases here. Use RgbaColor and
