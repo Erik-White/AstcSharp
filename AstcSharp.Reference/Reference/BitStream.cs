@@ -70,6 +70,56 @@ namespace AstcSharp.Reference
 
         public bool GetBits<T>(int count, out T result) where T : unmanaged
         {
+            // Special-case returning a UInt128Ex (the C# 128-bit helper struct)
+            if (typeof(T) == typeof(UInt128Ex))
+            {
+                if (count <= _dataSize)
+                {
+                    UInt128Ex ures;
+                    if (count == 0)
+                    {
+                        ures = UInt128Ex.Zero;
+                    }
+                    else if (count <= 64)
+                    {
+                        ulong lowPart = _low & MaskFor(count);
+                        ures = new UInt128Ex(lowPart, 0UL);
+                    }
+                    else
+                    {
+                        int highBits = count - 64;
+                        ulong lowPart = _low;
+                        ulong highPart = (highBits == 64) ? _high : (_high & MaskFor(highBits));
+                        ures = new UInt128Ex(lowPart, highPart);
+                    }
+
+                    // shift the buffer right by `count` bits
+                    if (count < 64)
+                    {
+                        _low = (_low >> count) | (_high << (64 - count));
+                        _high = _high >> count;
+                    }
+                    else if (count == 64)
+                    {
+                        _low = _high;
+                        _high = 0;
+                    }
+                    else // count > 64
+                    {
+                        int c = count - 64;
+                        _low = _high >> c;
+                        _high = 0;
+                    }
+
+                    _dataSize -= (uint)count;
+                    result = (T)(object)ures;
+                    return true;
+                }
+
+                result = default;
+                return false;
+            }
+
             if (count <= _dataSize)
             {
                 // extract the lowest `count` bits from the 128-bit buffer
