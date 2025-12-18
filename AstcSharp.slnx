@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="AstcSharp.Reference/AstcSharp.Reference.csproj" Id="efaed962-561a-439f-8728-12b816930ae1" />
+  <Project Path="AstcSharp.Tests/AstcSharp.Tests.csproj" />
+  <Project Path="AstcSharp/AstcSharp.csproj" />
+</Solution>

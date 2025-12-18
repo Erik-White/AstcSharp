@@ -1,0 +1,3 @@
+[submodule "AstcSharp.Reference/astc-codec"]
+	path = AstcSharp.Reference/astc-codec
+	url = https://github.com/google/astc-codec.git
