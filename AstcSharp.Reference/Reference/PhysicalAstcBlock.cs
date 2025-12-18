@@ -88,6 +88,10 @@ namespace AstcSharp.Reference
 
         public string? IsIllegalEncoding()
         {
+            // If the block is not a void extent block, then it must have
+            // weights specified. DecodeWeightProps will return the weight specifications
+            // if they exist and are legal according to C.2.24, and will otherwise be
+            // empty.
             var block_mode = DecodeBlockMode(astc_bits_);
             if (block_mode != BlockMode.kVoidExtent)
             {
@@ -578,6 +582,16 @@ namespace AstcSharp.Reference
         // Return the specified range as a UInt128Ex (low bits in Low field)
         public static UInt128Ex GetBits(UInt128Ex value, int pos, int len)
         {
+//             template<typename T>
+            // inline T GetBits(T source, uint32_t offset, uint32_t count) {
+            //   static_assert(std::is_same<T, UInt128>::value || std::is_unsigned<T>::value,
+            //                 "T must be unsigned.");
+            // const uint32_t total_bits = sizeof(T) * 8;
+            // assert(count > 0);
+            // assert(offset + count <= total_bits);
+
+            // const T mask = count == total_bits ? ~T(0) : ~T(0) >> (total_bits - count);
+            // return (source >> offset) & mask;
             if (len == 0) return new UInt128Ex(0);
             var shifted = value >> pos;
             if (len >= 128) return shifted;
@@ -598,9 +612,12 @@ namespace AstcSharp.Reference
         // Overload for ulong input
         public static ulong GetBits(ulong value, int pos, int len)
         {
-            if (len == 0) return 0UL;
-            if (len >= 64) return value >> pos;
-            return (value >> pos) & ((1UL << len) - 1UL);
+            // if (len == 0) return 0UL;
+            // if (len >= 64) return value >> pos;
+            // return (value >> pos) & ((1UL << len) - 1UL);
+            int total_bits = sizeof(ulong) * 8;
+            ulong mask = len == total_bits ? ~0UL : ~0UL >> (total_bits - len);
+            return (value >> pos) & mask;
         }
     }
 }

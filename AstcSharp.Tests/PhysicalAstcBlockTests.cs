@@ -182,21 +182,32 @@ namespace AstcSharp.Tests
         [Fact]
         public void TestVoidExtentBlocksAndCoords()
         {
+            // Various valid block modes that aren't void extent blocks
             var non_void1 = new PhysicalAstcBlock(0x0000000001FE000173UL);
             Assert.False(non_void1.IsVoidExtent());
+            var non_void2 = new PhysicalAstcBlock(0x0000000001FE0005FFUL);
+            Assert.False(non_void1.IsVoidExtent());
+            var non_void3 = new PhysicalAstcBlock(0x0000000001FE000108UL);
+            Assert.False(non_void1.IsVoidExtent());
 
-            var kErrorBlock = new PhysicalAstcBlock(new UInt128Ex(0UL,0UL));
+            // Error block is not a void extent block
+            var kErrorBlock = new PhysicalAstcBlock(new UInt128Ex(0UL, 0UL));
             Assert.False(kErrorBlock.IsVoidExtent());
 
-            var void_extent_encoding = new PhysicalAstcBlock(0UL, 0xFFF8003FFE000DFCUL);
+            // A valid void extent block
+            var void_extent_encoding = new PhysicalAstcBlock(0xFFF8003FFE000DFCUL, 0UL);
             Assert.Null(void_extent_encoding.IsIllegalEncoding());
             Assert.True(void_extent_encoding.IsVoidExtent());
 
-            // If we modify the low bits it shouldn't change VoidExtent detection
-            var modified = new PhysicalAstcBlock(0xdeadbeefdeadbeefUL, 0xFFF8003FFE000DFCUL);
+            // If we modify the high 64 bits it shouldn't change anything
+            var modified = new PhysicalAstcBlock(0xFFF8003FFE000DFCUL, 0xdeadbeefdeadbeef);
             Assert.Null(modified.IsIllegalEncoding());
             Assert.True(modified.IsVoidExtent());
+        }
 
+        [Fact]
+        public void TestVoidExtentCoordinates()
+        {
             // Void extent coords for the single-ulong representation
             var coords = new PhysicalAstcBlock(0xFFF8003FFE000DFCUL).VoidExtentCoords();
             Assert.NotNull(coords);
@@ -205,13 +216,15 @@ namespace AstcSharp.Tests
             Assert.Equal(0, coords[2]);
             Assert.Equal(8191, coords[3]);
 
-            // All-ones coords -> still void extent but no coords
+            // If we set the coords to all 1's then it's still a void extent
+            // block, but there aren't any void extent coords.
             var be_all_ones = new PhysicalAstcBlock(0xFFFFFFFFFFFFFDFCUL);
             Assert.Null(be_all_ones.IsIllegalEncoding());
             Assert.True(be_all_ones.IsVoidExtent());
             Assert.Null(be_all_ones.VoidExtentCoords());
 
-            // Illegal coords
+            // If we set the void extent coords to something where the coords are
+            // >= each other, then the encoding is illegal.
             Assert.NotNull(new PhysicalAstcBlock(0x0008004002001DFCUL).IsIllegalEncoding());
             Assert.NotNull(new PhysicalAstcBlock(0x0007FFC001FFFDFCUL).IsIllegalEncoding());
         }
