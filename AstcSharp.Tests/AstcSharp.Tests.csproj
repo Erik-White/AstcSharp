@@ -23,4 +23,15 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <!-- Copy the reference testdata (astc-codec testdata) into the test output
+       so the runtime path used by the tests (Path.Combine("AstcSharp.Reference", ...))
+       resolves correctly regardless of the test runner's working directory. -->
+  <Target Name="CopyReferenceTestData" AfterTargets="Build">
+    <ItemGroup>
+      <_ReferenceTestData Include="..\AstcSharp.Reference\astc-codec\**\*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_ReferenceTestData)"
+          DestinationFiles="@( _ReferenceTestData -> '$(TargetDir)AstcSharp.Reference\\astc-codec\\%(RecursiveDir)%(Filename)%(Extension)')" />
+  </Target>
+
 </Project>
