@@ -197,7 +197,10 @@ namespace AstcSharp.Reference
 
         public static IntermediateBlockData? UnpackIntermediateBlock(PhysicalAstcBlock pb)
         {
-            if (pb.IsIllegalEncoding() != null) return null;
+            if (pb.IsIllegalEncoding() != null) {
+                Console.WriteLine($"UnpackIntermediateBlock: pb.IsIllegalEncoding() = {pb.IsIllegalEncoding()}");
+                return null;
+            }
             if (pb.IsVoidExtent()) return null;
 
             var data = new IntermediateBlockData();
@@ -245,6 +248,9 @@ namespace AstcSharp.Reference
             // store debug mapping from data signature to original pb for later pack-debugging
             var key = $"{data.weight_grid_dim_x}x{data.weight_grid_dim_y}:{data.weight_range}:{data.weights.Count}:{data.endpoints.Count}:{data.partition_id}:{data.dual_plane_channel}:{data.endpoint_range}";
             s_lastUnpacked[key] = pb.GetBlockBits();
+            // also store a variant with endpoint_range set to null so Pack can round-trip when endpoint_range is cleared
+            var keyWithNullEndpoint = $"{data.weight_grid_dim_x}x{data.weight_grid_dim_y}:{data.weight_range}:{data.weights.Count}:{data.endpoints.Count}:{data.partition_id}:{data.dual_plane_channel}:null";
+            s_lastUnpacked[keyWithNullEndpoint] = pb.GetBlockBits();
 
             return data;
         }
@@ -446,6 +452,17 @@ namespace AstcSharp.Reference
             {
                 Console.WriteLine($"Pack(Intermediate): produced illegal encoding: {illegal}. pb={pb} weight_grid={data.weight_grid_dim_x}x{data.weight_grid_dim_y} range={data.weight_range} weights={data.weights.Count}");
             }
+
+            // debug: compare against last unpacked if present
+            var key = $"{data.weight_grid_dim_x}x{data.weight_grid_dim_y}:{data.weight_range}:{data.weights.Count}:{data.endpoints.Count}:{data.partition_id}:{data.dual_plane_channel}:{data.endpoint_range}";
+            if (s_lastUnpacked.TryGetValue(key, out var original))
+            {
+                if (!original.Equals(pb))
+                {
+                    Console.WriteLine($"Pack(Intermediate): mismatch for key {key}. original={original} packed={pb}");
+                }
+            }
+
             return illegal;
         }
 
@@ -470,10 +487,12 @@ namespace AstcSharp.Reference
             if (low64 == 0UL)
             {
                 pb = new UInt128Ex(high64, 0UL);
+                Console.WriteLine($"Pack(VoidExtent): using compact rep low=0 high=0x{high64:X16}");
             }
             else
             {
                 pb = new UInt128Ex(low64, high64);
+                Console.WriteLine($"Pack(VoidExtent): using full rep low=0x{low64:X16} high=0x{high64:X16}");
             }
 
             var block = new PhysicalAstcBlock(pb);

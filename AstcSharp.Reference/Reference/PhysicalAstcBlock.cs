@@ -228,42 +228,45 @@ namespace AstcSharp.Reference
             // on the block representation. Check both low and high words.
             if (BitOps.GetBits(astc_bits.Low, 0, kVoidExtentMaskBits) == kVoidExtentMask ||
                 BitOps.GetBits(astc_bits.High, 0, kVoidExtentMaskBits) == kVoidExtentMask)
-             {
-                 return PhysicalAstcBlock.BlockMode.kVoidExtent;
-             }
+            {
+                return PhysicalAstcBlock.BlockMode.kVoidExtent;
+            }
 
             // For decoding block mode fields the relevant bits live in the low
             // 64-bit word of the canonical representation. Use the stored low
             // word for the remaining logic.
             ulong low_bits = astc_bits.Low;
+            Console.WriteLine($"DecodeBlockMode: low_bits=0x{low_bits:X16}");
             if (BitOps.GetBits(low_bits, 0, 2) != 0)
-             {
-                 var mode_bits = BitOps.GetBits(low_bits, 2, 2);
-                 switch (mode_bits)
-                 {
-                     case 0: return PhysicalAstcBlock.BlockMode.kB4_A2;
-                     case 1: return PhysicalAstcBlock.BlockMode.kB8_A2;
-                     case 2: return PhysicalAstcBlock.BlockMode.kA2_B8;
-                     case 3:
-                         return (BitOps.GetBits(low_bits, 8, 1) != 0) ? PhysicalAstcBlock.BlockMode.kB2_A2 : PhysicalAstcBlock.BlockMode.kA2_B6;
-                 }
-             }
-             else
-             {
-                 var mode_bits = BitOps.GetBits(low_bits, 5, 4);
-                 if ((mode_bits & 0xC) == 0x0)
-                 {
-                     if (BitOps.GetBits(low_bits, 0, 4) == 0) return null; // reserved
-                     else return PhysicalAstcBlock.BlockMode.k12_A2;
-                 }
-                 else if ((mode_bits & 0xC) == 0x4) return PhysicalAstcBlock.BlockMode.kA2_12;
-                 else if (mode_bits == 0xC) return PhysicalAstcBlock.BlockMode.k6_10;
-                 else if (mode_bits == 0xD) return PhysicalAstcBlock.BlockMode.k10_6;
-                 else if ((mode_bits & 0xC) == 0x8) return PhysicalAstcBlock.BlockMode.kA6_B6;
-             }
+            {
+                var mode_bits = BitOps.GetBits(low_bits, 2, 2);
+                Console.WriteLine($"DecodeBlockMode: first path mode_bits={mode_bits}");
+                switch (mode_bits)
+                {
+                    case 0: return PhysicalAstcBlock.BlockMode.kB4_A2;
+                    case 1: return PhysicalAstcBlock.BlockMode.kB8_A2;
+                    case 2: return PhysicalAstcBlock.BlockMode.kA2_B8;
+                    case 3:
+                        return (BitOps.GetBits(low_bits, 8, 1) != 0) ? PhysicalAstcBlock.BlockMode.kB2_A2 : PhysicalAstcBlock.BlockMode.kA2_B6;
+                }
+            }
+            else
+            {
+                var mode_bits = BitOps.GetBits(low_bits, 5, 4);
+                Console.WriteLine($"DecodeBlockMode: second path mode_bits=0x{mode_bits:X}");
+                if ((mode_bits & 0xC) == 0x0)
+                {
+                    if (BitOps.GetBits(low_bits, 0, 4) == 0) return null; // reserved
+                    else return PhysicalAstcBlock.BlockMode.k12_A2;
+                }
+                else if ((mode_bits & 0xC) == 0x4) return PhysicalAstcBlock.BlockMode.kA2_12;
+                else if (mode_bits == 0xC) return PhysicalAstcBlock.BlockMode.k6_10;
+                else if (mode_bits == 0xD) return PhysicalAstcBlock.BlockMode.k10_6;
+                else if ((mode_bits & 0xC) == 0x8) return PhysicalAstcBlock.BlockMode.kA6_B6;
+            }
 
-             return null;
-         }
+            return null;
+        }
 
         private static WeightGridProperties? DecodeWeightProps(UInt128Ex astc_bits, out string? error)
         {
@@ -276,7 +279,10 @@ namespace AstcSharp.Reference
             }
 
             var props = new WeightGridProperties();
+            Console.WriteLine($"DecodeWeightProps: astc_bits.Low=0x{astc_bits.Low:X16} High=0x{astc_bits.High:X16}");
             uint low32 = (uint)(astc_bits.Low & 0xFFFFFFFFUL);
+            // diagnostic
+            // Console.WriteLine($"DecodeWeightProps: low32=0x{low32:X8} block_mode={block_mode}");
 
             switch (block_mode.Value)
             {
@@ -373,6 +379,47 @@ namespace AstcSharp.Reference
 
             int[] kWeightRanges = new int[] { -1, -1, 1, 2, 3, 4, 5, 7, -1, -1, 9, 11, 15, 19, 23, 31 };
             int idx = (int)((h << 3) | r);
+            if (idx < 0 || idx >= kWeightRanges.Length)
+            {
+                // Detailed diagnostics
+                Console.WriteLine($"DecodeWeightProps: reserved range detected. low32=0x{low32:X8} block_mode={block_mode} r0={BitOps.GetBits(low32,4,1)} r_lowbits={BitOps.GetBits(low32,0,2)} r_altbits={BitOps.GetBits(low32,2,2)} hbit={BitOps.GetBits(low32,9,1)} computed_r={r} computed_h={h} idx={idx}");
+                // Try alternative interpretation using high 32 bits
+                uint altLow32 = (uint)((astc_bits.High) & 0xFFFFFFFFUL);
+                Console.WriteLine($"Attempting altLow32=0x{altLow32:X8}");
+                uint alt_r = (uint)BitOps.GetBits(altLow32, 4, 1);
+                switch (block_mode.Value)
+                {
+                    case BlockMode.kB4_A2:
+                    case BlockMode.kB8_A2:
+                    case BlockMode.kA2_B8:
+                    case BlockMode.kA2_B6:
+                    case BlockMode.kB2_A2:
+                        alt_r |= (uint)(BitOps.GetBits(altLow32, 0, 2) << 1);
+                        break;
+                    default:
+                        alt_r |= (uint)(BitOps.GetBits(altLow32, 2, 2) << 1);
+                        break;
+                }
+                uint alt_h = (uint)BitOps.GetBits(altLow32, 9, 1);
+                int altIdx = (int)((alt_h << 3) | alt_r);
+                Console.WriteLine($"Alt computed r={alt_r} h={alt_h} idx={altIdx}");
+                if (altIdx >= 0 && altIdx < kWeightRanges.Length && kWeightRanges[altIdx] >= 0)
+                {
+                    Console.WriteLine("Using altHigh-derived header fields to decode weight range");
+                    r = alt_r; h = alt_h; idx = altIdx; low32 = altLow32; // adopt the alternate low32 for subsequent logic
+                }
+                else
+                {
+                    // print bits 0..15
+                    string bits = "";
+                    for (int i = 0; i < 16; ++i)
+                    {
+                        bits = (BitOps.GetBits(low32, i, 1) == 1 ? '1' : '0') + bits;
+                    }
+                    Console.WriteLine($"low32 bits[15..0]={bits}");
+                    error = "Reserved range for weight bits"; return null;
+                }
+            }
             if (idx < 0 || idx >= kWeightRanges.Length) { error = "Reserved range for weight bits"; return null; }
             props.range = kWeightRanges[idx];
             if (props.range < 0) { error = "Reserved range for weight bits"; return null; }
