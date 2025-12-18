@@ -471,35 +471,35 @@ namespace AstcSharp.Reference
             // Pack void extent
             // Assemble the 128-bit value explicitly: low 64 bits = RGBA (4x16)
             // high 64 bits = 12-bit header (0xDFC) followed by four 13-bit coords.
-            ulong low64 = ((ulong)data.a << 48) | ((ulong)data.b << 32) | ((ulong)data.g << 16) | (ulong)data.r;
-            ulong high64 = 0UL;
+            ulong high64 = ((ulong)data.a << 48) | ((ulong)data.b << 32) | ((ulong)data.g << 16) | (ulong)data.r;
+            ulong low64 = 0UL;
             // header occupies lowest 12 bits of the high word
-            high64 |= 0xDFCu;
+            low64 |= 0xDFCu;
             for (int i = 0; i < 4; ++i)
             {
-                high64 |= ((ulong)(data.coords[i] & 0x1FFF)) << (12 + 13 * i);
+                low64 |= ((ulong)(data.coords[i] & 0x1FFF)) << (12 + 13 * i);
             }
 
             // Decide representation: if the RGBA low word is zero we emit the
             // compact single-ulong representation (low word = header+coords,
             // high word = 0) to match the reference tests. Otherwise the
             // low word holds RGBA and the high word holds header+coords.
-            if (low64 == 0UL)
+            if (high64 == 0UL)
             {
-                pb = new UInt128Ex(high64, 0UL);
-                Console.WriteLine($"Pack(VoidExtent): using compact rep low=0 high=0x{high64:X16}");
+                pb = new UInt128Ex(low64, 0UL);
+                Console.WriteLine($"Pack(VoidExtent): using compact rep low=0 high=0x{low64:X16}");
             }
             else
             {
                 pb = new UInt128Ex(low64, high64);
-                Console.WriteLine($"Pack(VoidExtent): using full rep low=0x{low64:X16} high=0x{high64:X16}");
+                Console.WriteLine($"Pack(VoidExtent): using full rep low=0x{high64:X16} high=0x{low64:X16}");
             }
 
             var block = new PhysicalAstcBlock(pb);
             var illegal = block.IsIllegalEncoding();
             if (illegal != null)
             {
-                Console.WriteLine($"Pack(VoidExtent): illegal={illegal} pb={pb} low64=0x{low64:X16} high64=0x{high64:X16}");
+                Console.WriteLine($"Pack(VoidExtent): illegal={illegal} pb={pb} low64=0x{high64:X16} high64=0x{low64:X16}");
             }
             return illegal;
         }

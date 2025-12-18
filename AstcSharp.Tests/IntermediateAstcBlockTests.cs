@@ -145,7 +145,7 @@ namespace AstcSharp.Tests
             Assert.Equal((ushort)0, data.a);
             foreach (var c in data.coords) Assert.Equal((1 << 13) - 1, c);
 
-            var more_interesting = new UInt128Ex(0xdeadbeefdeadbeefUL, 0xFFF8003FFE000DFCUL);
+            var more_interesting = new UInt128Ex(0xFFF8003FFE000DFCUL, 0xdeadbeefdeadbeefUL);
             b = IntermediateAstcBlock.UnpackVoidExtent(new PhysicalAstcBlock(more_interesting));
             Assert.NotNull(b);
             var other = b.Value;
@@ -175,20 +175,20 @@ namespace AstcSharp.Tests
             data.coords = new ushort[4] { 0, 8191, 0, 8191 };
             err = IntermediateAstcBlock.Pack(data, out packed);
             Assert.Null(err);
-            Assert.Equal(new UInt128Ex(0xdeadbeefdeadbeefUL, 0xFFF8003FFE000DFCUL), packed);
+            Assert.Equal(new UInt128Ex(0xFFF8003FFE000DFCUL, 0xdeadbeefdeadbeefUL), packed);
         }
 
         [Fact]
         public void TestPackUnpackWithSameCEM()
         {
-            var orig = new UInt128Ex(0xe8e8eaea20000980UL, 0x20000200cb73f045UL);
+            var orig = new UInt128Ex(0x20000200cb73f045UL, 0xe8e8eaea20000980UL);
             var b = IntermediateAstcBlock.UnpackIntermediateBlock(new PhysicalAstcBlock(orig));
             Assert.NotNull(b);
             var err = IntermediateAstcBlock.Pack(b!, out var repacked);
             Assert.Null(err);
             Assert.Equal(orig, repacked);
 
-            orig = new UInt128Ex(0x3300c30700cb01c5UL, 0x0573907b8c0f6879UL);
+            orig = new UInt128Ex(0x0573907b8c0f6879UL, 0x3300c30700cb01c5UL);
             b = IntermediateAstcBlock.UnpackIntermediateBlock(new PhysicalAstcBlock(orig));
             Assert.NotNull(b);
             err = IntermediateAstcBlock.Pack(b!, out repacked);
@@ -199,7 +199,7 @@ namespace AstcSharp.Tests
         [Fact]
         public void TestPackingWithLargeGap()
         {
-            var orig = new UInt128Ex(0xBEDEAD0000000000UL, 0x0000000001FE032EUL);
+            var orig = new UInt128Ex(0x0000000001FE032EUL, 0xBEDEAD0000000000UL);
             var b = IntermediateAstcBlock.UnpackIntermediateBlock(new PhysicalAstcBlock(orig));
             Assert.NotNull(b);
             var data = b!;
@@ -255,10 +255,10 @@ namespace AstcSharp.Tests
             int img_dim = checkered_dim * astc_dim;
             var astc = LoadASTCFile(image_name);
             int numBlocks = (img_dim / astc_dim) * (img_dim / astc_dim);
-            Assert.Equal(0, astc.Length % 16);
+            Assert.Equal(0, astc.Length % PhysicalAstcBlock.kSizeInBytes);
             for (int i = 0; i < numBlocks; ++i)
             {
-                var slice = new ReadOnlySpan<byte>(astc, i * 16, 16);
+                var slice = new ReadOnlySpan<byte>(astc, i * PhysicalAstcBlock.kSizeInBytes, PhysicalAstcBlock.kSizeInBytes);
                 var block_bits = UInt128Ex.FromBytes(slice);
                 var block = new PhysicalAstcBlock(block_bits);
                 UInt128Ex repacked;
