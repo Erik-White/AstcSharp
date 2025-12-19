@@ -88,7 +88,7 @@ namespace AstcSharp.Tests
             Assert.True(Codec.ASTCDecompressToRGBA(astc, width, height, footprint, our_decoded.Data(), our_decoded.Stride()));
 
             var decoded_image = FileBasedHelpers.LoadGoldenImageWithAlpha(image_name);
-            ImageUtils.CompareSumOfSquaredDifferences(decoded_image, our_decoded, 1.0);
+            ImageUtils.CompareSumOfSquaredDifferences(decoded_image, our_decoded, 0.1);
         }
 
         public static IEnumerable<object[]> PublicApiParams()
@@ -118,7 +118,7 @@ namespace AstcSharp.Tests
             Assert.True(Codec.DecompressToImage(file, our_decoded.Data(), our_decoded.DataSize(), our_decoded.Stride()));
 
             var decoded_image = FileBasedHelpers.LoadGoldenImageWithAlpha(image_name);
-            ImageUtils.CompareSumOfSquaredDifferences(decoded_image, our_decoded, 1.0);
+            ImageUtils.CompareSumOfSquaredDifferences(decoded_image, our_decoded, 0.1);
         }
     }
 }
