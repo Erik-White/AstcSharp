@@ -10,9 +10,13 @@ namespace AstcSharp.Tests
         private byte[]? data_;
         private int stride_;
         private int bytesPerPixel_;
+        private int width_;
+        private int height_;
 
         public void Allocate(int width, int height, int bytesPerPixel)
         {
+            width_ = width;
+            height_ = height;
             bytesPerPixel_ = bytesPerPixel;
             int rowBytes = width * bytesPerPixel;
             stride_ = ((rowBytes + (ImageBuffer.Align - 1)) / ImageBuffer.Align) * ImageBuffer.Align;
@@ -27,6 +31,9 @@ namespace AstcSharp.Tests
         public int Stride() => stride_;
         public int BytesPerPixel() => bytesPerPixel_;
         public int DataSize() => Data().Length;
+
+        public int Width() => width_;
+        public int Height() => height_;
 
         public const int Align = 4;
     }
@@ -48,6 +55,15 @@ namespace AstcSharp.Tests
             var result = new ImageBuffer();
             LoadGoldenBmp(filename, result);
             Assert.Equal(4, result.BytesPerPixel());
+            return result;
+        }
+
+        public static ImageBuffer LoadGoldenImage(string basename)
+        {
+            var filename = Path.Combine("AstcSharp.Reference", "astc-codec", "src", "decoder", "testdata", basename + ".bmp");
+            var result = new ImageBuffer();
+            LoadGoldenBmp(filename, result);
+            Assert.Equal(3, result.BytesPerPixel());
             return result;
         }
 
