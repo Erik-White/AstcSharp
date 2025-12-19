@@ -197,10 +197,7 @@ namespace AstcSharp.Reference
 
         public static IntermediateBlockData? UnpackIntermediateBlock(PhysicalAstcBlock pb)
         {
-            if (pb.IsIllegalEncoding() != null) {
-                Console.WriteLine($"UnpackIntermediateBlock: pb.IsIllegalEncoding() = {pb.IsIllegalEncoding()}");
-                return null;
-            }
+            if (pb.IsIllegalEncoding() != null) return null;
             if (pb.IsVoidExtent()) return null;
 
             var data = new IntermediateBlockData();
@@ -448,19 +445,12 @@ namespace AstcSharp.Reference
 
             var block = new PhysicalAstcBlock(pb);
             var illegal = block.IsIllegalEncoding();
-            if (illegal != null)
-            {
-                Console.WriteLine($"Pack(Intermediate): produced illegal encoding: {illegal}. pb={pb} weight_grid={data.weight_grid_dim_x}x{data.weight_grid_dim_y} range={data.weight_range} weights={data.weights.Count}");
-            }
 
             // debug: compare against last unpacked if present
             var key = $"{data.weight_grid_dim_x}x{data.weight_grid_dim_y}:{data.weight_range}:{data.weights.Count}:{data.endpoints.Count}:{data.partition_id}:{data.dual_plane_channel}:{data.endpoint_range}";
             if (s_lastUnpacked.TryGetValue(key, out var original))
             {
-                if (!original.Equals(pb))
-                {
-                    Console.WriteLine($"Pack(Intermediate): mismatch for key {key}. original={original} packed={pb}");
-                }
+                if (!original.Equals(pb)) { /* pack mismatch detected */ }
             }
 
             return illegal;
@@ -487,19 +477,19 @@ namespace AstcSharp.Reference
             if (high64 == 0UL)
             {
                 pb = new UInt128Ex(low64, 0UL);
-                Console.WriteLine($"Pack(VoidExtent): using compact rep low=0 high=0x{low64:X16}");
+                // using compact void extent representation
             }
             else
             {
                 pb = new UInt128Ex(low64, high64);
-                Console.WriteLine($"Pack(VoidExtent): using full rep low=0x{high64:X16} high=0x{low64:X16}");
+                // using full void extent representation
             }
 
             var block = new PhysicalAstcBlock(pb);
             var illegal = block.IsIllegalEncoding();
             if (illegal != null)
             {
-                Console.WriteLine($"Pack(VoidExtent): illegal={illegal} pb={pb} low64=0x{high64:X16} high64=0x{low64:X16}");
+                // pack(void extent) produced illegal encoding
             }
             return illegal;
         }

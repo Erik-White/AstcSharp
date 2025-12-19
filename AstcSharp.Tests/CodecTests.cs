@@ -60,7 +60,7 @@ namespace AstcSharp.Tests
             int blocks_high = (height + block_height - 1) / block_height;
             int expected_block_count = blocks_wide * blocks_high;
 
-            Console.WriteLine($"Diagnostics: image={image_name} astcBytes={astc.Length} bw={block_width} bh={block_height} blocks_wide={blocks_wide} blocks_high={blocks_high} expected_blocks={expected_block_count}");
+            // diagnostics removed
 
             Assert.True(astc.Length % PhysicalAstcBlock.kSizeInBytes == 0, "astc byte length not multiple of block size");
             Assert.True(astc.Length / PhysicalAstcBlock.kSizeInBytes == expected_block_count, $"ASTC block count mismatch: {astc.Length / PhysicalAstcBlock.kSizeInBytes} != {expected_block_count}");
@@ -77,17 +77,10 @@ namespace AstcSharp.Tests
                 var lb = LogicalAstcBlock.UnpackLogicalBlock(fp, pb);
                 if (lb == null)
                 {
-                    // Print 16 raw bytes and the computed low/high 64-bit words for debugging
-                    string hex = BitConverter.ToString(blkSpan).Replace("-", " ").ToLowerInvariant();
-                    ulong low = BitConverter.ToUInt64(blkSpan, 0);
-                    ulong high = BitConverter.ToUInt64(blkSpan, 8);
-                    Console.WriteLine($"Block unpack failed at index {block_index}");
-                    Console.WriteLine($"  raw16: {hex}");
-                    Console.WriteLine($"  low=0x{low:X16} high=0x{high:X16}");
-                    // Try alternate ordering (swap low/high) to detect byte-order mismatch
-                    var pb_alt = new PhysicalAstcBlock(new UInt128Ex(high, low));
+                    // diagnostic removed
+                    var pb_alt = new PhysicalAstcBlock(new UInt128Ex(BitConverter.ToUInt64(blkSpan, 8), BitConverter.ToUInt64(blkSpan, 0)));
                     var lb_alt = LogicalAstcBlock.UnpackLogicalBlock(fp, pb_alt);
-                    Console.WriteLine($"  alt_ok={lb_alt != null}");
+                    Assert.True(lb_alt != null, "Block failed to unpack in both canonical and alternate byte orders");
                 }
                 Assert.NotNull(lb);
             }
