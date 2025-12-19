@@ -90,3 +90,19 @@ namespace AstcSharp.Reference
         public ReadOnlySpan<byte> Blocks => blocks_;
     }
 }
+
+    namespace AstcSharp.Reference.Tools
+    {
+        public static class AstcInspector
+        {
+            // Inspect metadata for an ASTC file's bytes and return a short summary.
+            public static string Inspect(byte[] astcBytes)
+            {
+                var file = AstcFile.LoadFromMemory(astcBytes, out var err);
+                if (file == null) return $"Error: {err}";
+                var fp = file.GetFootprint();
+                string fpStr = fp.HasValue ? fp.Value.Type().ToString() : "unknown";
+                return $"W={file.GetWidth()} H={file.GetHeight()} FP={fpStr} Blocks={file.Blocks.Length}";
+            }
+        }
+    }
