@@ -2,7 +2,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace AstcSharp.Reference
+namespace AstcSharp
 {
     // Aggregates the lowest N values according to a comparer.
     public class BottomN<T>

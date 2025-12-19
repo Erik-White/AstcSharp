@@ -3,7 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 
-namespace AstcSharp.Reference
+namespace AstcSharp
 {
     // A PhysicalASTCBlock contains all 128 bits and the logic for decoding the
     // various internals of an ASTC block. This is a C# port of the reference

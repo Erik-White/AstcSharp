@@ -1,5 +1,5 @@
 // Port of astc-codec/src/decoder/types.h
-namespace AstcSharp.Reference
+namespace AstcSharp
 {
     // Mirror of the reference ColorEndpointMode. Order and values must match the
     // specification/numeric ordering used by the reference implementation.

@@ -2,7 +2,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace AstcSharp.Reference
+namespace AstcSharp
 {
     public static class WeightInfill
     {

@@ -1,5 +1,5 @@
 using Xunit;
-using AstcSharp.Reference;
+using AstcSharp;
 using System;
 
 namespace AstcSharp.Tests
@@ -9,7 +9,7 @@ namespace AstcSharp.Tests
         [Fact]
         public void GetBlockBits_RoundTrip()
         {
-            var orig = new AstcSharp.Reference.UInt128Ex(0x12345678ABCDEF00UL, 0xCAFEBABEDEADBEEFUL);
+            var orig = new UInt128Ex(0x12345678ABCDEF00UL, 0xCAFEBABEDEADBEEFUL);
             var blk = new PhysicalAstcBlock(orig);
             var bits = blk.GetBlockBits();
             Assert.Equal(orig, bits);
@@ -18,7 +18,7 @@ namespace AstcSharp.Tests
         [Fact]
         public void IsVoidExtent_DetectsKnownPattern()
         {
-            var blk = new PhysicalAstcBlock(new AstcSharp.Reference.UInt128Ex(0xFFFFFFFFFFFFFDFCUL, 0UL));
+            var blk = new PhysicalAstcBlock(new UInt128Ex(0xFFFFFFFFFFFFFDFCUL, 0UL));
             Assert.True(blk.IsVoidExtent());
         }
 

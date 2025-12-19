@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using Xunit;
-using AstcSharp.Reference;
+using AstcSharp;
 
 namespace AstcSharp.Tests
 {

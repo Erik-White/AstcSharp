@@ -1,7 +1,7 @@
 // Port of src/decoder/codec.{h,cc}
 using System;
 
-namespace AstcSharp.Reference
+namespace AstcSharp
 {
     public static class Codec
     {

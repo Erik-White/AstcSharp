@@ -16,7 +16,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\AstcSharp\AstcSharp.csproj" />
-    <ProjectReference Include="..\AstcSharp.Reference\AstcSharp.Reference.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,7 +1,7 @@
 using System;
 using System.IO;
 using Xunit;
-using AstcSharp.Reference;
+using AstcSharp;
 
 namespace AstcSharp.Tests
 {

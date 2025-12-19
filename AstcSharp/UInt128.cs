@@ -1,7 +1,7 @@
 // Minimal UInt128Ex helper used by PhysicalAstcBlock parsing.
 using System;
 
-namespace AstcSharp.Reference
+namespace AstcSharp
 {
     public readonly struct UInt128Ex : IEquatable<UInt128Ex>
     {

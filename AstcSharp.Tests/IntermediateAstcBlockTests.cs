@@ -1,5 +1,5 @@
 using Xunit;
-using AstcSharp.Reference;
+using AstcSharp;
 using System;
 using System.IO;
 using System.Linq;

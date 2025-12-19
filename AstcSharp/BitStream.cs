@@ -1,5 +1,5 @@
 // Port of astc-codec/src/base/bit_stream.h
-namespace AstcSharp.Reference
+namespace AstcSharp
 {
     using System;
 

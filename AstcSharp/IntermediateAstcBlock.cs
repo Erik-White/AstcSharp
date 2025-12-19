@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 
-namespace AstcSharp.Reference
+namespace AstcSharp
 {
     // From Table C.2.7 -- valid weight ranges
     public static class IntermediateAstcBlock

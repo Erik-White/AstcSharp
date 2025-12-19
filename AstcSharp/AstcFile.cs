@@ -1,7 +1,7 @@
 using System;
 using System.Text;
 
-namespace AstcSharp.Reference
+namespace AstcSharp
 {
     public sealed class AstcFile
     {
@@ -91,7 +91,7 @@ namespace AstcSharp.Reference
     }
 }
 
-    namespace AstcSharp.Reference.Tools
+    namespace AstcSharp.Tools
     {
         public static class AstcInspector
         {

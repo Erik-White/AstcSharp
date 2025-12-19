@@ -3,7 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace AstcSharp.Reference
+namespace AstcSharp
 {
     public static class Quantization
     {
