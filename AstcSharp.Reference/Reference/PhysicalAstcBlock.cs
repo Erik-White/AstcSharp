@@ -104,6 +104,7 @@ namespace AstcSharp.Reference
 
             if (block_mode == BlockMode.kVoidExtent)
             {
+                // Check reserved bits at the full 128-bit level like the C++ reference.
                 if (BitOps.GetBits(astc_bits_, 10, 2).Low != 0x3UL)
                 {
                     return "Reserved bits set for void extent block";
@@ -228,10 +229,9 @@ namespace AstcSharp.Reference
         {
             const int kVoidExtentMaskBits = 9;
             const uint kVoidExtentMask = 0x1FC;
-            // The void-extent header can appear in either 64-bit word depending
-            // on the block representation. Check both low and high words.
-            if (BitOps.GetBits(astc_bits.Low, 0, kVoidExtentMaskBits) == kVoidExtentMask ||
-                BitOps.GetBits(astc_bits.High, 0, kVoidExtentMaskBits) == kVoidExtentMask)
+            // The void-extent header is found in the low 64-bit word of the
+            // canonical representation.
+            if (BitOps.GetBits(astc_bits.Low, 0, kVoidExtentMaskBits) == kVoidExtentMask)
             {
                 return PhysicalAstcBlock.BlockMode.kVoidExtent;
             }
