@@ -70,7 +70,7 @@ namespace AstcSharp.Tests
 
             // trits case: 15 values, trits=1, bits=3
             trits = 1; quints = 0; bits = 3;
-            Assert.Equal(IntegerSequenceCodec.GetBitCount(15, trits, quints, bits), 8 * 3 + 15 * 3);
+            Assert.Equal(8 * 3 + 15 * 3, IntegerSequenceCodec.GetBitCount(15, trits, quints, bits));
             Assert.Equal(IntegerSequenceCodec.GetBitCountForRange(15, 23), IntegerSequenceCodec.GetBitCount(15, trits, quints, bits));
 
             // trits case: 13 values, trits=1, bits=2 -> expected 47

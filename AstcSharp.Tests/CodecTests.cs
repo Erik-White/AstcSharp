@@ -108,6 +108,9 @@ namespace AstcSharp.Tests
             Assert.NotNull(file);
             Assert.True(file.GetFootprint().HasValue);
             Assert.Equal(footprint, file.GetFootprint().Value.Type());
+            // Ensure the header matches the expected dimensions from the test data
+            Assert.Equal(width, file.GetWidth());
+            Assert.Equal(height, file.GetHeight());
 
             var our_decoded = new ImageBuffer();
             our_decoded.Allocate(file.GetWidth(), file.GetHeight(), 4);
