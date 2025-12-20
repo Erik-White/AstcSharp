@@ -27,10 +27,13 @@
        resolves correctly regardless of the test runner's working directory. -->
   <Target Name="CopyReferenceTestData" AfterTargets="Build">
     <ItemGroup>
-      <_ReferenceTestData Include="..\AstcSharp.Reference\astc-codec\**\*.*" />
+    <_ReferenceTestData Include="..\AstcSharp.Reference\astc-codec\**\*.*" />
+    <_TestData Include="TestData\**\*.*" />
     </ItemGroup>
     <Copy SourceFiles="@(_ReferenceTestData)"
-          DestinationFiles="@( _ReferenceTestData -> '$(TargetDir)AstcSharp.Reference\\astc-codec\\%(RecursiveDir)%(Filename)%(Extension)')" />
+        DestinationFiles="@( _ReferenceTestData -> '$(TargetDir)AstcSharp.Reference\\astc-codec\\%(RecursiveDir)%(Filename)%(Extension)')" />
+          <Copy SourceFiles="@(_TestData)"
+            DestinationFiles="@(_TestData -> '$(TargetDir)TestData\\%(RecursiveDir)%(Filename)%(Extension)')" />
   </Target>
 
 </Project>

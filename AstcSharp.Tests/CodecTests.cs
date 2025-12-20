@@ -101,8 +101,7 @@ namespace AstcSharp.Tests
         [MemberData(nameof(PublicApiParams))]
         public void DecompressToImageTest(string image_name, FootprintType footprint, int width, int height)
         {
-            var astcBytes = File.ReadAllBytes(Path.Combine("AstcSharp.Reference", "astc-codec", "src", "decoder", "testdata", image_name + ".astc"));
-
+            var astcBytes = File.ReadAllBytes(Path.Combine("TestData", "Input", image_name + ".astc"));
             var file = AstcFile.LoadFromMemory(astcBytes, out var err);
             Assert.Null(err);
             Assert.NotNull(file);

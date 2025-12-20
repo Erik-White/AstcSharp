@@ -11,7 +11,7 @@ namespace AstcSharp.Tests
     {
         private static byte[] LoadASTCFile(string basename)
         {
-            var filename = Path.Combine("AstcSharp.Reference", "astc-codec", "src", "decoder", "testdata", basename + ".astc");
+            var filename = Path.Combine("TestData", "Input", basename + ".astc");
             Assert.True(File.Exists(filename), $"Testdata missing: {filename}");
             var data = File.ReadAllBytes(filename);
             Assert.True(data.Length >= 16, "ASTC file too small");

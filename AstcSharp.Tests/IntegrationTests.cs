@@ -10,7 +10,7 @@ namespace AstcSharp.Tests
         [Fact]
         public void DecodeAllTestdataFiles()
         {
-            string testdataDir = Path.Combine("AstcSharp.Reference", "astc-codec", "src", "decoder", "testdata");
+            string testdataDir = Path.Combine("TestData", "Input");
             Assert.True(Directory.Exists(testdataDir), $"Testdata directory not found: {testdataDir}");
 
             var files = Directory.GetFiles(testdataDir, "*.astc");
