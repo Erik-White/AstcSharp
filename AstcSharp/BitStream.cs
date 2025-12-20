@@ -4,7 +4,7 @@ namespace AstcSharp
     using System;
 
     // A simple bit stream used for reading/writing arbitrary-sized chunks.
-    public class BitStream
+    internal class BitStream
     {
         private ulong _low;
         private ulong _high;

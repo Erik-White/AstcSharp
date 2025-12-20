@@ -5,7 +5,7 @@ using System.Linq;
 
 namespace AstcSharp
 {
-    public static class Quantization
+    internal static class Quantization
     {
         public const int kEndpointRangeMinValue = 5;
         public const int kWeightRangeMaxValue = 31;

@@ -7,11 +7,11 @@ using System.Linq;
 namespace AstcSharp
 {
     // From Table C.2.7 -- valid weight ranges
-    public static class IntermediateAstcBlock
+    internal static class IntermediateAstcBlock
     {
         public static readonly int[] kValidWeightRanges = { 1, 2, 3, 4, 5, 7, 9, 11, 15, 19, 23, 31 };
 
-        public struct VoidExtentData
+        internal struct VoidExtentData
         {
             public ushort r;
             public ushort g;
@@ -20,13 +20,13 @@ namespace AstcSharp
             public ushort[] coords; // length 4
         }
 
-        public class IntermediateEndpointData
+        internal class IntermediateEndpointData
         {
             public ColorEndpointMode mode;
             public List<int> colors = new List<int>();
         }
 
-        public class IntermediateBlockData
+        internal class IntermediateBlockData
         {
             public int weight_grid_dim_x;
             public int weight_grid_dim_y;

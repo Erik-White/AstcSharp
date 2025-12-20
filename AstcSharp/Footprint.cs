@@ -127,7 +127,7 @@ namespace AstcSharp
     }
 
     // Helper parser wrapper returning nullable Footprint used by tests
-    public static class FootprintParser
+    internal static class FootprintParser
     {
         public static Footprint? Parse(string s) => Footprint.Parse(s);
     }

@@ -26,7 +26,7 @@ namespace AstcSharp
         kNumColorEndpointModes
     }
 
-    public static class Types
+    internal static class Types
     {
         public static int EndpointModeClass(ColorEndpointMode mode) => ((int)mode) / 4;
 

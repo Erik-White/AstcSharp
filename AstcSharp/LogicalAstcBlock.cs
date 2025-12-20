@@ -4,7 +4,7 @@ using System.Collections.Generic;
 
 namespace AstcSharp
 {
-    public class LogicalAstcBlock
+    internal class LogicalAstcBlock
     {
         private List<(RgbaColor first, RgbaColor second)> endpoints_;
         private List<int> weights_;

@@ -15,7 +15,7 @@ namespace AstcSharp
         kDirectRGBA
     }
 
-    public static class EndpointCodec
+    internal static class EndpointCodec
     {
         public static int NumValuesForEncodingMode(EndpointEncodingMode mode)
         {

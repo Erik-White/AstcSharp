@@ -5,7 +5,7 @@ using System.Linq;
 
 namespace AstcSharp
 {
-    public class Partition
+    internal class Partition
     {
         public Footprint footprint;
         public int num_parts;

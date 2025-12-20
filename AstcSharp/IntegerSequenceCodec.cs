@@ -5,7 +5,7 @@ using System.Linq;
 
 namespace AstcSharp
 {
-    public class IntegerSequenceCodec
+    internal class IntegerSequenceCodec
     {
         private const int kLog2MaxRangeForBits = 8;
         private const int kNumPossibleRanges = 3 * kLog2MaxRangeForBits - 3;
@@ -239,7 +239,7 @@ namespace AstcSharp
         public static IReadOnlyList<int> ISERange() => kMaxRanges;
     }
 
-    public class IntegerSequenceDecoder : IntegerSequenceCodec
+    internal class IntegerSequenceDecoder : IntegerSequenceCodec
     {
         public IntegerSequenceDecoder(int range) : base(range) { }
         public IntegerSequenceDecoder(int trits, int quints, int bits) : base(trits, quints, bits) { }
@@ -280,7 +280,7 @@ namespace AstcSharp
         }
     }
 
-    public class IntegerSequenceEncoder : IntegerSequenceCodec
+    internal class IntegerSequenceEncoder : IntegerSequenceCodec
     {
         private readonly List<int> vals_ = new List<int>();
 

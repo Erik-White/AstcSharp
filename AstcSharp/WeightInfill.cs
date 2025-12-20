@@ -4,7 +4,7 @@ using System.Collections.Generic;
 
 namespace AstcSharp
 {
-    public static class WeightInfill
+    internal static class WeightInfill
     {
         // The following functions are based on Section C.2.18 of the ASTC specification
         private static int GetScaleFactorD(int block_dim)

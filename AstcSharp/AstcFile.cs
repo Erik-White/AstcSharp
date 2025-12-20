@@ -93,7 +93,7 @@ namespace AstcSharp
 
     namespace AstcSharp.Tools
     {
-        public static class AstcInspector
+        internal static class AstcInspector
         {
             // Inspect metadata for an ASTC file's bytes and return a short summary.
             public static string Inspect(byte[] astcBytes)

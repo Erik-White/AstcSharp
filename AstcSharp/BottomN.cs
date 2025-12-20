@@ -5,7 +5,7 @@ using System.Collections.Generic;
 namespace AstcSharp
 {
     // Aggregates the lowest N values according to a comparer.
-    public class BottomN<T>
+    internal class BottomN<T>
     {
         private readonly int _maxSize;
         private readonly List<T> _data;
