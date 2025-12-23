@@ -6,6 +6,9 @@ namespace AstcSharp
 {
     internal class LogicalAstcBlock
     {
+        // TODO: Consolidate this to RgbaColor class
+        private const int ChannelCount = 4; // R, G, B, A
+
         private List<(RgbaColor first, RgbaColor second)> endpoints_;
         private List<int> weights_;
         private Partition partition_;
@@ -150,17 +153,20 @@ namespace AstcSharp
             int part = partition_.assignment[idx];
             var endpoints = endpoints_[part];
 
-            var result = new RgbaColor(0,0,0,0);
-            for (int channel = 0; channel < 4; ++channel)
+            var result = RgbaColor.Empty;
+            for (int channel = 0; channel < ChannelCount; ++channel)
             {
                 int weight = (dual_plane_ != null && dual_plane_.channel == channel) ? dual_plane_.weights[idx] : weights_[idx];
                 int p0 = channel switch { 0 => endpoints.first.R, 1 => endpoints.first.G, 2 => endpoints.first.B, _ => endpoints.first.A };
                 int p1 = channel switch { 0 => endpoints.second.R, 1 => endpoints.second.G, 2 => endpoints.second.B, _ => endpoints.second.A };
-                if (p0 < 0 || p0 >= 256 || p1 < 0 || p1 >= 256) throw new InvalidOperationException();
+                if (p0 < byte.MinValue || p0 > byte.MaxValue || p1 < byte.MinValue || p1 > byte.MaxValue)
+                {
+                    throw new ArgumentException("Endpoint color channel out of range");
+                }
                 int c0 = (p0 << 8) | p0;
                 int c1 = (p1 << 8) | p1;
                 int c = (c0 * (64 - weight) + c1 * weight + 32) / 64;
-                int quantized = ((c * 255) + 32767) / 65536;
+                int quantized = ((c * byte.MaxValue) + 32767) / 65536;
                 switch (channel)
                 {
                     case 0: result.R = quantized; break;

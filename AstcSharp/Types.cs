@@ -100,6 +100,8 @@ namespace AstcSharp
             if (arr == null || arr.Length < 4) throw new System.ArgumentException("Array must have length >= 4");
             return new RgbaColor(arr[0], arr[1], arr[2], arr[3]);
         }
+
+        public static RgbaColor Empty => new RgbaColor(0, 0, 0, 0);
     }
 
     // We intentionally do not create C# type aliases here. Use RgbaColor and
