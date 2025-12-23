@@ -60,8 +60,6 @@ namespace AstcSharp.Tests
             int blocks_high = (height + block_height - 1) / block_height;
             int expected_block_count = blocks_wide * blocks_high;
 
-            // diagnostics removed
-
             Assert.True(astc.Length % PhysicalAstcBlock.kSizeInBytes == 0, "astc byte length not multiple of block size");
             Assert.True(astc.Length / PhysicalAstcBlock.kSizeInBytes == expected_block_count, $"ASTC block count mismatch: {astc.Length / PhysicalAstcBlock.kSizeInBytes} != {expected_block_count}");
 
@@ -77,7 +75,6 @@ namespace AstcSharp.Tests
                 var lb = LogicalAstcBlock.UnpackLogicalBlock(fp, pb);
                 if (lb == null)
                 {
-                    // diagnostic removed
                     var pb_alt = new PhysicalAstcBlock(new UInt128Ex(BitConverter.ToUInt64(blkSpan, 8), BitConverter.ToUInt64(blkSpan, 0)));
                     var lb_alt = LogicalAstcBlock.UnpackLogicalBlock(fp, pb_alt);
                     Assert.True(lb_alt != null, "Block failed to unpack in both canonical and alternate byte orders");
