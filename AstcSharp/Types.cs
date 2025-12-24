@@ -5,25 +5,25 @@ namespace AstcSharp
     // specification/numeric ordering used by the reference implementation.
     public enum ColorEndpointMode
     {
-        kLDRLumaDirect = 0,
-        kLDRLumaBaseOffset,
-        kHDRLumaLargeRange,
-        kHDRLumaSmallRange,
-        kLDRLumaAlphaDirect,
-        kLDRLumaAlphaBaseOffset,
-        kLDRRGBBaseScale,
-        kHDRRGBBaseScale,
-        kLDRRGBDirect,
-        kLDRRGBBaseOffset,
-        kLDRRGBBaseScaleTwoA,
-        kHDRRGBDirect,
-        kLDRRGBADirect,
-        kLDRRGBABaseOffset,
-        kHDRRGBDirectLDRAlpha,
-        kHDRRGBDirectHDRAlpha,
+        kLdrLumaDirect = 0,
+        kLdrLumaBaseOffset,
+        kHdrLumaLargeRange,
+        kHdrLumaSmallRange,
+        kLdrLumaAlphaDirect,
+        kLdrLumaAlphaBaseOffset,
+        kLdrRgbBaseScale,
+        kHdrRgbBaseScale,
+        kLdrRgbDirect,
+        kLdrRgbBaseOffset,
+        kLdrRgbBaseScaleTwoA,
+        kHdrRgbDirect,
+        kLdrRgbaDirect,
+        kLdrRgbaBaseOffset,
+        kHdrRgbDirectLdrAlpha,
+        kHdrRgbDirectHdrAlpha,
 
         // Number of endpoint modes defined by the ASTC specification.
-        kNumColorEndpointModes
+        kColorEndpointModeCount
     }
 
     internal static class Types
@@ -72,14 +72,23 @@ namespace AstcSharp
 
         public RgbaColor(int r, int g, int b, int a)
         {
-            R = r; G = g; B = b; A = a;
+            R = r;
+            G = g;
+            B = b;
+            A = a;
         }
 
-        public int[] ToArray() => new[] { R, G, B, A };
 
         public int this[int i]
         {
-            get => i switch { 0 => R, 1 => G, 2 => B, 3 => A, _ => throw new System.IndexOutOfRangeException() };
+            readonly get => i switch
+            {
+                0 => R,
+                1 => G,
+                2 => B,
+                3 => A,
+                _ => throw new IndexOutOfRangeException()
+            };
             set
             {
                 switch (i)
@@ -93,17 +102,16 @@ namespace AstcSharp
             }
         }
 
-        public int[] ToArray4() => new[] { R, G, B, A };
+        public readonly int[] ToArray() => [R, G, B, A];
 
-        public static RgbaColor FromArray(int[] arr)
+        public readonly int[] ToArray4() => [R, G, B, A];
+
+        public static RgbaColor Empty => new(0, 0, 0, 0);
+
+        public static RgbaColor FromArray(int[] array)
         {
-            if (arr == null || arr.Length < 4) throw new System.ArgumentException("Array must have length >= 4");
-            return new RgbaColor(arr[0], arr[1], arr[2], arr[3]);
+            if (array == null || array.Length < 4) throw new System.ArgumentException("Array must have length >= 4");
+            return new RgbaColor(array[0], array[1], array[2], array[3]);
         }
-
-        public static RgbaColor Empty => new RgbaColor(0, 0, 0, 0);
     }
-
-    // We intentionally do not create C# type aliases here. Use RgbaColor and
-    // ValueTuple<RgbaColor, RgbaColor> where needed.
 }

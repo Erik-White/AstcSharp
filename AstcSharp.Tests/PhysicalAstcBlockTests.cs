@@ -62,29 +62,29 @@ namespace AstcSharp.Tests
         public void TestWeightDims()
         {
             var blk1 = new PhysicalAstcBlock(0x0000000001FE000173UL);
-            var dims = blk1.WeightGridDims();
+            var dims = blk1.WeightGridDimensions();
             Assert.NotNull(dims);
             Assert.Equal(6, dims.Value.Item1);
             Assert.Equal(5, dims.Value.Item2);
 
             var blk2 = new PhysicalAstcBlock(0x0000000001FE000373UL);
-            var dims2 = blk2.WeightGridDims();
+            var dims2 = blk2.WeightGridDimensions();
             Assert.Null(dims2);
             var err = blk2.IsIllegalEncoding();
             Assert.NotNull(err);
             Assert.Contains("Too many bits", err);
 
             var blk3 = new PhysicalAstcBlock(0x0000000001FE0005FFUL);
-            var dims3 = blk3.WeightGridDims();
+            var dims3 = blk3.WeightGridDimensions();
             Assert.NotNull(dims3);
             Assert.Equal(3, dims3.Value.Item1);
             Assert.Equal(5, dims3.Value.Item2);
 
             var kErrorBlock = new PhysicalAstcBlock(new UInt128Ex(0UL, 0UL));
-            Assert.Null(kErrorBlock.WeightGridDims());
+            Assert.Null(kErrorBlock.WeightGridDimensions());
 
             var non_shared_cem = new PhysicalAstcBlock(0x4000000000800D44UL);
-            var dims4 = non_shared_cem.WeightGridDims();
+            var dims4 = non_shared_cem.WeightGridDimensions();
             Assert.NotNull(dims4);
             Assert.Equal(8, dims4.Value.Item1);
             Assert.Equal(8, dims4.Value.Item2);
@@ -101,7 +101,7 @@ namespace AstcSharp.Tests
 
             var blk2 = new PhysicalAstcBlock(0x0000000001FE000573UL);
             Assert.False(blk2.IsDualPlane());
-            Assert.Null(blk2.WeightGridDims());
+            Assert.Null(blk2.WeightGridDimensions());
             var err = blk2.IsIllegalEncoding();
             Assert.NotNull(err);
             Assert.Contains("Too many bits", err);
@@ -118,19 +118,19 @@ namespace AstcSharp.Tests
         public void TestNumWeightBits()
         {
             var blk1 = new PhysicalAstcBlock(0x0000000001FE000173UL);
-            Assert.Equal(90, blk1.NumWeightBits());
+            Assert.Equal(90, blk1.WeightBitCount());
 
             var kErrorBlock = new PhysicalAstcBlock(new UInt128Ex(0UL, 0UL));
-            Assert.Null(kErrorBlock.NumWeightBits());
+            Assert.Null(kErrorBlock.WeightBitCount());
 
             var void_extent = new PhysicalAstcBlock(0xFFF8003FFE000DFCUL);
-            Assert.Null(void_extent.NumWeightBits());
+            Assert.Null(void_extent.WeightBitCount());
 
             var blk2 = new PhysicalAstcBlock(0x0000000001FE000573UL);
-            Assert.Null(blk2.NumWeightBits());
+            Assert.Null(blk2.WeightBitCount());
 
             var blk3 = new PhysicalAstcBlock(0x0000000001FE0005FFUL);
-            Assert.Equal(90, blk3.NumWeightBits());
+            Assert.Equal(90, blk3.WeightBitCount());
         }
 
         [Fact]
@@ -173,7 +173,7 @@ namespace AstcSharp.Tests
             Assert.NotNull(err_blk4.IsIllegalEncoding());
 
             var dual_plane_four_parts = new PhysicalAstcBlock(0x000000000000001D1FUL);
-            Assert.Null(dual_plane_four_parts.NumPartitions());
+            Assert.Null(dual_plane_four_parts.PartitionsCount());
             var e = dual_plane_four_parts.IsIllegalEncoding();
             Assert.NotNull(e);
             Assert.Contains("Both four partitions", e);
@@ -232,22 +232,22 @@ namespace AstcSharp.Tests
         [Fact]
         public void TestNumPartitionsAndEndpointModes()
         {
-            Assert.Equal(1, new PhysicalAstcBlock(0x0000000001FE000173UL).NumPartitions());
-            Assert.Equal(1, new PhysicalAstcBlock(0x0000000001FE0005FFUL).NumPartitions());
-            Assert.Equal(1, new PhysicalAstcBlock(0x0000000001FE000108UL).NumPartitions());
+            Assert.Equal(1, new PhysicalAstcBlock(0x0000000001FE000173UL).PartitionsCount());
+            Assert.Equal(1, new PhysicalAstcBlock(0x0000000001FE0005FFUL).PartitionsCount());
+            Assert.Equal(1, new PhysicalAstcBlock(0x0000000001FE000108UL).PartitionsCount());
 
-            Assert.Null(new PhysicalAstcBlock(0x000000000000000973UL).NumPartitions());
-            Assert.Null(new PhysicalAstcBlock(0x000000000000001173UL).NumPartitions());
-            Assert.Null(new PhysicalAstcBlock(0x000000000000001973UL).NumPartitions());
+            Assert.Null(new PhysicalAstcBlock(0x000000000000000973UL).PartitionsCount());
+            Assert.Null(new PhysicalAstcBlock(0x000000000000001173UL).PartitionsCount());
+            Assert.Null(new PhysicalAstcBlock(0x000000000000001973UL).PartitionsCount());
 
             var non_shared_cem = new PhysicalAstcBlock(0x4000000000800D44UL);
-            Assert.Equal(2, non_shared_cem.NumPartitions());
+            Assert.Equal(2, non_shared_cem.PartitionsCount());
 
             var blk1 = new PhysicalAstcBlock(0x000000000000001961UL);
             for (int i = 0; i < 4; ++i)
             {
                 var mode = blk1.GetEndpointMode(i);
-                Assert.Equal(ColorEndpointMode.kLDRLumaDirect, mode);
+                Assert.Equal(ColorEndpointMode.kLdrLumaDirect, mode);
             }
 
             Assert.Null(new PhysicalAstcBlock(0xFFF8003FFE000DFCUL).GetEndpointMode(0));
@@ -256,28 +256,28 @@ namespace AstcSharp.Tests
             Assert.Null(new PhysicalAstcBlock(0x0000000001FE000173UL).GetEndpointMode(100));
 
             var non_shared = new PhysicalAstcBlock(0x4000000000800D44UL);
-            Assert.Equal(ColorEndpointMode.kLDRLumaDirect, non_shared.GetEndpointMode(0));
-            Assert.Equal(ColorEndpointMode.kLDRLumaBaseOffset, non_shared.GetEndpointMode(1));
+            Assert.Equal(ColorEndpointMode.kLdrLumaDirect, non_shared.GetEndpointMode(0));
+            Assert.Equal(ColorEndpointMode.kLdrLumaBaseOffset, non_shared.GetEndpointMode(1));
         }
 
         [Fact]
         public void TestPartitionIDAndColorBitsAndRanges()
         {
-            Assert.Equal(0x3FF, new PhysicalAstcBlock(0x4000000000FFED44UL).PartitionID());
-            Assert.Equal(0x155, new PhysicalAstcBlock(0x4000000000AAAD44UL).PartitionID());
+            Assert.Equal(0x3FF, new PhysicalAstcBlock(0x4000000000FFED44UL).PartitionId());
+            Assert.Equal(0x155, new PhysicalAstcBlock(0x4000000000AAAD44UL).PartitionId());
 
             var kErrorBlock = new PhysicalAstcBlock(new UInt128Ex(0UL, 0UL));
-            Assert.Null(kErrorBlock.PartitionID());
-            Assert.Null(new PhysicalAstcBlock(0xFFF8003FFE000DFCUL).PartitionID());
+            Assert.Null(kErrorBlock.PartitionId());
+            Assert.Null(new PhysicalAstcBlock(0xFFF8003FFE000DFCUL).PartitionId());
 
-            Assert.Equal(2, new PhysicalAstcBlock(0x0000000001FE000173UL).NumColorValues());
-            Assert.Equal(16, new PhysicalAstcBlock(0x0000000001FE000173UL).NumColorBits());
+            Assert.Equal(2, new PhysicalAstcBlock(0x0000000001FE000173UL).ColorValuesCount());
+            Assert.Equal(16, new PhysicalAstcBlock(0x0000000001FE000173UL).ColorBitCount());
 
-            Assert.Null(kErrorBlock.NumColorValues());
-            Assert.Null(kErrorBlock.NumColorBits());
+            Assert.Null(kErrorBlock.ColorValuesCount());
+            Assert.Null(kErrorBlock.ColorBitCount());
 
-            Assert.Equal(4, new PhysicalAstcBlock(0xFFF8003FFE000DFCUL).NumColorValues());
-            Assert.Equal(64, new PhysicalAstcBlock(0xFFF8003FFE000DFCUL).NumColorBits());
+            Assert.Equal(4, new PhysicalAstcBlock(0xFFF8003FFE000DFCUL).ColorValuesCount());
+            Assert.Equal(64, new PhysicalAstcBlock(0xFFF8003FFE000DFCUL).ColorBitCount());
 
             Assert.Equal(255, new PhysicalAstcBlock(0x0000000001FE000173UL).ColorValuesRange());
             Assert.Null(kErrorBlock.ColorValuesRange());

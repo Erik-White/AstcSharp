@@ -101,59 +101,63 @@ namespace AstcSharp
 
         private class QuantizedEndpointPair
         {
-            private readonly RgbaColor orig_low_;
-            private readonly RgbaColor orig_high_;
-            private readonly int[] quant_low_;
-            private readonly int[] quant_high_;
-            private readonly int[] unquant_low_;
-            private readonly int[] unquant_high_;
+            private readonly RgbaColor _originalLow;
+            private readonly RgbaColor _originalHigh;
+            private readonly int[] _quantizedLow;
+            private readonly int[] _quantizedHigh;
+            private readonly int[] _unquantizedLow;
+            private readonly int[] _unquantizedHigh;
 
             public QuantizedEndpointPair(RgbaColor low, RgbaColor high, int maxValue)
             {
-                orig_low_ = low;
-                orig_high_ = high;
-                quant_low_ = QuantizeColorArray(low, maxValue);
-                quant_high_ = QuantizeColorArray(high, maxValue);
-                unquant_low_ = UnquantizeArray(quant_low_, maxValue);
-                unquant_high_ = UnquantizeArray(quant_high_, maxValue);
+                _originalLow = low;
+                _originalHigh = high;
+                _quantizedLow = QuantizeColorArray(low, maxValue);
+                _quantizedHigh = QuantizeColorArray(high, maxValue);
+                _unquantizedLow = UnquantizeArray(_quantizedLow, maxValue);
+                _unquantizedHigh = UnquantizeArray(_quantizedHigh, maxValue);
             }
 
-            public int[] QuantizedLow() => quant_low_;
-            public int[] QuantizedHigh() => quant_high_;
-            public int[] UnquantizedLow() => unquant_low_;
-            public int[] UnquantizedHigh() => unquant_high_;
-            public RgbaColor OriginalLow() => orig_low_;
-            public RgbaColor OriginalHigh() => orig_high_;
+            public int[] QuantizedLow() => _quantizedLow;
+            public int[] QuantizedHigh() => _quantizedHigh;
+            public int[] UnquantizedLow() => _unquantizedLow;
+            public int[] UnquantizedHigh() => _unquantizedHigh;
+            public RgbaColor OriginalLow() => _originalLow;
+            public RgbaColor OriginalHigh() => _originalHigh;
         }
 
         private class CEEncodingOption
         {
-            private readonly int squared_error_;
-            private readonly QuantizedEndpointPair quantized_endpoints_;
-            private readonly bool swap_endpoints_;
-            private readonly bool blue_contract_;
-            private readonly bool use_offset_mode_;
+            private readonly int _squaredError;
+            private readonly QuantizedEndpointPair _quantizedEndpoints;
+            private readonly bool _swapEndpoints;
+            private readonly bool _blueContract;
+            private readonly bool _useOffsetMode;
 
-            public CEEncodingOption(int squared_error, QuantizedEndpointPair quantized_endpoints,
-                bool swap_endpoints, bool blue_contract, bool use_offset_mode)
+            public CEEncodingOption(
+                int squared_error,
+                QuantizedEndpointPair quantized_endpoints,
+                bool swapEndpoints,
+                bool blueContract,
+                bool useOffsetMode)
             {
-                squared_error_ = squared_error;
-                quantized_endpoints_ = quantized_endpoints;
-                swap_endpoints_ = swap_endpoints;
-                blue_contract_ = blue_contract;
-                use_offset_mode_ = use_offset_mode;
+                _squaredError = squared_error;
+                _quantizedEndpoints = quantized_endpoints;
+                _swapEndpoints = swapEndpoints;
+                _blueContract = blueContract;
+                _useOffsetMode = useOffsetMode;
             }
 
-            public bool Pack(bool with_alpha, out ColorEndpointMode astc_mode, List<int> vals, ref bool needs_weight_swap)
+            public bool Pack(bool hasAlpha, out ColorEndpointMode endpointMode, List<int> values, ref bool needsWeightSwap)
             {
-                astc_mode = ColorEndpointMode.kLDRLumaDirect;
-                var unquantized_low = quantized_endpoints_.UnquantizedLow();
-                var unquantized_high = quantized_endpoints_.UnquantizedHigh();
+                endpointMode = ColorEndpointMode.kLdrLumaDirect;
+                var unquantizedLow = _quantizedEndpoints.UnquantizedLow();
+                var unquantizedHigh = _quantizedEndpoints.UnquantizedHigh();
 
-                var u_low = (int[])unquantized_low.Clone();
-                var u_high = (int[])unquantized_high.Clone();
+                var u_low = (int[])unquantizedLow.Clone();
+                var u_high = (int[])unquantizedHigh.Clone();
 
-                if (use_offset_mode_)
+                if (_useOffsetMode)
                 {
                     for (int i = 0; i < 4; ++i)
                     {
@@ -171,9 +175,9 @@ namespace AstcSharp
                 }
 
                 bool swap_vals = false;
-                if (use_offset_mode_)
+                if (_useOffsetMode)
                 {
-                    if (blue_contract_)
+                    if (_blueContract)
                     {
                         swap_vals = s1 >= 0;
                     }
@@ -186,11 +190,11 @@ namespace AstcSharp
                 }
                 else
                 {
-                    if (blue_contract_)
+                    if (_blueContract)
                     {
                         if (s1 == s0) return false;
                         swap_vals = s1 > s0;
-                        needs_weight_swap = !needs_weight_swap;
+                        needsWeightSwap = !needsWeightSwap;
                     }
                     else
                     {
@@ -198,79 +202,79 @@ namespace AstcSharp
                     }
                 }
 
-                var quant_low = quantized_endpoints_.QuantizedLow();
-                var quant_high = quantized_endpoints_.QuantizedHigh();
+                var quant_low = _quantizedEndpoints.QuantizedLow();
+                var quant_high = _quantizedEndpoints.QuantizedHigh();
 
-                var qlow = (int[])quant_low.Clone();
-                var qhigh = (int[])quant_high.Clone();
+                var qLow = (int[])quant_low.Clone();
+                var qHigh = (int[])quant_high.Clone();
 
                 if (swap_vals)
                 {
-                    if (use_offset_mode_) throw new InvalidOperationException();
-                    var tmp = qlow; qlow = qhigh; qhigh = tmp;
-                    needs_weight_swap = !needs_weight_swap;
+                    if (_useOffsetMode) throw new InvalidOperationException();
+                    var tmp = qLow; qLow = qHigh; qHigh = tmp;
+                    needsWeightSwap = !needsWeightSwap;
                 }
 
-                vals[0] = qlow[0];
-                vals[1] = qhigh[0];
-                vals[2] = qlow[1];
-                vals[3] = qhigh[1];
-                vals[4] = qlow[2];
-                vals[5] = qhigh[2];
+                values[0] = qLow[0];
+                values[1] = qHigh[0];
+                values[2] = qLow[1];
+                values[3] = qHigh[1];
+                values[4] = qLow[2];
+                values[5] = qHigh[2];
 
-                if (use_offset_mode_)
+                if (_useOffsetMode)
                 {
-                    astc_mode = ColorEndpointMode.kLDRRGBBaseOffset;
+                    endpointMode = ColorEndpointMode.kLdrRgbBaseOffset;
                 }
                 else
                 {
-                    astc_mode = ColorEndpointMode.kLDRRGBDirect;
+                    endpointMode = ColorEndpointMode.kLdrRgbDirect;
                 }
 
-                if (with_alpha)
+                if (hasAlpha)
                 {
-                    vals[6] = qlow[3];
-                    vals[7] = qhigh[3];
-                    if (use_offset_mode_) astc_mode = ColorEndpointMode.kLDRRGBABaseOffset;
-                    else astc_mode = ColorEndpointMode.kLDRRGBADirect;
+                    values[6] = qLow[3];
+                    values[7] = qHigh[3];
+                    if (_useOffsetMode) endpointMode = ColorEndpointMode.kLdrRgbaBaseOffset;
+                    else endpointMode = ColorEndpointMode.kLdrRgbaDirect;
                 }
 
-                if (swap_endpoints_)
+                if (_swapEndpoints)
                 {
-                    needs_weight_swap = !needs_weight_swap;
+                    needsWeightSwap = !needsWeightSwap;
                 }
 
                 return true;
             }
 
-            public bool BlueContract() => blue_contract_;
-            public int Error() => squared_error_;
+            public bool BlueContract() => _blueContract;
+            public int Error() => _squaredError;
         }
 
-        public static bool UsesBlueContract(int maxValue, ColorEndpointMode mode, List<int> vals)
+        public static bool UsesBlueContract(int maxValue, ColorEndpointMode mode, List<int> values)
         {
             int numVals = Types.NumColorValuesForEndpointMode(mode);
-            if (vals.Count < numVals) throw new ArgumentException("vals size");
+            if (values.Count < numVals) throw new ArgumentException("vals size");
 
             switch (mode)
             {
-                case ColorEndpointMode.kLDRRGBDirect:
-                case ColorEndpointMode.kLDRRGBADirect:
+                case ColorEndpointMode.kLdrRgbDirect:
+                case ColorEndpointMode.kLdrRgbaDirect:
                     {
-                        int kNumVals = Math.Max(Types.NumColorValuesForEndpointMode(ColorEndpointMode.kLDRRGBDirect), Types.NumColorValuesForEndpointMode(ColorEndpointMode.kLDRRGBADirect));
+                        int kNumVals = Math.Max(Types.NumColorValuesForEndpointMode(ColorEndpointMode.kLdrRgbDirect), Types.NumColorValuesForEndpointMode(ColorEndpointMode.kLdrRgbaDirect));
                         var v = new int[kNumVals];
-                        for (int i = 0; i < kNumVals; ++i) v[i] = i < vals.Count ? vals[i] : 0;
+                        for (int i = 0; i < kNumVals; ++i) v[i] = i < values.Count ? values[i] : 0;
                         var uv = UnquantizeArray(v, maxValue);
                         int s0 = uv[0] + uv[2] + uv[4];
                         int s1 = uv[1] + uv[3] + uv[5];
                         return s0 > s1;
                     }
-                case ColorEndpointMode.kLDRRGBBaseOffset:
-                case ColorEndpointMode.kLDRRGBABaseOffset:
+                case ColorEndpointMode.kLdrRgbBaseOffset:
+                case ColorEndpointMode.kLdrRgbaBaseOffset:
                     {
-                        int kNumVals = Math.Max(Types.NumColorValuesForEndpointMode(ColorEndpointMode.kLDRRGBBaseOffset), Types.NumColorValuesForEndpointMode(ColorEndpointMode.kLDRRGBABaseOffset));
+                        int kNumVals = Math.Max(Types.NumColorValuesForEndpointMode(ColorEndpointMode.kLdrRgbBaseOffset), Types.NumColorValuesForEndpointMode(ColorEndpointMode.kLdrRgbaBaseOffset));
                         var v = new int[kNumVals];
-                        for (int i = 0; i < kNumVals; ++i) v[i] = i < vals.Count ? vals[i] : 0;
+                        for (int i = 0; i < kNumVals; ++i) v[i] = i < values.Count ? values[i] : 0;
                         var uv = UnquantizeArray(v, maxValue);
                         int a0 = uv[0], b0 = uv[1]; BitTransferSigned(ref b0, ref a0);
                         int a1 = uv[2], b1 = uv[3]; BitTransferSigned(ref b1, ref a1);
@@ -285,7 +289,7 @@ namespace AstcSharp
         public static bool EncodeColorsForMode(RgbaColor endpoint_low_rgba, RgbaColor endpoint_high_rgba, int maxValue, EndpointEncodingMode encoding_mode, out ColorEndpointMode astc_mode, List<int> vals)
         {
             bool needs_weight_swap = false;
-            astc_mode = ColorEndpointMode.kLDRLumaDirect;
+            astc_mode = ColorEndpointMode.kLdrLumaDirect;
             int numVals = NumValuesForEncodingMode(encoding_mode);
             for (int i = vals.Count; i < numVals; ++i) vals.Add(0);
 
@@ -301,7 +305,7 @@ namespace AstcSharp
                         vals[1] = Quantization.QuantizeCEValueToRange(avg2, maxValue);
                         vals[2] = Quantization.QuantizeCEValueToRange(endpoint_low_rgba[3], maxValue);
                         vals[3] = Quantization.QuantizeCEValueToRange(endpoint_high_rgba[3], maxValue);
-                        astc_mode = ColorEndpointMode.kLDRLumaAlphaDirect;
+                        astc_mode = ColorEndpointMode.kLdrLumaAlphaDirect;
                     }
                     break;
                 case EndpointEncodingMode.kBaseScaleRGB:
@@ -346,13 +350,13 @@ namespace AstcSharp
                         {
                             vals[3] = maxValue;
                         }
-                        astc_mode = ColorEndpointMode.kLDRRGBBaseScale;
+                        astc_mode = ColorEndpointMode.kLdrRgbBaseScale;
 
                         if (encoding_mode == EndpointEncodingMode.kBaseScaleRGBA)
                         {
                             vals[4] = Quantization.QuantizeCEValueToRange(scaled[3], maxValue);
                             vals[5] = Quantization.QuantizeCEValueToRange(basec[3], maxValue);
-                            astc_mode = ColorEndpointMode.kLDRRGBBaseScaleTwoA;
+                            astc_mode = ColorEndpointMode.kLdrRgbBaseScaleTwoA;
                         }
                     }
                     break;
@@ -368,7 +372,7 @@ namespace AstcSharp
 
         private static bool EncodeColorsLuma(RgbaColor endpoint_low, RgbaColor endpoint_high, int maxValue, out ColorEndpointMode astc_mode, List<int> vals)
         {
-            astc_mode = ColorEndpointMode.kLDRLumaDirect;
+            astc_mode = ColorEndpointMode.kLdrLumaDirect;
             if (vals.Count < 2) throw new ArgumentException();
             int avg1 = AverageRGB(endpoint_low);
             int avg2 = AverageRGB(endpoint_high);
@@ -385,11 +389,11 @@ namespace AstcSharp
 
             vals[0] = quant_off_low;
             vals[1] = quant_off_high;
-            DecodeColorsForMode(vals, maxValue, ColorEndpointMode.kLDRLumaBaseOffset, out var dec_low_off, out var dec_high_off);
+            DecodeColorsForMode(vals, maxValue, ColorEndpointMode.kLdrLumaBaseOffset, out var dec_low_off, out var dec_high_off);
 
             vals[0] = quant_low;
             vals[1] = quant_high;
-            DecodeColorsForMode(vals, maxValue, ColorEndpointMode.kLDRLumaDirect, out var dec_low_dir, out var dec_high_dir);
+            DecodeColorsForMode(vals, maxValue, ColorEndpointMode.kLdrLumaDirect, out var dec_low_dir, out var dec_high_dir);
 
             int calculate_error_off = 0;
             int calculate_error_dir = 0;
@@ -408,13 +412,13 @@ namespace AstcSharp
             {
                 vals[0] = quant_low;
                 vals[1] = quant_high;
-                astc_mode = ColorEndpointMode.kLDRLumaDirect;
+                astc_mode = ColorEndpointMode.kLdrLumaDirect;
             }
             else
             {
                 vals[0] = quant_off_low;
                 vals[1] = quant_off_high;
-                astc_mode = ColorEndpointMode.kLDRLumaBaseOffset;
+                astc_mode = ColorEndpointMode.kLdrLumaBaseOffset;
             }
 
             return needs_weight_swap;
@@ -422,7 +426,7 @@ namespace AstcSharp
 
         private static bool EncodeColorsRGBA(RgbaColor endpoint_low_rgba, RgbaColor endpoint_high_rgba, int maxValue, bool with_alpha, out ColorEndpointMode astc_mode, List<int> vals)
         {
-            astc_mode = ColorEndpointMode.kLDRRGBDirect;
+            astc_mode = ColorEndpointMode.kLdrRgbDirect;
             int num_channels = with_alpha ? 4 : 3;
 
             var inv_bc_low = InvertBlueContract(endpoint_low_rgba);
@@ -584,7 +588,7 @@ namespace AstcSharp
             endpoint_high_rgba = new RgbaColor(0,0,0,0);
             switch (mode)
             {
-                case ColorEndpointMode.kLDRLumaDirect:
+                case ColorEndpointMode.kLdrLumaDirect:
                     {
                         int l0 = Quantization.UnquantizeCEValueFromRange(vals[0], maxValue);
                         int l1 = Quantization.UnquantizeCEValueFromRange(vals[1], maxValue);
@@ -592,7 +596,7 @@ namespace AstcSharp
                         endpoint_high_rgba = new RgbaColor(l1, l1, l1, 255);
                     }
                     break;
-                case ColorEndpointMode.kLDRLumaBaseOffset:
+                case ColorEndpointMode.kLdrLumaBaseOffset:
                     {
                         int v0 = Quantization.UnquantizeCEValueFromRange(vals[0], maxValue);
                         int v1 = Quantization.UnquantizeCEValueFromRange(vals[1], maxValue);
@@ -602,7 +606,7 @@ namespace AstcSharp
                         endpoint_high_rgba = new RgbaColor(l1, l1, l1, 255);
                     }
                     break;
-                case ColorEndpointMode.kLDRLumaAlphaDirect:
+                case ColorEndpointMode.kLdrLumaAlphaDirect:
                     {
                         var v = new int[4];
                         for (int i = 0; i < 4; ++i) v[i] = i < vals.Count ? vals[i] : 0;
@@ -611,7 +615,7 @@ namespace AstcSharp
                         endpoint_high_rgba = new RgbaColor(uv[1], uv[1], uv[1], uv[3]);
                     }
                     break;
-                case ColorEndpointMode.kLDRLumaAlphaBaseOffset:
+                case ColorEndpointMode.kLdrLumaAlphaBaseOffset:
                     {
                         var v = new int[4]; for (int i=0;i<4;i++) v[i] = i<vals.Count?vals[i]:0;
                         var uv = UnquantizeArray(v, maxValue);
@@ -628,9 +632,9 @@ namespace AstcSharp
                         endpoint_high_rgba[2] = Clamp(endpoint_high_rgba[2], 0, 255);
                     }
                     break;
-                case ColorEndpointMode.kLDRRGBBaseScale:
+                case ColorEndpointMode.kLdrRgbBaseScale:
                     {
-                        int kNumVals = Types.NumColorValuesForEndpointMode(ColorEndpointMode.kLDRRGBBaseScale);
+                        int kNumVals = Types.NumColorValuesForEndpointMode(ColorEndpointMode.kLdrRgbBaseScale);
                         var v = new int[kNumVals]; for (int i=0;i<kNumVals;++i) v[i] = i<vals.Count?vals[i]:0;
                         var uv = UnquantizeArray(v, maxValue);
                         endpoint_high_rgba = new RgbaColor(uv[0], uv[1], uv[2], 255);
@@ -638,9 +642,9 @@ namespace AstcSharp
                         endpoint_low_rgba[3] = 255;
                     }
                     break;
-                case ColorEndpointMode.kLDRRGBDirect:
+                case ColorEndpointMode.kLdrRgbDirect:
                     {
-                        int kNumVals = Types.NumColorValuesForEndpointMode(ColorEndpointMode.kLDRRGBDirect);
+                        int kNumVals = Types.NumColorValuesForEndpointMode(ColorEndpointMode.kLdrRgbDirect);
                         var v = new int[kNumVals]; for (int i=0;i<kNumVals;++i) v[i] = i<vals.Count?vals[i]:0;
                         var uv = UnquantizeArray(v, maxValue);
                         int s0 = uv[0] + uv[2] + uv[4];
@@ -657,9 +661,9 @@ namespace AstcSharp
                         }
                     }
                     break;
-                case ColorEndpointMode.kLDRRGBBaseOffset:
+                case ColorEndpointMode.kLdrRgbBaseOffset:
                     {
-                        int kNumVals = Types.NumColorValuesForEndpointMode(ColorEndpointMode.kLDRRGBBaseOffset);
+                        int kNumVals = Types.NumColorValuesForEndpointMode(ColorEndpointMode.kLdrRgbBaseOffset);
                         var v = new int[kNumVals]; for (int i=0;i<kNumVals;++i) v[i] = i<vals.Count?vals[i]:0;
                         var uv = UnquantizeArray(v, maxValue);
                         int a0 = uv[0], b0 = uv[1]; BitTransferSigned(ref b0, ref a0);
@@ -677,9 +681,9 @@ namespace AstcSharp
                         for (int i=0;i<3;++i) { endpoint_low_rgba[i] = Clamp(endpoint_low_rgba[i], 0, 255); endpoint_high_rgba[i] = Clamp(endpoint_high_rgba[i], 0, 255); }
                     }
                     break;
-                case ColorEndpointMode.kLDRRGBBaseScaleTwoA:
+                case ColorEndpointMode.kLdrRgbBaseScaleTwoA:
                     {
-                        int kNumVals = Types.NumColorValuesForEndpointMode(ColorEndpointMode.kLDRRGBBaseScaleTwoA);
+                        int kNumVals = Types.NumColorValuesForEndpointMode(ColorEndpointMode.kLdrRgbBaseScaleTwoA);
                         var v = new int[kNumVals]; for (int i=0;i<kNumVals;++i) v[i] = i<vals.Count?vals[i]:0;
                         var uv = UnquantizeArray(v, maxValue);
                         endpoint_low_rgba = new RgbaColor(uv[0], uv[1], uv[2], 255);
@@ -689,9 +693,9 @@ namespace AstcSharp
                         endpoint_high_rgba[3] = uv[5];
                     }
                     break;
-                case ColorEndpointMode.kLDRRGBADirect:
+                case ColorEndpointMode.kLdrRgbaDirect:
                     {
-                        int kNumVals = Types.NumColorValuesForEndpointMode(ColorEndpointMode.kLDRRGBADirect);
+                        int kNumVals = Types.NumColorValuesForEndpointMode(ColorEndpointMode.kLdrRgbaDirect);
                         var v = new int[kNumVals]; for (int i=0;i<kNumVals;++i) v[i] = i<vals.Count?vals[i]:0;
                         var uv = UnquantizeArray(v, maxValue);
                         int s0 = uv[0] + uv[2] + uv[4];
@@ -708,9 +712,9 @@ namespace AstcSharp
                         }
                     }
                     break;
-                case ColorEndpointMode.kLDRRGBABaseOffset:
+                case ColorEndpointMode.kLdrRgbaBaseOffset:
                     {
-                        int kNumVals = Types.NumColorValuesForEndpointMode(ColorEndpointMode.kLDRRGBABaseOffset);
+                        int kNumVals = Types.NumColorValuesForEndpointMode(ColorEndpointMode.kLdrRgbaBaseOffset);
                         var v = new int[kNumVals]; for (int i=0;i<kNumVals;++i) v[i] = i<vals.Count?vals[i]:0;
                         var uv = UnquantizeArray(v, maxValue);
                         int a0 = uv[0], b0 = uv[1]; BitTransferSigned(ref b0, ref a0);

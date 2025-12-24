@@ -16,14 +16,16 @@ namespace AstcSharp
             public int Zsize;
         }
 
-        private Header header_;
-        private byte[] blocks_;
+        private Header _header;
+        private byte[] _blocks;
 
-        private AstcFile(Header h, byte[] blocks)
+        private AstcFile(Header header, byte[] blocks)
         {
-            header_ = h;
-            blocks_ = blocks;
+            _header = header;
+            _blocks = blocks;
         }
+
+        public ReadOnlySpan<byte> Blocks => _blocks;
 
         public static AstcFile? LoadFromMemory(byte[] data, out string? error)
         {
@@ -50,24 +52,24 @@ namespace AstcSharp
             int ysize = data[10] | (data[11] << 8) | (data[12] << 16);
             int zsize = data[13] | (data[14] << 8) | (data[15] << 16);
 
-            var hdr = new Header { Magic = (int)magic, BlockDimX = blockdimx, BlockDimY = blockdimy, BlockDimZ = blockdimz, Xsize = xsize, Ysize = ysize, Zsize = zsize };
+            var header = new Header { Magic = (int)magic, BlockDimX = blockdimx, BlockDimY = blockdimy, BlockDimZ = blockdimz, Xsize = xsize, Ysize = ysize, Zsize = zsize };
 
             // Remaining bytes are blocks; C++ reference keeps them as string; here we keep as byte[]
             var blocks_len = data.Length - 16;
             var blocks = new byte[blocks_len];
             Array.Copy(data, 16, blocks, 0, blocks_len);
 
-            return new AstcFile(hdr, blocks);
+            return new AstcFile(header, blocks);
         }
 
-        public int GetWidth() => header_.Xsize;
-        public int GetHeight() => header_.Ysize;
-        public int GetDepth() => header_.Zsize;
+        public int GetWidth() => _header.Xsize;
+        public int GetHeight() => _header.Ysize;
+        public int GetDepth() => _header.Zsize;
 
         public Footprint? GetFootprint()
         {
             // Map block dims to FootprintType
-            switch ((header_.BlockDimX, header_.BlockDimY))
+            switch ((_header.BlockDimX, _header.BlockDimY))
             {
                 case (4,4): return Footprint.FromFootprintType(FootprintType.k4x4).Value;
                 case (5,4): return Footprint.FromFootprintType(FootprintType.k5x4).Value;
@@ -87,7 +89,6 @@ namespace AstcSharp
             }
         }
 
-        public ReadOnlySpan<byte> Blocks => blocks_;
     }
 }
 

@@ -34,6 +34,7 @@ namespace AstcSharp
         {
             endpoints_ = DecodeEndpoints(block);
             partition_ = ComputePartition(footprint, block);
+            weights_ = new List<int>(new int[footprint.NumPixels()]);
             CalculateWeights(footprint, block);
         }
 
@@ -41,6 +42,7 @@ namespace AstcSharp
         {
             endpoints_ = DecodeEndpoints(block);
             partition_ = ComputePartition(footprint, block);
+            weights_ = new List<int>(new int[footprint.NumPixels()]);
             CalculateWeights(footprint, block);
         }
 
@@ -73,9 +75,9 @@ namespace AstcSharp
 
         private static Partition ComputePartition(Footprint footprint, IntermediateAstcBlock.IntermediateBlockData block)
         {
-            if (block.partition_id.HasValue)
+            if (block.partitionId.HasValue)
             {
-                int part_id = block.partition_id.Value;
+                int part_id = block.partitionId.Value;
                 int num_parts = block.endpoints.Count;
                 return Partition.GetASTCPartition(footprint, num_parts, part_id);
             }
@@ -87,11 +89,11 @@ namespace AstcSharp
 
         private void CalculateWeights(Footprint footprint, IntermediateAstcBlock.IntermediateBlockData block)
         {
-            int grid_x = block.weight_grid_dim_x;
-            int grid_y = block.weight_grid_dim_y;
+            int grid_x = block.weightGridX;
+            int grid_y = block.weightGridY;
             int grid_size = grid_x * grid_y;
-            int weight_frequency = block.dual_plane_channel.HasValue ? 2 : 1;
-            int weight_range = block.weight_range;
+            int weight_frequency = block.dualPlaneChannel.HasValue ? 2 : 1;
+            int weight_range = block.weightRange;
 
             var unquantized = new List<int>(grid_size);
             for (int i = 0; i < grid_size; ++i)
@@ -101,15 +103,16 @@ namespace AstcSharp
             }
             weights_ = WeightInfill.InfillWeights(unquantized, footprint, grid_x, grid_y);
 
-            if (block.dual_plane_channel.HasValue)
+            if (block.dualPlaneChannel.HasValue)
             {
-                SetDualPlaneChannel(block.dual_plane_channel.Value);
+                SetDualPlaneChannel(block.dualPlaneChannel.Value);
                 for (int i = 0; i < grid_size; ++i)
                 {
                     int w = block.weights[i * weight_frequency + 1];
                     unquantized[i] = Quantization.UnquantizeWeightFromRange(w, weight_range);
                 }
-                dual_plane_.weights = WeightInfill.InfillWeights(unquantized, footprint, grid_x, grid_y);
+                if (dual_plane_ != null)
+                    dual_plane_.weights = WeightInfill.InfillWeights(unquantized, footprint, grid_x, grid_y);
             }
         }
 
@@ -132,7 +135,7 @@ namespace AstcSharp
         {
             if (weight < 0 || weight > 64) throw new ArgumentOutOfRangeException(nameof(weight));
             if (!IsDualPlane()) throw new InvalidOperationException("Not a dual plane block");
-            if (dual_plane_.channel == channel)
+            if (dual_plane_ != null && dual_plane_.channel == channel)
                 dual_plane_.weights[y * GetFootprint().Width() + x] = weight;
             else
                 SetWeightAt(x, y, weight);
@@ -141,7 +144,7 @@ namespace AstcSharp
         public int DualPlaneWeightAt(int channel, int x, int y)
         {
             if (!IsDualPlane()) return WeightAt(x, y);
-            if (dual_plane_.channel == channel) return dual_plane_.weights[y * GetFootprint().Width() + x];
+            if (dual_plane_ != null && dual_plane_.channel == channel) return dual_plane_.weights[y * GetFootprint().Width() + x];
             return WeightAt(x, y);
         }
 

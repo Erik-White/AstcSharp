@@ -12,49 +12,49 @@ namespace AstcSharp
     {
         public const int kSizeInBytes = 16;
 
-        private readonly UInt128Ex astc_bits_;
+        private readonly UInt128Ex _astcBits;
 
         public PhysicalAstcBlock(UInt128Ex bits)
         {
-            astc_bits_ = bits;
+            _astcBits = bits;
         }
 
         public PhysicalAstcBlock(ulong low)
         {
-            astc_bits_ = new UInt128Ex(low, 0UL);
+            _astcBits = new UInt128Ex(low, 0UL);
         }
 
         public PhysicalAstcBlock(ulong low, ulong high)
         {
             // Store as UInt128Ex(lowBits, highBits) where the first ctor arg is
             // the low 64-bit word.
-            astc_bits_ = new UInt128Ex(low, high);
+            _astcBits = new UInt128Ex(low, high);
         }
 
-        public UInt128Ex GetBlockBits() => astc_bits_;
+        public UInt128Ex GetBlockBits() => _astcBits;
 
         // Public API
-        public (int, int)? WeightGridDims()
+        public (int, int)? WeightGridDimensions()
         {
-            var maybe = DecodeWeightProps(astc_bits_, out var _);
+            var maybe = DecodeWeightProps(_astcBits, out var _);
             if (maybe == null) return null;
             if (IsIllegalEncoding() != null) return null;
-            return (maybe.Value.width, maybe.Value.height);
+            return (maybe.Value.Width, maybe.Value.Height);
         }
 
         public int? WeightRange()
         {
-            var maybe = DecodeWeightProps(astc_bits_, out var _);
+            var maybe = DecodeWeightProps(_astcBits, out var _);
             if (maybe == null) return null;
             if (IsIllegalEncoding() != null) return null;
-            return maybe.Value.range;
+            return maybe.Value.Range;
         }
 
         public bool IsVoidExtent()
         {
             // If it's illegal encoding, not void extent
             if (IsIllegalEncoding() != null) return false;
-            return DecodeBlockMode(astc_bits_) == BlockMode.kVoidExtent;
+            return DecodeBlockMode(_astcBits) == BlockMode.kVoidExtent;
         }
 
         public int[]? VoidExtentCoords()
@@ -62,28 +62,28 @@ namespace AstcSharp
             if (IsIllegalEncoding() != null || !IsVoidExtent()) return null;
 
             // If void extent coords are all 1's then these are not valid void extent coords
-            ulong ve_mask = 0xFFFFFFFFFFFFFDFFUL;
-            ulong const_blk_mode = 0xFFFFFFFFFFFFFDFCUL;
-            if ((ve_mask & astc_bits_.Low) == const_blk_mode)
+            ulong veMask = 0xFFFFFFFFFFFFFDFFUL;
+            ulong constBlockMode = 0xFFFFFFFFFFFFFDFCUL;
+            if ((veMask & _astcBits.Low) == constBlockMode)
             {
                 return null;
             }
 
-            return DecodeVoidExtentCoords(astc_bits_);
+            return DecodeVoidExtentCoords(_astcBits);
         }
 
         public bool IsDualPlane()
         {
             if (IsIllegalEncoding() != null) return false;
-            return DecodeDualPlaneBit(astc_bits_);
+            return DecodeDualPlaneBit(_astcBits);
         }
 
         public int? DualPlaneChannel()
         {
             if (!IsDualPlane()) return null;
-            int dual_plane_start_pos = DecodeDualPlaneBitStartPos(astc_bits_);
-            var plane_bits = BitOps.GetBits(astc_bits_, dual_plane_start_pos, 2);
-            return (int)plane_bits.Low;
+            int dualPlaneStartPos = DecodeDualPlaneBitStartPos(_astcBits);
+            var planeBits = BitOps.GetBits(_astcBits, dualPlaneStartPos, 2);
+            return (int)planeBits.Low;
         }
 
         public string? IsIllegalEncoding()
@@ -92,119 +92,119 @@ namespace AstcSharp
             // weights specified. DecodeWeightProps will return the weight specifications
             // if they exist and are legal according to C.2.24, and will otherwise be
             // empty.
-            var block_mode = DecodeBlockMode(astc_bits_);
-            if (block_mode != BlockMode.kVoidExtent)
+            var blockMode = DecodeBlockMode(_astcBits);
+            if (blockMode != BlockMode.kVoidExtent)
             {
-                var props = DecodeWeightProps(astc_bits_, out var error);
+                var props = DecodeWeightProps(_astcBits, out var error);
                 if (props == null)
                 {
                     return error;
                 }
             }
 
-            if (block_mode == BlockMode.kVoidExtent)
+            if (blockMode == BlockMode.kVoidExtent)
             {
                 // Check reserved bits at the full 128-bit level like the C++ reference.
-                if (BitOps.GetBits(astc_bits_, 10, 2).Low != 0x3UL)
+                if (BitOps.GetBits(_astcBits, 10, 2).Low != 0x3UL)
                 {
                     return "Reserved bits set for void extent block";
                 }
 
-                var coords = DecodeVoidExtentCoords(astc_bits_);
-                bool coords_all_1s = true;
-                foreach (var coord in coords) coords_all_1s &= coord == ((1 << 13) - 1);
+                var coords = DecodeVoidExtentCoords(_astcBits);
+                bool coordsAll1s = true;
+                foreach (var coord in coords) coordsAll1s &= coord == ((1 << 13) - 1);
 
-                if (!coords_all_1s && (coords[0] >= coords[1] || coords[2] >= coords[3]))
+                if (!coordsAll1s && (coords[0] >= coords[1] || coords[2] >= coords[3]))
                 {
                     return "Void extent texture coordinates are invalid";
                 }
             }
 
-            if (block_mode != BlockMode.kVoidExtent)
+            if (blockMode != BlockMode.kVoidExtent)
             {
-                int num_color_vals = DecodeNumColorValues(astc_bits_);
-                if (num_color_vals > 18) return "Too many color values";
+                int numColorVals = DecodeNumColorValues(_astcBits);
+                if (numColorVals > 18) return "Too many color values";
 
-                int num_partitions = DecodeNumPartitions(astc_bits_);
-                int dual_plane_start_pos = DecodeDualPlaneBitStartPos(astc_bits_);
-                int color_start_bit = (num_partitions == 1) ? 17 : 29;
+                int numPartitions = DecodeNumPartitions(_astcBits);
+                int dualPlaneStartPos = DecodeDualPlaneBitStartPos(_astcBits);
+                int colorStartBit = (numPartitions == 1) ? 17 : 29;
 
-                int required_color_bits = ((13 * num_color_vals) + 4) / 5;
-                int available_color_bits = dual_plane_start_pos - color_start_bit;
-                if (available_color_bits < required_color_bits) return "Not enough color bits";
+                int requiredColorBits = ((13 * numColorVals) + 4) / 5;
+                int availableColorBits = dualPlaneStartPos - colorStartBit;
+                if (availableColorBits < requiredColorBits) return "Not enough color bits";
 
-                if (num_partitions == 4 && DecodeDualPlaneBit(astc_bits_)) return "Both four partitions and dual plane specified";
+                if (numPartitions == 4 && DecodeDualPlaneBit(_astcBits)) return "Both four partitions and dual plane specified";
             }
 
             return null;
         }
 
-        public int? NumWeightBits()
+        public int? WeightBitCount()
         {
             if (IsIllegalEncoding() != null) return null;
             if (IsVoidExtent()) return null;
-            return DecodeNumWeightBits(astc_bits_);
+            return DecodeNumWeightBits(_astcBits);
         }
 
         public int? WeightStartBit()
         {
             if (IsIllegalEncoding() != null) return null;
             if (IsVoidExtent()) return null;
-            return 128 - DecodeNumWeightBits(astc_bits_);
+            return 128 - DecodeNumWeightBits(_astcBits);
         }
 
-        public int? NumPartitions()
+        public int? PartitionsCount()
         {
             if (IsIllegalEncoding() != null) return null;
-            if (DecodeBlockMode(astc_bits_) == BlockMode.kVoidExtent) return null;
-            return DecodeNumPartitions(astc_bits_);
+            if (DecodeBlockMode(_astcBits) == BlockMode.kVoidExtent) return null;
+            return DecodeNumPartitions(_astcBits);
         }
 
-        public int? PartitionID()
+        public int? PartitionId()
         {
-            var num_partitions = NumPartitions();
-            if (!num_partitions.HasValue || num_partitions.Value == 1) return null;
-            ulong low_bits = astc_bits_.Low;
-            return (int)BitOps.GetBits(low_bits, 13, 10);
+            var numPartitions = PartitionsCount();
+            if (!numPartitions.HasValue || numPartitions.Value == 1) return null;
+            ulong lowBits = _astcBits.Low;
+            return (int)BitOps.GetBits(lowBits, 13, 10);
         }
 
         public ColorEndpointMode? GetEndpointMode(int partition)
         {
             if (IsIllegalEncoding() != null) return null;
-            if (DecodeBlockMode(astc_bits_) == BlockMode.kVoidExtent) return null;
-            if (partition < 0 || DecodeNumPartitions(astc_bits_) <= partition) return null;
-            return DecodeEndpointMode(astc_bits_, partition);
+            if (DecodeBlockMode(_astcBits) == BlockMode.kVoidExtent) return null;
+            if (partition < 0 || DecodeNumPartitions(_astcBits) <= partition) return null;
+            return DecodeEndpointMode(_astcBits, partition);
         }
 
         public int? ColorStartBit()
         {
             if (IsVoidExtent()) return 64;
-            var num_partitions = NumPartitions();
-            if (!num_partitions.HasValue) return null;
-            return (num_partitions.Value == 1) ? 17 : 29;
+            var numPartitions = PartitionsCount();
+            if (!numPartitions.HasValue) return null;
+            return (numPartitions.Value == 1) ? 17 : 29;
         }
 
-        public int? NumColorValues()
+        public int? ColorValuesCount()
         {
             if (IsVoidExtent()) return 4;
             if (IsIllegalEncoding() != null) return null;
-            return DecodeNumColorValues(astc_bits_);
+            return DecodeNumColorValues(_astcBits);
         }
 
-        public int? NumColorBits()
+        public int? ColorBitCount()
         {
             if (IsIllegalEncoding() != null) return null;
             if (IsVoidExtent()) return 64;
-            GetColorValuesInfo(out int color_bits, out _);
-            return color_bits;
+            GetColorValuesInfo(out int colorBits, out _);
+            return colorBits;
         }
 
         public int? ColorValuesRange()
         {
             if (IsIllegalEncoding() != null) return null;
             if (IsVoidExtent()) return (1 << 16) - 1;
-            GetColorValuesInfo(out _, out int color_range);
-            return color_range;
+            GetColorValuesInfo(out _, out int colorRange);
+            return colorRange;
         }
 
         // Internal helpers - follow the logic from the reference implementation.
@@ -223,7 +223,7 @@ namespace AstcSharp
             kVoidExtent,
         }
 
-        private struct WeightGridProperties { public int width; public int height; public int range; }
+        public struct WeightGridProperties { public int Width; public int Height; public int Range; }
 
         private static BlockMode? DecodeBlockMode(UInt128Ex astc_bits)
         {
@@ -291,58 +291,58 @@ namespace AstcSharp
                     {
                         int a = (int)BitOps.GetBits(low32, 5, 2);
                         int b = (int)BitOps.GetBits(low32, 7, 2);
-                        props.width = b + 4; props.height = a + 2;
+                        props.Width = b + 4; props.Height = a + 2;
                     }
                     break;
                 case BlockMode.kB8_A2:
                     {
                         int a = (int)BitOps.GetBits(low32, 5, 2);
                         int b = (int)BitOps.GetBits(low32, 7, 2);
-                        props.width = b + 8; props.height = a + 2;
+                        props.Width = b + 8; props.Height = a + 2;
                     }
                     break;
                 case BlockMode.kA2_B8:
                     {
                         int a = (int)BitOps.GetBits(low32, 5, 2);
                         int b = (int)BitOps.GetBits(low32, 7, 2);
-                        props.width = a + 2; props.height = b + 8;
+                        props.Width = a + 2; props.Height = b + 8;
                     }
                     break;
                 case BlockMode.kA2_B6:
                     {
                         int a = (int)BitOps.GetBits(low32, 5, 2);
                         int b = (int)BitOps.GetBits(low32, 7, 1);
-                        props.width = a + 2; props.height = b + 6;
+                        props.Width = a + 2; props.Height = b + 6;
                     }
                     break;
                 case BlockMode.kB2_A2:
                     {
                         int a = (int)BitOps.GetBits(low32, 5, 2);
                         int b = (int)BitOps.GetBits(low32, 7, 1);
-                        props.width = b + 2; props.height = a + 2;
+                        props.Width = b + 2; props.Height = a + 2;
                     }
                     break;
                 case BlockMode.k12_A2:
                     {
                         int a = (int)BitOps.GetBits(low32, 5, 2);
-                        props.width = 12; props.height = a + 2;
+                        props.Width = 12; props.Height = a + 2;
                     }
                     break;
                 case BlockMode.kA2_12:
                     {
                         int a = (int)BitOps.GetBits(low32, 5, 2);
-                        props.width = a + 2; props.height = 12;
+                        props.Width = a + 2; props.Height = 12;
                     }
                     break;
                 case BlockMode.k6_10:
-                    props.width = 6; props.height = 10; break;
+                    props.Width = 6; props.Height = 10; break;
                 case BlockMode.k10_6:
-                    props.width = 10; props.height = 6; break;
+                    props.Width = 10; props.Height = 6; break;
                 case BlockMode.kA6_B6:
                     {
                         int a = (int)BitOps.GetBits(low32, 5, 2);
                         int b = (int)BitOps.GetBits(low32, 9, 2);
-                        props.width = a + 6; props.height = b + 6;
+                        props.Width = a + 6; props.Height = b + 6;
                     }
                     break;
                 case BlockMode.kVoidExtent:
@@ -421,19 +421,19 @@ namespace AstcSharp
                 }
             }
             if (idx < 0 || idx >= kWeightRanges.Length) { error = "Reserved range for weight bits"; return null; }
-            props.range = kWeightRanges[idx];
-            if (props.range < 0) { error = "Reserved range for weight bits"; return null; }
+            props.Range = kWeightRanges[idx];
+            if (props.Range < 0) { error = "Reserved range for weight bits"; return null; }
 
-            int num_weights = props.width * props.height;
-            if (DecodeDualPlaneBit(astc_bits)) num_weights *= 2;
+            int numWeights = props.Width * props.Height;
+            if (DecodeDualPlaneBit(astc_bits)) numWeights *= 2;
             const int kMaxNumWeights = 64;
-            if (kMaxNumWeights < num_weights) { error = "Too many weights specified"; return null; }
+            if (kMaxNumWeights < numWeights) { error = "Too many weights specified"; return null; }
 
-            int bit_count = IntegerSequenceCodec.GetBitCountForRange(num_weights, props.range);
+            int bitCount = IntegerSequenceCodec.GetBitCountForRange(numWeights, props.Range);
             const int kWeightGridMinBitLength = 24;
             const int kWeightGridMaxBitLength = 96;
-            if (bit_count < kWeightGridMinBitLength) { error = "Too few bits required for weight grid"; return null; }
-            if (kWeightGridMaxBitLength < bit_count) { error = "Too many bits required for weight grid"; return null; }
+            if (bitCount < kWeightGridMinBitLength) { error = "Too few bits required for weight grid"; return null; }
+            if (kWeightGridMaxBitLength < bitCount) { error = "Too many bits required for weight grid"; return null; }
 
             return props;
         }
@@ -473,9 +473,9 @@ namespace AstcSharp
             var maybe = DecodeWeightProps(astc_bits, out var _);
             if (maybe == null) return 0;
             var props = maybe.Value;
-            int num_weights = props.width * props.height;
-            if (DecodeDualPlaneBit(astc_bits)) num_weights *= 2;
-            return IntegerSequenceCodec.GetBitCountForRange(num_weights, props.range);
+            int numWeights = props.Width * props.Height;
+            if (DecodeDualPlaneBit(astc_bits)) numWeights *= 2;
+            return IntegerSequenceCodec.GetBitCountForRange(numWeights, props.Range);
         }
 
         private static int DecodeNumExtraCEMBits(UInt128Ex astc_bits)
@@ -537,7 +537,7 @@ namespace AstcSharp
             }
             Debug.Assert(c >= 0 && m >= 0);
             int mode = base_cem + 4 * c + m;
-            Debug.Assert(mode < (int)ColorEndpointMode.kNumColorEndpointModes);
+            Debug.Assert(mode < (int)ColorEndpointMode.kColorEndpointModeCount);
             return (ColorEndpointMode)mode;
         }
 
@@ -555,15 +555,22 @@ namespace AstcSharp
 
         private void GetColorValuesInfo(out int color_bits, out int color_range)
         {
-            int dual_plane_start_pos = DecodeDualPlaneBitStartPos(astc_bits_);
-            int max_color_bits = dual_plane_start_pos - ColorStartBit().Value;
-            int num_color_values = NumColorValues().Value;
+            int dualPlaneStartPos = DecodeDualPlaneBitStartPos(_astcBits);
+            var colorStartBitOpt = ColorStartBit();
+            var numColorValuesOpt = ColorValuesCount();
+            if (!colorStartBitOpt.HasValue || !numColorValuesOpt.HasValue)
+            {
+                color_bits = 0; color_range = 0;
+                return;
+            }
+            int maxColorBits = dualPlaneStartPos - colorStartBitOpt.Value;
+            int numColorValues = numColorValuesOpt.Value;
             for (int range = 255; range > 0; --range)
             {
-                int bitcount = IntegerSequenceCodec.GetBitCountForRange(num_color_values, range);
-                if (bitcount <= max_color_bits)
+                int bitCount = IntegerSequenceCodec.GetBitCountForRange(numColorValues, range);
+                if (bitCount <= maxColorBits)
                 {
-                    color_bits = bitcount;
+                    color_bits = bitCount;
                     color_range = range;
                     return;
                 }

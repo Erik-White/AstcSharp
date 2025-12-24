@@ -30,10 +30,10 @@ namespace AstcSharp.Tests
         public void TestEndpointRangeErrorOnNotSettingWeights()
         {
             var data = new IntermediateAstcBlock.IntermediateBlockData();
-            data.weight_range = 15;
+            data.weightRange = 15;
             // endpoints empty -> nothing to set; mimic C++ loop no-op
-            data.weight_grid_dim_x = 6;
-            data.weight_grid_dim_y = 6;
+            data.weightGridX = 6;
+            data.weightGridY = 6;
             Assert.Equal(-1, IntermediateAstcBlock.EndpointRangeForBlock(data));
 
             var err = IntermediateAstcBlock.Pack(data, out var dummy);
@@ -45,15 +45,15 @@ namespace AstcSharp.Tests
         public void TestEndpointRangeErrorOnNotEnoughBits()
         {
             var data = new IntermediateAstcBlock.IntermediateBlockData();
-            data.weight_range = 1;
-            data.partition_id = 0;
+            data.weightRange = 1;
+            data.partitionId = 0;
             data.endpoints = new List<IntermediateAstcBlock.IntermediateEndpointData>();
-            data.endpoints.Add(new IntermediateAstcBlock.IntermediateEndpointData { mode = ColorEndpointMode.kLDRRGBDirect });
-            data.endpoints.Add(new IntermediateAstcBlock.IntermediateEndpointData { mode = ColorEndpointMode.kLDRRGBDirect });
-            data.endpoints.Add(new IntermediateAstcBlock.IntermediateEndpointData { mode = ColorEndpointMode.kLDRRGBDirect });
+            data.endpoints.Add(new IntermediateAstcBlock.IntermediateEndpointData { mode = ColorEndpointMode.kLdrRgbDirect });
+            data.endpoints.Add(new IntermediateAstcBlock.IntermediateEndpointData { mode = ColorEndpointMode.kLdrRgbDirect });
+            data.endpoints.Add(new IntermediateAstcBlock.IntermediateEndpointData { mode = ColorEndpointMode.kLdrRgbDirect });
 
-            data.weight_grid_dim_x = 8;
-            data.weight_grid_dim_y = 8;
+            data.weightGridX = 8;
+            data.weightGridY = 8;
             Assert.Equal(-2, IntermediateAstcBlock.EndpointRangeForBlock(data));
 
             // Resize weights to match grid
@@ -67,10 +67,10 @@ namespace AstcSharp.Tests
         public void TestEndpointRangeForBlock()
         {
             var data = new IntermediateAstcBlock.IntermediateBlockData();
-            data.weight_range = 2;
+            data.weightRange = 2;
             data.endpoints = new List<IntermediateAstcBlock.IntermediateEndpointData> { new IntermediateAstcBlock.IntermediateEndpointData(), new IntermediateAstcBlock.IntermediateEndpointData() };
-            data.dual_plane_channel = null;
-            foreach (var ep in data.endpoints) ep.mode = ColorEndpointMode.kLDRRGBDirect;
+            data.dualPlaneChannel = null;
+            foreach (var ep in data.endpoints) ep.mode = ColorEndpointMode.kLdrRgbDirect;
 
             var weight_params = new List<(int w, int h)>();
             for (int y = 2; y < 8; ++y)
@@ -82,8 +82,8 @@ namespace AstcSharp.Tests
             int last_color_range = 255;
             foreach (var p in weight_params)
             {
-                data.weight_grid_dim_x = p.w;
-                data.weight_grid_dim_y = p.h;
+                data.weightGridX = p.w;
+                data.weightGridY = p.h;
                 int color_range = IntermediateAstcBlock.EndpointRangeForBlock(data);
                 Assert.True(color_range <= last_color_range);
                 last_color_range = Math.Min(color_range, last_color_range);
@@ -98,16 +98,16 @@ namespace AstcSharp.Tests
             var b = IntermediateAstcBlock.UnpackIntermediateBlock(blk);
             Assert.NotNull(b);
             var data = b!;
-            Assert.Equal(6, data.weight_grid_dim_x);
-            Assert.Equal(5, data.weight_grid_dim_y);
-            Assert.Equal(7, data.weight_range);
-            Assert.Null(data.partition_id);
-            Assert.Null(data.dual_plane_channel);
+            Assert.Equal(6, data.weightGridX);
+            Assert.Equal(5, data.weightGridY);
+            Assert.Equal(7, data.weightRange);
+            Assert.Null(data.partitionId);
+            Assert.Null(data.dualPlaneChannel);
             Assert.Equal(30, data.weights.Count);
             foreach (var w in data.weights) Assert.Equal(0, w);
             Assert.Single(data.endpoints);
             var ep = data.endpoints[0];
-            Assert.Equal(ColorEndpointMode.kLDRLumaDirect, ep.mode);
+            Assert.Equal(ColorEndpointMode.kLdrLumaDirect, ep.mode);
             Assert.Equal(2, ep.colors.Count);
             Assert.Equal(0, ep.colors[0]);
             Assert.Equal(255, ep.colors[1]);
@@ -117,13 +117,13 @@ namespace AstcSharp.Tests
         public void TestPackNonVoidExtentBlock()
         {
             var data = new IntermediateAstcBlock.IntermediateBlockData();
-            data.weight_grid_dim_x = 6;
-            data.weight_grid_dim_y = 5;
-            data.weight_range = 7;
-            data.partition_id = null;
-            data.dual_plane_channel = null;
+            data.weightGridX = 6;
+            data.weightGridY = 5;
+            data.weightRange = 7;
+            data.partitionId = null;
+            data.dualPlaneChannel = null;
             data.weights = Enumerable.Repeat(0, 30).ToList();
-            var ep = new IntermediateAstcBlock.IntermediateEndpointData { mode = ColorEndpointMode.kLDRLumaDirect };
+            var ep = new IntermediateAstcBlock.IntermediateEndpointData { mode = ColorEndpointMode.kLdrLumaDirect };
             ep.colors.Add(0); ep.colors.Add(255);
             data.endpoints.Add(ep);
 
@@ -203,13 +203,13 @@ namespace AstcSharp.Tests
             var b = IntermediateAstcBlock.UnpackIntermediateBlock(new PhysicalAstcBlock(orig));
             Assert.NotNull(b);
             var data = b!;
-            Assert.Equal(2, data.weight_grid_dim_x);
-            Assert.Equal(3, data.weight_grid_dim_y);
-            Assert.Equal(15, data.weight_range);
-            Assert.Null(data.partition_id);
-            Assert.Null(data.dual_plane_channel);
+            Assert.Equal(2, data.weightGridX);
+            Assert.Equal(3, data.weightGridY);
+            Assert.Equal(15, data.weightRange);
+            Assert.Null(data.partitionId);
+            Assert.Null(data.dualPlaneChannel);
             Assert.Single(data.endpoints);
-            Assert.Equal(ColorEndpointMode.kLDRLumaDirect, data.endpoints[0].mode);
+            Assert.Equal(ColorEndpointMode.kLdrLumaDirect, data.endpoints[0].mode);
             Assert.Equal(2, data.endpoints[0].colors.Count);
             Assert.Equal(255, data.endpoints[0].colors[0]);
             Assert.Equal(0, data.endpoints[0].colors[1]);
@@ -230,7 +230,7 @@ namespace AstcSharp.Tests
             Assert.NotNull(b);
             var data = b!;
             Assert.Single(data.endpoints);
-            Assert.Equal(ColorEndpointMode.kLDRLumaDirect, data.endpoints[0].mode);
+            Assert.Equal(ColorEndpointMode.kLdrLumaDirect, data.endpoints[0].mode);
             Assert.Equal(new List<int> { 0, 255 }, data.endpoints[0].colors);
             Assert.NotNull(data.endpoint_range);
             Assert.Equal(255, data.endpoint_range.Value);
@@ -286,11 +286,11 @@ namespace AstcSharp.Tests
                 var pb = new PhysicalAstcBlock(repacked);
                 Assert.Null(pb.IsIllegalEncoding());
 
-                var pb_num_color_bits = pb.NumColorBits().Value;
+                var pb_num_color_bits = pb.ColorBitCount().Value;
                 var pb_color_mask = UInt128Ex.OnesMask(pb_num_color_bits);
                 var pb_color_bits = (pb.GetBlockBits() >> pb.ColorStartBit().Value) & pb_color_mask;
 
-                var b_num_color_bits = block.NumColorBits().Value;
+                var b_num_color_bits = block.ColorBitCount().Value;
                 var b_color_mask = UInt128Ex.OnesMask(b_num_color_bits);
                 var b_color_bits = (block.GetBlockBits() >> block.ColorStartBit().Value) & b_color_mask;
 
@@ -300,21 +300,21 @@ namespace AstcSharp.Tests
                 Assert.Equal(pb.IsVoidExtent(), block.IsVoidExtent());
                 Assert.Equal(pb.VoidExtentCoords(), block.VoidExtentCoords());
 
-                Assert.Equal(pb.WeightGridDims(), block.WeightGridDims());
+                Assert.Equal(pb.WeightGridDimensions(), block.WeightGridDimensions());
                 Assert.Equal(pb.WeightRange(), block.WeightRange());
-                Assert.Equal(pb.NumWeightBits(), block.NumWeightBits());
+                Assert.Equal(pb.WeightBitCount(), block.WeightBitCount());
                 Assert.Equal(pb.WeightStartBit(), block.WeightStartBit());
 
                 Assert.Equal(pb.IsDualPlane(), block.IsDualPlane());
                 Assert.Equal(pb.DualPlaneChannel(), block.DualPlaneChannel());
 
-                Assert.Equal(pb.NumPartitions(), block.NumPartitions());
-                Assert.Equal(pb.PartitionID(), block.PartitionID());
+                Assert.Equal(pb.PartitionsCount(), block.PartitionsCount());
+                Assert.Equal(pb.PartitionId(), block.PartitionId());
 
-                Assert.Equal(pb.NumColorValues(), block.NumColorValues());
+                Assert.Equal(pb.ColorValuesCount(), block.ColorValuesCount());
                 Assert.Equal(pb.ColorValuesRange(), block.ColorValuesRange());
 
-                var numParts = pb.NumPartitions().GetValueOrDefault(0);
+                var numParts = pb.PartitionsCount().GetValueOrDefault(0);
                 for (int j = 0; j < numParts; ++j)
                 {
                     Assert.Equal(pb.GetEndpointMode(j), block.GetEndpointMode(j));

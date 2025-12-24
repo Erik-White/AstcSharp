@@ -28,14 +28,14 @@ namespace AstcSharp
 
         internal class IntermediateBlockData
         {
-            public int weight_grid_dim_x;
-            public int weight_grid_dim_y;
-            public int weight_range;
+            public int weightGridX;
+            public int weightGridY;
+            public int weightRange;
 
             public List<int> weights = new List<int>();
 
-            public int? partition_id;
-            public int? dual_plane_channel;
+            public int? partitionId;
+            public int? dualPlaneChannel;
 
             public List<IntermediateEndpointData> endpoints = new List<IntermediateEndpointData>();
 
@@ -177,9 +177,9 @@ namespace AstcSharp
 
         private static int ExtraConfigBitPosition(IntermediateBlockData data)
         {
-            bool has_dual_channel = data.dual_plane_channel.HasValue;
-            int num_weights = data.weight_grid_dim_x * data.weight_grid_dim_y * (has_dual_channel ? 2 : 1);
-            int num_weight_bits = IntegerSequenceCodec.GetBitCountForRange(num_weights, data.weight_range);
+            bool has_dual_channel = data.dualPlaneChannel.HasValue;
+            int num_weights = data.weightGridX * data.weightGridY * (has_dual_channel ? 2 : 1);
+            int num_weight_bits = IntegerSequenceCodec.GetBitCountForRange(num_weights, data.weightRange);
 
             int extra_config_bits = 0;
             if (!SharedEndpointModes(data))
@@ -195,96 +195,109 @@ namespace AstcSharp
 
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, UInt128Ex> s_lastUnpacked = new System.Collections.Concurrent.ConcurrentDictionary<string, UInt128Ex>();
 
-        public static IntermediateBlockData? UnpackIntermediateBlock(PhysicalAstcBlock pb)
+        public static IntermediateBlockData? UnpackIntermediateBlock(PhysicalAstcBlock physicalBlock)
         {
-            if (pb.IsIllegalEncoding() != null) return null;
-            if (pb.IsVoidExtent()) return null;
+            if (physicalBlock.IsIllegalEncoding() != null) return null;
+            if (physicalBlock.IsVoidExtent()) return null;
 
             var data = new IntermediateBlockData();
 
-            var color_bits_mask = UInt128Ex.OnesMask(pb.NumColorBits().Value);
-            var color_bits = (pb.GetBlockBits() >> pb.ColorStartBit().Value) & color_bits_mask;
-            var bit_src = new BitStream(color_bits, 128);
+            var colorBitCount = physicalBlock.ColorBitCount();
+            var colorStartBit = physicalBlock.ColorStartBit();
+            var colorValuesRangeOpt = physicalBlock.ColorValuesRange();
+            var colorValuesCount = physicalBlock.ColorValuesCount();
+            var weightGridDimensions = physicalBlock.WeightGridDimensions();
+            var weightRange = physicalBlock.WeightRange();
+            var partitionCount = physicalBlock.PartitionsCount();
+            var weightBitCount = physicalBlock.WeightBitCount();
 
-            var color_decoder = new IntegerSequenceDecoder(pb.ColorValuesRange().Value);
-            int num_colors_in_block = pb.NumColorValues().Value;
-            var colors = color_decoder.Decode(num_colors_in_block, ref bit_src);
+            if (!colorBitCount.HasValue || !colorStartBit.HasValue || !colorValuesRangeOpt.HasValue || !colorValuesCount.HasValue || !weightGridDimensions.HasValue || !weightRange.HasValue || !partitionCount.HasValue || !weightBitCount.HasValue)
+                return null;
 
-            var weight_dims = pb.WeightGridDims().Value;
-            data.weight_grid_dim_x = weight_dims.Item1;
-            data.weight_grid_dim_y = weight_dims.Item2;
-            data.weight_range = pb.WeightRange().Value;
+            var colorBitMask = UInt128Ex.OnesMask(colorBitCount.Value);
+            var colorBits = (physicalBlock.GetBlockBits() >> colorStartBit.Value) & colorBitMask;
+            var colorBitStream = new BitStream(colorBits, 128);
 
-            data.partition_id = pb.PartitionID();
-            data.dual_plane_channel = pb.DualPlaneChannel();
+            var colorDecoder = new IntegerSequenceDecoder(colorValuesRangeOpt.Value);
+            int colorCountInBlock = colorValuesCount.Value;
+            var colors = colorDecoder.Decode(colorCountInBlock, ref colorBitStream);
 
-            int colors_index = 0;
-            for (int i = 0; i < pb.NumPartitions().Value; ++i)
+            var weight_dims = weightGridDimensions.Value;
+            data.weightGridX = weight_dims.Item1;
+            data.weightGridY = weight_dims.Item2;
+            data.weightRange = weightRange.Value;
+
+            data.partitionId = physicalBlock.PartitionId();
+            data.dualPlaneChannel = physicalBlock.DualPlaneChannel();
+
+            int colorIndex = 0;
+            for (int i = 0; i < partitionCount.Value; ++i)
             {
-                var ep = new IntermediateEndpointData();
-                ep.mode = pb.GetEndpointMode(i).Value;
-                int num_colors = Types.NumColorValuesForEndpointMode(ep.mode);
-                for (int j = 0; j < num_colors; ++j)
+                var endpoint = new IntermediateEndpointData();
+                var endpointModeOpt = physicalBlock.GetEndpointMode(i);
+                if (!endpointModeOpt.HasValue)
+                    return null;
+                endpoint.mode = endpointModeOpt.Value;
+                int colorCount = Types.NumColorValuesForEndpointMode(endpoint.mode);
+                for (int j = 0; j < colorCount; ++j)
                 {
-                    ep.colors.Add(colors[colors_index++]);
+                    endpoint.colors.Add(colors[colorIndex++]);
                 }
-                data.endpoints.Add(ep);
+                data.endpoints.Add(endpoint);
             }
 
-            data.endpoint_range = pb.ColorValuesRange().Value;
+            data.endpoint_range = colorValuesRangeOpt.Value;
 
-            var weight_bits_mask = UInt128Ex.OnesMask(pb.NumWeightBits().Value);
-            var weight_bits = UInt128Ex.ReverseBits(pb.GetBlockBits()) & weight_bits_mask;
-            bit_src = new BitStream(weight_bits, 128);
+            var weightBits = UInt128Ex.ReverseBits(physicalBlock.GetBlockBits()) & UInt128Ex.OnesMask(weightBitCount.Value);
+            colorBitStream = new BitStream(weightBits, 128);
 
-            var weight_decoder = new IntegerSequenceDecoder(data.weight_range);
-            int num_weights = data.weight_grid_dim_x * data.weight_grid_dim_y;
-            if (pb.IsDualPlane()) num_weights *= 2;
-            data.weights = weight_decoder.Decode(num_weights, ref bit_src);
+            var weightDecoder = new IntegerSequenceDecoder(data.weightRange);
+            int weightsCount = data.weightGridX * data.weightGridY;
+            if (physicalBlock.IsDualPlane()) weightsCount *= 2;
+            data.weights = weightDecoder.Decode(weightsCount, ref colorBitStream);
 
             // store debug mapping from data signature to original pb for later pack-debugging
-            var key = $"{data.weight_grid_dim_x}x{data.weight_grid_dim_y}:{data.weight_range}:{data.weights.Count}:{data.endpoints.Count}:{data.partition_id}:{data.dual_plane_channel}:{data.endpoint_range}";
-            s_lastUnpacked[key] = pb.GetBlockBits();
+            var key = $"{data.weightGridX}x{data.weightGridY}:{data.weightRange}:{data.weights.Count}:{data.endpoints.Count}:{data.partitionId}:{data.dualPlaneChannel}:{data.endpoint_range}";
+            s_lastUnpacked[key] = physicalBlock.GetBlockBits();
             // also store a variant with endpoint_range set to null so Pack can round-trip when endpoint_range is cleared
-            var keyWithNullEndpoint = $"{data.weight_grid_dim_x}x{data.weight_grid_dim_y}:{data.weight_range}:{data.weights.Count}:{data.endpoints.Count}:{data.partition_id}:{data.dual_plane_channel}:null";
-            s_lastUnpacked[keyWithNullEndpoint] = pb.GetBlockBits();
+            var keyWithNullEndpoint = $"{data.weightGridX}x{data.weightGridY}:{data.weightRange}:{data.weights.Count}:{data.endpoints.Count}:{data.partitionId}:{data.dualPlaneChannel}:null";
+            s_lastUnpacked[keyWithNullEndpoint] = physicalBlock.GetBlockBits();
 
             return data;
         }
 
         public static int EndpointRangeForBlock(IntermediateBlockData data)
         {
-            if (IntegerSequenceCodec.GetBitCountForRange(data.weight_grid_dim_x * data.weight_grid_dim_y * (data.dual_plane_channel.HasValue ? 2 : 1), data.weight_range) > 96)
+            if (IntegerSequenceCodec.GetBitCountForRange(data.weightGridX * data.weightGridY * (data.dualPlaneChannel.HasValue ? 2 : 1), data.weightRange) > 96)
                 return kEndpointRange_ReturnInvalidWeightDims;
 
-            int num_partitions = data.endpoints.Count;
-            int bits_written = 11 + 2 + ((num_partitions > 1) ? 10 : 0) + ((num_partitions == 1) ? 4 : 6);
-            int color_bits_available = ExtraConfigBitPosition(data) - bits_written;
+            int partitionCount = data.endpoints.Count;
+            int bitsWrittenCount = 11 + 2 + ((partitionCount > 1) ? 10 : 0) + ((partitionCount == 1) ? 4 : 6);
+            int availableColorBitsCount = ExtraConfigBitPosition(data) - bitsWrittenCount;
 
-            int num_color_values = 0;
-            foreach (var ep in data.endpoints) num_color_values += Types.NumColorValuesForEndpointMode(ep.mode);
+            int colorValuesCount = 0;
+            foreach (var ep in data.endpoints) colorValuesCount += Types.NumColorValuesForEndpointMode(ep.mode);
 
-            int bits_needed = (13 * num_color_values + 4) / 5;
-            if (color_bits_available < bits_needed) return kEndpointRange_ReturnNotEnoughColorBits;
+            int bitsNeededCount = (13 * colorValuesCount + 4) / 5;
+            if (availableColorBitsCount < bitsNeededCount) return kEndpointRange_ReturnNotEnoughColorBits;
 
-            int color_value_range = 255;
-            for (; color_value_range > 1; --color_value_range)
+            int colorValueRange = byte.MaxValue;
+            for (; colorValueRange > 1; --colorValueRange)
             {
-                int bits_for_range = IntegerSequenceCodec.GetBitCountForRange(num_color_values, color_value_range);
-                if (bits_for_range <= color_bits_available) break;
+                int bitCountForRange = IntegerSequenceCodec.GetBitCountForRange(colorValuesCount, colorValueRange);
+                if (bitCountForRange <= availableColorBitsCount) break;
             }
-            return color_value_range;
+            return colorValueRange;
         }
 
-        public static VoidExtentData? UnpackVoidExtent(PhysicalAstcBlock pb)
+        public static VoidExtentData? UnpackVoidExtent(PhysicalAstcBlock physicalBlock)
         {
-            if (pb.IsIllegalEncoding() != null) return null;
-            if (!pb.IsVoidExtent()) return null;
+            if (physicalBlock.IsIllegalEncoding() != null) return null;
+            if (!physicalBlock.IsVoidExtent()) return null;
 
-            var color_bits_mask = UInt128Ex.OnesMask(pb.NumColorBits().Value);
-            var color_bits128 = (pb.GetBlockBits() >> pb.ColorStartBit().Value) & color_bits_mask;
+            var colorBits = (physicalBlock.GetBlockBits() >> physicalBlock.ColorStartBit().Value) & UInt128Ex.OnesMask(physicalBlock.ColorBitCount().Value);
             // We expect low 64 bits contain the 4x16-bit channels
-            var low = color_bits128.Low;
+            var low = colorBits.Low;
 
             var data = new VoidExtentData();
             data.r = (ushort)((low >> 0) & 0xFFFF);
@@ -292,7 +305,7 @@ namespace AstcSharp
             data.b = (ushort)((low >> 32) & 0xFFFF);
             data.a = (ushort)((low >> 48) & 0xFFFF);
 
-            var coords = pb.VoidExtentCoords();
+            var coords = physicalBlock.VoidExtentCoords();
             data.coords = new ushort[4];
             if (coords != null)
             {
@@ -313,132 +326,134 @@ namespace AstcSharp
         public static string? Pack(IntermediateBlockData data, out UInt128Ex pb)
         {
             pb = UInt128Ex.Zero;
-            if (data.weights.Count != data.weight_grid_dim_x * data.weight_grid_dim_y * (data.dual_plane_channel.HasValue ? 2 : 1))
+            if (data.weights.Count != data.weightGridX * data.weightGridY * (data.dualPlaneChannel.HasValue ? 2 : 1))
             {
                 return "Incorrect number of weights!";
             }
 
-            var bit_sink = new BitStream(0UL, 0);
+            var bitSink = new BitStream(0UL, 0);
 
             // First we need to encode the block mode.
-            var err = PackBlockMode(data.weight_grid_dim_x, data.weight_grid_dim_y, data.weight_range, data.dual_plane_channel.HasValue, ref bit_sink);
-            if (err != null) { return err; }
+            var errorMessage = PackBlockMode(data.weightGridX, data.weightGridY, data.weightRange, data.dualPlaneChannel.HasValue, ref bitSink);
+            if (errorMessage != null) { return errorMessage; }
 
             // number of partitions minus one
-            int num_partitions = data.endpoints.Count;
-            bit_sink.PutBits<uint>((uint)(num_partitions - 1), 2);
+            int partitionCount = data.endpoints.Count;
+            bitSink.PutBits<uint>((uint)(partitionCount - 1), 2);
 
-            if (num_partitions > 1)
+            if (partitionCount > 1)
             {
-                int id = data.partition_id ?? 0;
+                int id = data.partitionId ?? 0;
                 Debug.Assert(id >= 0);
-                bit_sink.PutBits<uint>((uint)id, 10);
+                bitSink.PutBits<uint>((uint)id, 10);
             }
 
             // Encode weights into weight_sink to know their bit size
-            var weight_sink = new BitStream(0UL, 0);
-            var weight_enc = new IntegerSequenceEncoder(data.weight_range);
-            foreach (var w in data.weights) weight_enc.AddValue(w);
-            weight_enc.Encode(ref weight_sink);
+            var weightSink = new BitStream(0UL, 0);
+            var weightsEncoder = new IntegerSequenceEncoder(data.weightRange);
+            foreach (var weight in data.weights) weightsEncoder.AddValue(weight);
+            weightsEncoder.Encode(ref weightSink);
 
-            int num_weight_bits = (int)weight_sink.Bits;
-            Debug.Assert(num_weight_bits == IntegerSequenceCodec.GetBitCountForRange(data.weights.Count, data.weight_range));
+            int weightBitsCount = (int)weightSink.Bits;
+            // TODO: Throw here instead
+            Debug.Assert((int)weightSink.Bits == IntegerSequenceCodec.GetBitCountForRange(data.weights.Count, data.weightRange));
 
             int extra_config = 0;
             bool shared_endpoint_mode = SharedEndpointModes(data);
 
             if (shared_endpoint_mode)
             {
-                if (num_partitions > 1) bit_sink.PutBits<uint>(0u, 2);
-                bit_sink.PutBits<uint>((uint)data.endpoints[0].mode, 4);
+                if (partitionCount > 1) bitSink.PutBits(0u, 2);
+                bitSink.PutBits<uint>((uint)data.endpoints[0].mode, 4);
             }
             else
             {
                 // compute min_class, max_class
-                int min_class = 2; int max_class = 0;
+                int minClass = 2; int maxClass = 0;
                 foreach (var ep in data.endpoints)
                 {
-                    int ep_mode_class = ((int)ep.mode) >> 2;
-                    min_class = Math.Min(min_class, ep_mode_class);
-                    max_class = Math.Max(max_class, ep_mode_class);
+                    int endpointModeClass = ((int)ep.mode) >> 2;
+                    minClass = Math.Min(minClass, endpointModeClass);
+                    maxClass = Math.Max(maxClass, endpointModeClass);
                 }
 
-                if (max_class - min_class > 1) return "Endpoint modes are invalid";
+                if (maxClass - minClass > 1) return "Endpoint modes are invalid";
 
-                var cem_encoder = new BitStream(0UL, 0);
-                cem_encoder.PutBits<uint>((uint)(min_class + 1), 2);
+                var cemEncoder = new BitStream(0UL, 0);
+                cemEncoder.PutBits<uint>((uint)(minClass + 1), 2);
 
-                foreach (var ep in data.endpoints)
+                foreach (var endpoint in data.endpoints)
                 {
-                    int ep_mode_class = ((int)ep.mode) >> 2;
-                    int class_selector_bit = ep_mode_class - min_class;
-                    cem_encoder.PutBits<uint>((uint)class_selector_bit, 1);
+                    int endpointModeClass = ((int)endpoint.mode) >> 2;
+                    int class_selector_bit = endpointModeClass - minClass;
+                    cemEncoder.PutBits(class_selector_bit, 1);
                 }
 
                 foreach (var ep in data.endpoints)
                 {
                     int ep_mode = ((int)ep.mode) & 3;
-                    cem_encoder.PutBits<uint>((uint)ep_mode, 2);
+                    cemEncoder.PutBits(ep_mode, 2);
                 }
 
-                int cem_bits = 2 + num_partitions * 3;
-                if (!cem_encoder.GetBits<uint>(cem_bits, out var encoded_cem)) throw new InvalidOperationException();
+                int cem_bits = 2 + partitionCount * 3;
+                if (!cemEncoder.GetBits<uint>(cem_bits, out var encodedCem)) throw new InvalidOperationException();
 
-                extra_config = (int)(encoded_cem >> 6);
+                extra_config = (int)(encodedCem >> 6);
 
-                bit_sink.PutBits<uint>(encoded_cem, Math.Min(6, cem_bits));
+                bitSink.PutBits(encodedCem, Math.Min(6, cem_bits));
             }
 
             // dual plane channel
-            if (data.dual_plane_channel.HasValue)
+            if (data.dualPlaneChannel.HasValue)
             {
-                int channel = data.dual_plane_channel.Value;
+                int channel = data.dualPlaneChannel.Value;
                 Debug.Assert(channel < 4);
                 extra_config = (extra_config << 2) | channel;
             }
 
             int color_value_range = data.endpoint_range.HasValue ? data.endpoint_range.Value : EndpointRangeForBlock(data);
+            // TODO: Throw here instead
             Debug.Assert(color_value_range != kEndpointRange_ReturnInvalidWeightDims);
             if (color_value_range == kEndpointRange_ReturnNotEnoughColorBits)
             {
                 return "Intermediate block emits illegal color range";
             }
 
-            var color_enc = new IntegerSequenceEncoder(color_value_range);
-            foreach (var ep in data.endpoints)
+            var colorEncoder = new IntegerSequenceEncoder(color_value_range);
+            foreach (var endpoint in data.endpoints)
             {
-                foreach (var color in ep.colors)
+                foreach (var color in endpoint.colors)
                 {
                     if (color > color_value_range) return "Color outside available color range!";
-                    color_enc.AddValue(color);
+                    colorEncoder.AddValue(color);
                 }
             }
-            color_enc.Encode(ref bit_sink);
+            colorEncoder.Encode(ref bitSink);
 
             int extra_config_bit_position = ExtraConfigBitPosition(data);
-            int extra_config_bits = 128 - num_weight_bits - extra_config_bit_position;
+            int extra_config_bits = 128 - weightBitsCount - extra_config_bit_position;
             Debug.Assert(extra_config_bits >= 0);
             Debug.Assert(extra_config < (1 << extra_config_bits));
 
-            int bits_to_skip = extra_config_bit_position - (int)bit_sink.Bits;
+            int bits_to_skip = extra_config_bit_position - (int)bitSink.Bits;
             Debug.Assert(bits_to_skip >= 0);
             while (bits_to_skip > 0)
             {
                 int skipping = Math.Min(32, bits_to_skip);
-                bit_sink.PutBits<uint>(0u, skipping);
+                bitSink.PutBits<uint>(0u, skipping);
                 bits_to_skip -= skipping;
             }
 
             if (extra_config_bits > 0)
             {
-                bit_sink.PutBits<uint>((uint)extra_config, extra_config_bits);
+                bitSink.PutBits<uint>((uint)extra_config, extra_config_bits);
             }
 
-            Debug.Assert(bit_sink.Bits == 128 - num_weight_bits);
+            Debug.Assert(bitSink.Bits == 128 - weightBitsCount);
 
             // Flush out the bit writer
-            if (!bit_sink.GetBits<UInt128Ex>(128 - num_weight_bits, out var astc_bits)) throw new InvalidOperationException();
-            if (!weight_sink.GetBits<UInt128Ex>(num_weight_bits, out var rev_weight_bits)) throw new InvalidOperationException();
+            if (!bitSink.GetBits<UInt128Ex>(128 - weightBitsCount, out var astc_bits)) throw new InvalidOperationException();
+            if (!weightSink.GetBits<UInt128Ex>(weightBitsCount, out var rev_weight_bits)) throw new InvalidOperationException();
 
             var combined = astc_bits | UInt128Ex.ReverseBits(rev_weight_bits);
             pb = combined;
@@ -447,7 +462,7 @@ namespace AstcSharp
             var illegal = block.IsIllegalEncoding();
 
             // debug: compare against last unpacked if present
-            var key = $"{data.weight_grid_dim_x}x{data.weight_grid_dim_y}:{data.weight_range}:{data.weights.Count}:{data.endpoints.Count}:{data.partition_id}:{data.dual_plane_channel}:{data.endpoint_range}";
+            var key = $"{data.weightGridX}x{data.weightGridY}:{data.weightRange}:{data.weights.Count}:{data.endpoints.Count}:{data.partitionId}:{data.dualPlaneChannel}:{data.endpoint_range}";
             if (s_lastUnpacked.TryGetValue(key, out var original))
             {
                 if (!original.Equals(pb)) { /* pack mismatch detected */ }
