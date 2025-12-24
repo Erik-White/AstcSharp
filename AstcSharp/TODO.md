@@ -8,3 +8,5 @@ Remaining
 - More tests?
 - Measure performance and add BenchmarkDotNet project
 - Document public APIs, add XML docs. Update README, add usage examples, include notes about compatibility
+- Build pipeline and Github actions
+- Publish package
