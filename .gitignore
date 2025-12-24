@@ -36,6 +36,9 @@ ScaffoldingReadMe.txt
 # NuGet Symbol Packages
 *.snupkg
 
+# BenchmarkDotNet Artifacts
+BenchmarkDotNet.Artifacts/
+
 # dotenv environment variables file
 .env
 
