@@ -389,12 +389,12 @@ namespace AstcSharp
 
             vals[0] = quant_off_low;
             vals[1] = quant_off_high;
-            DecodeColorsForMode(vals, maxValue, ColorEndpointMode.kLdrLumaBaseOffset, out var dec_low_off, out var dec_high_off);
+            var (dec_low_off, dec_high_off) = DecodeColorsForMode(vals, maxValue, ColorEndpointMode.kLdrLumaBaseOffset);
 
             vals[0] = quant_low;
             vals[1] = quant_high;
-            DecodeColorsForMode(vals, maxValue, ColorEndpointMode.kLdrLumaDirect, out var dec_low_dir, out var dec_high_dir);
-
+            var (dec_low_dir, dec_high_dir) = DecodeColorsForMode(vals, maxValue, ColorEndpointMode.kLdrLumaDirect);
+            
             int calculate_error_off = 0;
             int calculate_error_dir = 0;
             if (needs_weight_swap)
@@ -582,10 +582,11 @@ namespace AstcSharp
             throw new InvalidOperationException("Shouldn't have reached this point");
         }
 
-        public static void DecodeColorsForMode(List<int> vals, int maxValue, ColorEndpointMode mode, out RgbaColor endpoint_low_rgba, out RgbaColor endpoint_high_rgba)
+        public static (RgbaColor endpoint_low_rgba, RgbaColor endpoint_high_rgba) DecodeColorsForMode(List<int> vals, int maxValue, ColorEndpointMode mode)
         {
-            endpoint_low_rgba = new RgbaColor(0,0,0,0);
-            endpoint_high_rgba = new RgbaColor(0,0,0,0);
+            var endpoint_low_rgba = new RgbaColor(0,0,0,0);
+            var endpoint_high_rgba = new RgbaColor(0,0,0,0);
+
             switch (mode)
             {
                 case ColorEndpointMode.kLdrLumaDirect:
@@ -735,10 +736,10 @@ namespace AstcSharp
                     }
                     break;
                 default:
-                    endpoint_low_rgba = new RgbaColor(0,0,0,0);
-                    endpoint_high_rgba = new RgbaColor(0,0,0,0);
                     break;
             }
+
+            return (endpoint_low_rgba, endpoint_high_rgba);
         }
     }
 }

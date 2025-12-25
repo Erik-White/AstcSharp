@@ -53,7 +53,7 @@ namespace AstcSharp
             var eps = new List<(RgbaColor, RgbaColor)>();
             foreach (var ed in block.endpoints)
             {
-                EndpointCodec.DecodeColorsForMode(ed.colors, endpoint_range, ed.mode, out var d0, out var d1);
+                var (d0, d1) = EndpointCodec.DecodeColorsForMode(ed.colors, endpoint_range, ed.mode);
                 eps.Add((d0, d1));
             }
             return eps;
@@ -170,6 +170,7 @@ namespace AstcSharp
                 int c1 = (p1 << 8) | p1;
                 int c = (c0 * (64 - weight) + c1 * weight + 32) / 64;
                 int quantized = ((c * byte.MaxValue) + 32767) / 65536;
+                quantized = Math.Clamp(quantized, 0, 255);
                 switch (channel)
                 {
                     case 0: result.R = quantized; break;

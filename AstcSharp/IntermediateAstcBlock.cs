@@ -46,9 +46,8 @@ namespace AstcSharp
         private const int kEndpointRange_ReturnInvalidWeightDims = -1;
         private const int kEndpointRange_ReturnNotEnoughColorBits = -2;
 
-        private static string? GetEncodedWeightRange(int range, out int[] r)
+        private static (string? error, int[] range) GetEncodedWeightRange(int range)
         {
-            r = new int[3];
             var kValidRangeEncodings = new int[][]{
                 new[]{0,1,0}, new[]{1,1,0}, new[]{0,0,1}, new[]{1,0,1}, new[]{0,1,1}, new[]{1,1,1},
                 new[]{0,1,0}, new[]{1,1,0}, new[]{0,0,1}, new[]{1,0,1}, new[]{0,1,1}, new[]{1,1,1}
@@ -58,14 +57,13 @@ namespace AstcSharp
             int largest_range = kValidWeightRanges.Last();
             if (range < smallest_range || largest_range < range)
             {
-                return $"Could not find block mode. Invalid weight range: {range} not in [{smallest_range}, {largest_range}]";
+                return ($"Could not find block mode. Invalid weight range: {range} not in [{smallest_range}, {largest_range}]", new int[3]);
             }
 
             int idx = Array.FindIndex(kValidWeightRanges, v => v >= range);
             if (idx < 0) idx = kValidWeightRanges.Length - 1;
             var enc = kValidRangeEncodings[idx];
-            r[0] = enc[0]; r[1] = enc[1]; r[2] = enc[2];
-            return null;
+            return (null, [enc[0], enc[1], enc[2]]);
         }
 
         private struct BlockModeInfo
@@ -99,10 +97,9 @@ namespace AstcSharp
 
         private static string? PackBlockMode(int dim_x, int dim_y, int range, bool dual_plane, ref BitStream bit_sink)
         {
+
             bool high_prec = range > 7;
-            if (GetEncodedWeightRange(range, out var r) is string errStr) { /* unreachable due to signature; just ignore */ }
-            // Use GetEncodedWeightRange properly
-            var maybeErr = GetEncodedWeightRange(range, out var rvals);
+            var (maybeErr, rvals) = GetEncodedWeightRange(range);
             if (maybeErr != null) return maybeErr;
 
             // Ensure top two bits of r1 and r2 not both zero per reference

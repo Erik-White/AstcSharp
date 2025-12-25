@@ -12,10 +12,10 @@ namespace AstcSharp.Tests
         {
             // Check a few known ranges like the C++ test suite does for 1..31
             for (int i = 1; i < 32; ++i)
-            {
-                IntegerSequenceCodec.GetCountsForRange(i, out var t, out var q, out var b);
-                Assert.True(t >= 0);
-            }
+                {
+                    var (t, q, b) = IntegerSequenceCodec.GetCountsForRange(i);
+                    Assert.True(t >= 0);
+                }
         }
 
         [Fact]
@@ -32,21 +32,21 @@ namespace AstcSharp.Tests
             };
 
             for (int i = 1; i < 32; ++i)
-            {
-                IntegerSequenceCodec.GetCountsForRange(i, out var t, out var q, out var b);
-                var exp = expected[i - 1];
-                Assert.Equal(exp[0], t);
-                Assert.Equal(exp[1], q);
-                Assert.Equal(exp[2], b);
-            }
+                {
+                    var (t, q, b) = IntegerSequenceCodec.GetCountsForRange(i);
+                    var exp = expected[i - 1];
+                    Assert.Equal(exp[0], t);
+                    Assert.Equal(exp[1], q);
+                    Assert.Equal(exp[2], b);
+                }
 
-            Assert.Throws<ArgumentOutOfRangeException>(() => IntegerSequenceCodec.GetCountsForRange(0, out _, out _, out _));
-            Assert.Throws<ArgumentOutOfRangeException>(() => IntegerSequenceCodec.GetCountsForRange(256, out _, out _, out _));
+                Assert.Throws<ArgumentOutOfRangeException>(() => IntegerSequenceCodec.GetCountsForRange(0));
+                Assert.Throws<ArgumentOutOfRangeException>(() => IntegerSequenceCodec.GetCountsForRange(256));
 
-            IntegerSequenceCodec.GetCountsForRange(1, out var t1, out var q1, out var b1);
-            Assert.Equal(0, t1);
-            Assert.Equal(0, q1);
-            Assert.Equal(1, b1);
+                var (t1, q1, b1) = IntegerSequenceCodec.GetCountsForRange(1);
+                Assert.Equal(0, t1);
+                Assert.Equal(0, q1);
+                Assert.Equal(1, b1);
         }
 
         [Fact]

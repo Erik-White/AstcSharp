@@ -22,8 +22,7 @@ namespace AstcSharp
 
         protected IntegerSequenceCodec(int range)
         {
-            int trits, quints, bits;
-            GetCountsForRange(range, out trits, out quints, out bits);
+            var (trits, quints, bits) = GetCountsForRange(range);
             InitializeWithCounts(trits, quints, bits);
         }
 
@@ -52,12 +51,12 @@ namespace AstcSharp
 
         private static bool IsPow2(int x) => x == 0 || (x & (x - 1)) == 0;
 
-        public static void GetCountsForRange(int range, out int trits, out int quints, out int bits)
+        public static (int trits, int quints, int bits) GetCountsForRange(int range)
         {
             if (range <= 0 || range >= (1 << kLog2MaxRangeForBits))
                 throw new ArgumentOutOfRangeException(nameof(range));
 
-            trits = quints = bits = 0;
+            int trits = 0, quints = 0, bits = 0;
             int idx = Array.FindIndex(kMaxRanges, v => v >= range);
             if (idx < 0) idx = kMaxRanges.Length - 1;
             int max_vals_for_range = kMaxRanges[idx] + 1;
@@ -76,6 +75,7 @@ namespace AstcSharp
             {
                 bits = Log2Floor(max_vals_for_range);
             }
+            return (trits, quints, bits);
         }
 
         public static int GetBitCount(int num_vals, int trits, int quints, int bits)
@@ -90,7 +90,7 @@ namespace AstcSharp
         // given range and return the total number of bits needed for num_vals.
         public static int GetBitCountForRange(int num_vals, int range)
         {
-            GetCountsForRange(range, out var trits, out var quints, out var bits);
+            var (trits, quints, bits) = GetCountsForRange(range);
             return GetBitCount(num_vals, trits, quints, bits);
         }
 

@@ -11,12 +11,12 @@ namespace AstcSharp.Tests
         {
             var vals = new List<int>();
             var needsSwap = EndpointCodec.EncodeColorsForMode(low, high, quant, mode, out var astcMode, vals);
-            EndpointCodec.DecodeColorsForMode(vals, quant, astcMode, out var decLow, out var decHigh);
-            if (needsSwap)
-            {
-                return (decHigh, decLow);
-            }
-            return (decLow, decHigh);
+                var (decLow, decHigh) = EndpointCodec.DecodeColorsForMode(vals, quant, astcMode);
+                if (needsSwap)
+                {
+                    return (decHigh, decLow);
+                }
+                return (decLow, decHigh);
         }
 
         private static bool AreEqual(RgbaColor a, RgbaColor b)
@@ -245,7 +245,7 @@ namespace AstcSharp.Tests
                     vals.Add(diff);
                 }
 
-                EndpointCodec.DecodeColorsForMode(vals, 255, ColorEndpointMode.kLdrRgbBaseOffset, out var decLow, out var decHigh);
+                var (decLow, decHigh) = EndpointCodec.DecodeColorsForMode(vals, 255, ColorEndpointMode.kLdrRgbBaseOffset);
                 Assert.True(AreEqual(decLow, low));
                 Assert.True(AreEqual(decHigh, high));
             }
