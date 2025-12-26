@@ -9,7 +9,7 @@ namespace AstcSharp
     // From Table C.2.7 -- valid weight ranges
     internal static class IntermediateAstcBlock
     {
-        public static readonly int[] kValidWeightRanges = { 1, 2, 3, 4, 5, 7, 9, 11, 15, 19, 23, 31 };
+        public static readonly int[] kValidWeightRanges = [1, 2, 3, 4, 5, 7, 9, 11, 15, 19, 23, 31];
 
         internal struct VoidExtentData
         {
@@ -408,44 +408,47 @@ namespace AstcSharp
                 extra_config = (extra_config << 2) | channel;
             }
 
-            int color_value_range = data.endpoint_range.HasValue ? data.endpoint_range.Value : EndpointRangeForBlock(data);
+            int colorValueRange = data.endpoint_range.HasValue ? data.endpoint_range.Value : EndpointRangeForBlock(data);
             // TODO: Throw here instead
-            Debug.Assert(color_value_range != kEndpointRange_ReturnInvalidWeightDims);
-            if (color_value_range == kEndpointRange_ReturnNotEnoughColorBits)
+            Debug.Assert(colorValueRange != kEndpointRange_ReturnInvalidWeightDims);
+            if (colorValueRange == kEndpointRange_ReturnNotEnoughColorBits)
             {
                 return "Intermediate block emits illegal color range";
             }
 
-            var colorEncoder = new IntegerSequenceEncoder(color_value_range);
+            var colorEncoder = new IntegerSequenceEncoder(colorValueRange);
             foreach (var endpoint in data.endpoints)
             {
                 foreach (var color in endpoint.colors)
                 {
-                    if (color > color_value_range) return "Color outside available color range!";
+                    if (color > colorValueRange) return "Color outside available color range!";
                     colorEncoder.AddValue(color);
                 }
             }
             colorEncoder.Encode(ref bitSink);
 
-            int extra_config_bit_position = ExtraConfigBitPosition(data);
-            int extra_config_bits = 128 - weightBitsCount - extra_config_bit_position;
-            Debug.Assert(extra_config_bits >= 0);
-            Debug.Assert(extra_config < (1 << extra_config_bits));
+            int extraConfigBitPosition = ExtraConfigBitPosition(data);
+            int extraConfigBits = 128 - weightBitsCount - extraConfigBitPosition;
 
-            int bits_to_skip = extra_config_bit_position - (int)bitSink.Bits;
-            Debug.Assert(bits_to_skip >= 0);
-            while (bits_to_skip > 0)
+            // TODO: Throw here instead
+            Debug.Assert(extraConfigBits >= 0);
+            Debug.Assert(extra_config < (1 << extraConfigBits));
+
+            int bitsToSkip = extraConfigBitPosition - (int)bitSink.Bits;
+            Debug.Assert(bitsToSkip >= 0);
+            while (bitsToSkip > 0)
             {
-                int skipping = Math.Min(32, bits_to_skip);
+                int skipping = Math.Min(32, bitsToSkip);
                 bitSink.PutBits<uint>(0u, skipping);
-                bits_to_skip -= skipping;
+                bitsToSkip -= skipping;
             }
 
-            if (extra_config_bits > 0)
+            if (extraConfigBits > 0)
             {
-                bitSink.PutBits<uint>((uint)extra_config, extra_config_bits);
+                bitSink.PutBits<uint>((uint)extra_config, extraConfigBits);
             }
 
+            // Throw here instead
             Debug.Assert(bitSink.Bits == 128 - weightBitsCount);
 
             // Flush out the bit writer
@@ -462,7 +465,11 @@ namespace AstcSharp
             var key = $"{data.weightGridX}x{data.weightGridY}:{data.weightRange}:{data.weights.Count}:{data.endpoints.Count}:{data.partitionId}:{data.dualPlaneChannel}:{data.endpoint_range}";
             if (s_lastUnpacked.TryGetValue(key, out var original))
             {
-                if (!original.Equals(pb)) { /* pack mismatch detected */ }
+                if (!original.Equals(pb))
+                {
+                    // TODO: What to do in this case?
+                    /* pack mismatch detected */
+                }
             }
 
             return illegal;
@@ -475,7 +482,7 @@ namespace AstcSharp
             // high 64 bits = 12-bit header (0xDFC) followed by four 13-bit coords.
             ulong high64 = ((ulong)data.a << 48) | ((ulong)data.b << 32) | ((ulong)data.g << 16) | (ulong)data.r;
             ulong low64 = 0UL;
-            // header occupies lowest 12 bits of the high word
+            // Header occupies lowest 12 bits of the high word
             low64 |= 0xDFCu;
             for (int i = 0; i < 4; ++i)
             {
@@ -501,6 +508,7 @@ namespace AstcSharp
             var illegal = block.IsIllegalEncoding();
             if (illegal != null)
             {
+                // TODO; throw here instead
                 // pack(void extent) produced illegal encoding
             }
             return illegal;

@@ -9,40 +9,42 @@ namespace AstcSharp
         // TODO: Consolidate this to RgbaColor class
         private const int ChannelCount = 4; // R, G, B, A
 
-        private List<(RgbaColor first, RgbaColor second)> endpoints_;
-        private List<int> weights_;
-        private Partition partition_;
+        private List<(RgbaColor first, RgbaColor second)> _endpoints;
+        private List<int> _weights;
+        private Partition _partition;
+        private DualPlaneData? _dualPlane;
 
         private class DualPlaneData
         {
-            public int channel;
-            public List<int> weights = new List<int>();
+            public int Channel;
+            public List<int> Weights = [];
         }
-
-        private DualPlaneData? dual_plane_;
 
         public LogicalAstcBlock(Footprint footprint)
         {
-            endpoints_ = new List<(RgbaColor, RgbaColor)>() { (new RgbaColor(0,0,0,0), new RgbaColor(0,0,0,0)) };
-            weights_ = new List<int>(new int[footprint.NumPixels()]);
-            partition_ = new Partition(footprint, 1, 0);
-            partition_.assignment = new List<int>(footprint.NumPixels());
-            for (int i = 0; i < footprint.NumPixels(); ++i) partition_.assignment.Add(0);
+            _endpoints = [(new RgbaColor(0,0,0,0), new RgbaColor(0,0,0,0))];
+            _weights = [.. new int[footprint.NumPixels()]];
+            // TODO: Add pixel count to Partition constructor
+            _partition = new Partition(footprint, 1, 0)
+            {
+                assignment = new List<int>(footprint.NumPixels())
+            };
+            for (int i = 0; i < footprint.NumPixels(); ++i) _partition.assignment.Add(0);
         }
 
         public LogicalAstcBlock(Footprint footprint, IntermediateAstcBlock.IntermediateBlockData block)
         {
-            endpoints_ = DecodeEndpoints(block);
-            partition_ = ComputePartition(footprint, block);
-            weights_ = new List<int>(new int[footprint.NumPixels()]);
+            _endpoints = DecodeEndpoints(block);
+            _partition = ComputePartition(footprint, block);
+            _weights = [.. new int[footprint.NumPixels()]];
             CalculateWeights(footprint, block);
         }
 
         public LogicalAstcBlock(Footprint footprint, IntermediateAstcBlock.VoidExtentData block)
         {
-            endpoints_ = DecodeEndpoints(block);
-            partition_ = ComputePartition(footprint, block);
-            weights_ = new List<int>(new int[footprint.NumPixels()]);
+            _endpoints = DecodeEndpoints(block);
+            _partition = ComputePartition(footprint, block);
+            _weights = [.. new int[footprint.NumPixels()]];
             CalculateWeights(footprint, block);
         }
 
@@ -61,8 +63,9 @@ namespace AstcSharp
 
         private static List<(RgbaColor, RgbaColor)> DecodeEndpoints(IntermediateAstcBlock.VoidExtentData block)
         {
-            var pair = new RgbaColor((block.r * 255) / 65535, (block.g * 255) / 65535, (block.b * 255) / 65535, (block.a * 255) / 65535);
-            return new List<(RgbaColor, RgbaColor)>() { (pair, pair) };
+            var pair = new RgbaColor(block.r * byte.MaxValue / ushort.MaxValue, block.g * byte.MaxValue / ushort.MaxValue, block.b * byte.MaxValue / ushort.MaxValue, block.a * byte.MaxValue / ushort.MaxValue);
+            
+            return [(pair, pair)];
         }
 
         private static Partition GenerateSinglePartition(Footprint footprint)
@@ -74,103 +77,110 @@ namespace AstcSharp
         }
 
         private static Partition ComputePartition(Footprint footprint, IntermediateAstcBlock.IntermediateBlockData block)
-        {
-            if (block.partitionId.HasValue)
-            {
-                int part_id = block.partitionId.Value;
-                int num_parts = block.endpoints.Count;
-                return Partition.GetASTCPartition(footprint, num_parts, part_id);
-            }
-            return GenerateSinglePartition(footprint);
-        }
+            => block.partitionId.HasValue
+                ? Partition.GetASTCPartition(footprint, block.endpoints.Count, block.partitionId.Value)
+                : GenerateSinglePartition(footprint);
 
         private static Partition ComputePartition(Footprint footprint, IntermediateAstcBlock.VoidExtentData block)
             => GenerateSinglePartition(footprint);
 
         private void CalculateWeights(Footprint footprint, IntermediateAstcBlock.IntermediateBlockData block)
         {
-            int grid_x = block.weightGridX;
-            int grid_y = block.weightGridY;
-            int grid_size = grid_x * grid_y;
-            int weight_frequency = block.dualPlaneChannel.HasValue ? 2 : 1;
-            int weight_range = block.weightRange;
+            int gridSize = block.weightGridX * block.weightGridY;
+            int weightFrequency = block.dualPlaneChannel.HasValue ? 2 : 1;
 
-            var unquantized = new List<int>(grid_size);
-            for (int i = 0; i < grid_size; ++i)
+            var unquantized = new List<int>(gridSize);
+            for (int i = 0; i < gridSize; ++i)
             {
-                int w = block.weights[i * weight_frequency];
-                unquantized.Add(Quantization.UnquantizeWeightFromRange(w, weight_range));
+                int weight = block.weights[i * weightFrequency];
+                unquantized.Add(Quantization.UnquantizeWeightFromRange(weight, block.weightRange));
             }
-            weights_ = WeightInfill.InfillWeights(unquantized, footprint, grid_x, grid_y);
+            _weights = WeightInfill.InfillWeights(unquantized, footprint, block.weightGridX, block.weightGridY);
 
             if (block.dualPlaneChannel.HasValue)
             {
                 SetDualPlaneChannel(block.dualPlaneChannel.Value);
-                for (int i = 0; i < grid_size; ++i)
+                for (int i = 0; i < gridSize; ++i)
                 {
-                    int w = block.weights[i * weight_frequency + 1];
-                    unquantized[i] = Quantization.UnquantizeWeightFromRange(w, weight_range);
+                    int weight = block.weights[i * weightFrequency + 1];
+                    unquantized[i] = Quantization.UnquantizeWeightFromRange(weight, block.weightRange);
                 }
-                if (dual_plane_ != null)
-                    dual_plane_.weights = WeightInfill.InfillWeights(unquantized, footprint, grid_x, grid_y);
+                if (_dualPlane is not null)
+                    _dualPlane.Weights = WeightInfill.InfillWeights(unquantized, footprint, block.weightGridX, block.weightGridY);
             }
         }
 
         private void CalculateWeights(Footprint footprint, IntermediateAstcBlock.VoidExtentData block)
         {
-            weights_ = new List<int>(new int[footprint.NumPixels()]);
+            _weights = [.. new int[footprint.NumPixels()]];
         }
 
-        public Footprint GetFootprint() => partition_.footprint;
+        public Footprint GetFootprint() => _partition.footprint;
 
         public void SetWeightAt(int x, int y, int weight)
         {
-            if (weight < 0 || weight > 64) throw new ArgumentOutOfRangeException(nameof(weight));
-            weights_[y * GetFootprint().Width() + x] = weight;
+            if (weight < 0 || weight > 64)
+                throw new ArgumentOutOfRangeException(nameof(weight));
+
+            _weights[y * GetFootprint().Width() + x] = weight;
         }
 
-        public int WeightAt(int x, int y) => weights_[y * GetFootprint().Width() + x];
+        public int WeightAt(int x, int y) => _weights[y * GetFootprint().Width() + x];
 
         public void SetDualPlaneWeightAt(int channel, int x, int y, int weight)
         {
-            if (weight < 0 || weight > 64) throw new ArgumentOutOfRangeException(nameof(weight));
-            if (!IsDualPlane()) throw new InvalidOperationException("Not a dual plane block");
-            if (dual_plane_ != null && dual_plane_.channel == channel)
-                dual_plane_.weights[y * GetFootprint().Width() + x] = weight;
+            ArgumentOutOfRangeException.ThrowIfNegative(channel);
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(weight, 64);
+
+            if (!IsDualPlane())
+                throw new InvalidOperationException("Not a dual plane block");
+            
+            if (_dualPlane is not null && _dualPlane.Channel == channel)
+                _dualPlane.Weights[y * GetFootprint().Width() + x] = weight;
             else
                 SetWeightAt(x, y, weight);
         }
 
         public int DualPlaneWeightAt(int channel, int x, int y)
         {
-            if (!IsDualPlane()) return WeightAt(x, y);
-            if (dual_plane_ != null && dual_plane_.channel == channel) return dual_plane_.weights[y * GetFootprint().Width() + x];
-            return WeightAt(x, y);
+            if (!IsDualPlane())
+                return WeightAt(x, y);
+
+            return _dualPlane is not null && _dualPlane.Channel == channel
+                ? _dualPlane.Weights[y * GetFootprint().Width() + x]
+                : WeightAt(x, y);
         }
 
         public RgbaColor ColorAt(int x, int y)
         {
-            var fp = GetFootprint();
-            if (x < 0 || x >= fp.Width() || y < 0 || y >= fp.Height()) throw new ArgumentOutOfRangeException();
-            int idx = y * fp.Width() + x;
-            int part = partition_.assignment[idx];
-            var endpoints = endpoints_[part];
+            var footprint = GetFootprint();
+
+            ArgumentOutOfRangeException.ThrowIfNegative(x);
+            ArgumentOutOfRangeException.ThrowIfNegative(y);
+            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(x, footprint.Width());
+            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(y, footprint.Height());
+
+            int index = y * footprint.Width() + x;
+            int part = _partition.assignment[index];
+            var (firstColor, secondColor) = _endpoints[part];
 
             var result = RgbaColor.Empty;
             for (int channel = 0; channel < ChannelCount; ++channel)
             {
-                int weight = (dual_plane_ != null && dual_plane_.channel == channel) ? dual_plane_.weights[idx] : weights_[idx];
-                int p0 = channel switch { 0 => endpoints.first.R, 1 => endpoints.first.G, 2 => endpoints.first.B, _ => endpoints.first.A };
-                int p1 = channel switch { 0 => endpoints.second.R, 1 => endpoints.second.G, 2 => endpoints.second.B, _ => endpoints.second.A };
-                if (p0 < byte.MinValue || p0 > byte.MaxValue || p1 < byte.MinValue || p1 > byte.MaxValue)
-                {
-                    throw new ArgumentException("Endpoint color channel out of range");
-                }
+                int weight = (_dualPlane != null && _dualPlane.Channel == channel) ? _dualPlane.Weights[index] : _weights[index];
+                int p0 = channel switch { 0 => firstColor.R, 1 => firstColor.G, 2 => firstColor.B, _ => firstColor.A };
+                int p1 = channel switch { 0 => secondColor.R, 1 => secondColor.G, 2 => secondColor.B, _ => secondColor.A };
+
+                ArgumentOutOfRangeException.ThrowIfLessThan(p0, byte.MinValue);
+                ArgumentOutOfRangeException.ThrowIfLessThan(p1, byte.MinValue);
+                ArgumentOutOfRangeException.ThrowIfGreaterThan(p0, byte.MaxValue);
+                ArgumentOutOfRangeException.ThrowIfGreaterThan(p1, byte.MaxValue);
+
                 int c0 = (p0 << 8) | p0;
                 int c1 = (p1 << 8) | p1;
                 int c = (c0 * (64 - weight) + c1 * weight + 32) / 64;
-                int quantized = ((c * byte.MaxValue) + 32767) / 65536;
-                quantized = Math.Clamp(quantized, 0, 255);
+                int quantized = ((c * byte.MaxValue) + short.MaxValue) / (ushort.MaxValue + 1);
+                quantized = Math.Clamp(quantized, 0, byte.MaxValue);
                 switch (channel)
                 {
                     case 0: result.R = quantized; break;
@@ -184,42 +194,50 @@ namespace AstcSharp
 
         public void SetPartition(Partition p)
         {
-            if (!p.footprint.Equals(partition_.footprint)) throw new InvalidOperationException("New partitions may not be for a different footprint");
-            partition_ = p;
-            while (endpoints_.Count < p.num_parts) endpoints_.Add((new RgbaColor(0,0,0,0), new RgbaColor(0,0,0,0)));
-            if (endpoints_.Count > p.num_parts) endpoints_.RemoveRange(p.num_parts, endpoints_.Count - p.num_parts);
+            if (!p.footprint.Equals(_partition.footprint))
+                throw new InvalidOperationException("New partitions may not be for a different footprint");
+            _partition = p;
+            while (_endpoints.Count < p.num_parts) _endpoints.Add((new RgbaColor(0,0,0,0), new RgbaColor(0,0,0,0)));
+            if (_endpoints.Count > p.num_parts) _endpoints.RemoveRange(p.num_parts, _endpoints.Count - p.num_parts);
         }
 
         public void SetEndpoints((RgbaColor first, RgbaColor second) eps, int subset)
         {
-            if (subset < 0 || subset >= partition_.num_parts) throw new ArgumentOutOfRangeException(nameof(subset));
-            endpoints_[subset] = eps;
+            ArgumentOutOfRangeException.ThrowIfNegative(subset);
+            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(subset, _partition.num_parts);
+            
+            _endpoints[subset] = eps;
         }
 
-        public void SetEndpoints(RgbaColor ep1, RgbaColor ep2, int subset) => SetEndpoints((ep1, ep2), subset);
+        public void SetEndpoints(RgbaColor ep1, RgbaColor ep2, int subset)
+            => SetEndpoints((ep1, ep2), subset);
 
         public void SetDualPlaneChannel(int channel)
         {
-            if (channel < 0) { dual_plane_ = null; }
-            else if (dual_plane_ != null) { dual_plane_.channel = channel; }
-            else { dual_plane_ = new DualPlaneData { channel = channel, weights = new List<int>(weights_) }; }
+            if (channel < 0) { _dualPlane = null; }
+            else if (_dualPlane != null) { _dualPlane.Channel = channel; }
+            else { _dualPlane = new DualPlaneData { Channel = channel, Weights = [.. _weights] }; }
         }
 
-        public bool IsDualPlane() => dual_plane_ != null;
+        public bool IsDualPlane() => _dualPlane is not null;
 
-        public static LogicalAstcBlock? UnpackLogicalBlock(Footprint footprint, PhysicalAstcBlock pb)
+        public static LogicalAstcBlock? UnpackLogicalBlock(Footprint footprint, PhysicalAstcBlock physicalBlock)
         {
-            if (pb.IsVoidExtent())
+            if (physicalBlock.IsVoidExtent())
             {
-                var ve = IntermediateAstcBlock.UnpackVoidExtent(pb);
-                if (ve == null) return null;
-                return new LogicalAstcBlock(footprint, ve.Value);
+                var voidExtantIntermediateBlock = IntermediateAstcBlock.UnpackVoidExtent(physicalBlock);
+                
+                return voidExtantIntermediateBlock is null
+                    ? null
+                    : new LogicalAstcBlock(footprint, voidExtantIntermediateBlock.Value);
             }
             else
             {
-                var ib = IntermediateAstcBlock.UnpackIntermediateBlock(pb);
-                if (ib == null) return null;
-                return new LogicalAstcBlock(footprint, ib);
+                var intermediateBlock = IntermediateAstcBlock.UnpackIntermediateBlock(physicalBlock);
+                
+                return intermediateBlock is null
+                    ? null
+                    : new LogicalAstcBlock(footprint, intermediateBlock);
             }
         }
     }
