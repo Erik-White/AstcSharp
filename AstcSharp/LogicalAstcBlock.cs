@@ -164,7 +164,7 @@ namespace AstcSharp
             int part = _partition.assignment[index];
             var (firstColor, secondColor) = _endpoints[part];
 
-            var result = RgbaColor.Empty;
+            var result = new int[RgbaColor.BytesPerPixel];
             for (int channel = 0; channel < ChannelCount; ++channel)
             {
                 int weight = (_dualPlane != null && _dualPlane.Channel == channel) ? _dualPlane.Weights[index] : _weights[index];
@@ -183,13 +183,17 @@ namespace AstcSharp
                 quantized = Math.Clamp(quantized, 0, byte.MaxValue);
                 switch (channel)
                 {
-                    case 0: result.R = quantized; break;
-                    case 1: result.G = quantized; break;
-                    case 2: result.B = quantized; break;
-                    case 3: result.A = quantized; break;
+                    case 0: result[0] = quantized; break;
+                    case 1: result[1] = quantized; break;
+                    case 2: result[2] = quantized; break;
+                    case 3: result[3] = quantized; break;
                 }
             }
-            return result;
+            return new RgbaColor(
+                r: result[0],
+                g: result[1],
+                b: result[2],
+                a: result[3]);
         }
 
         public void SetPartition(Partition p)
