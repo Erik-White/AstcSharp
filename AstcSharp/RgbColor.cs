@@ -3,15 +3,22 @@ namespace AstcSharp;
 public struct RgbColor
 {
     public static int BytesPerPixel => 3;
-    public int R { get; }
-    public int G { get; }
-    public int B { get; }
+    public byte R { get; }
+    public byte G { get; }
+    public byte B { get; }
 
-    public RgbColor(int r, int g, int b)
+    public RgbColor(byte r, byte g, byte b)
     {
-        R = Math.Clamp(r, byte.MinValue, byte.MaxValue);
-        G = Math.Clamp(g, byte.MinValue, byte.MaxValue);
-        B = Math.Clamp(b, byte.MinValue, byte.MaxValue);
+        R = r;
+        G = g;
+        B = b;
+    }
+
+    public RgbColor(int r, int g, int b) :this(
+        (byte)Math.Clamp(r, byte.MinValue, byte.MaxValue),
+        (byte)Math.Clamp(g, byte.MinValue, byte.MaxValue),
+        (byte)Math.Clamp(b, byte.MinValue, byte.MaxValue))
+    {
     }
 
     public readonly int this[int i] => i switch

@@ -3,18 +3,25 @@ namespace AstcSharp;
 public struct RgbaColor
 {
     public static int BytesPerPixel => 4;
-    public int R { get; }
-    public int G { get; }
-    public int B { get; }
-    public int A { get; }
+    public byte R { get; }
+    public byte G { get; }
+    public byte B { get; }
+    public byte A { get; }
 
-    public RgbaColor(int r, int g, int b, int a)
+    public RgbaColor(byte r, byte g, byte b, byte a)
     {
-        // Sould RGBA be bytes instead of ints?
-        R = Math.Clamp(r, byte.MinValue, byte.MaxValue);
-        G = Math.Clamp(g, byte.MinValue, byte.MaxValue);
-        B = Math.Clamp(b, byte.MinValue, byte.MaxValue);
-        A = Math.Clamp(a, byte.MinValue, byte.MaxValue);
+        R = r;
+        G = g;
+        B = b;
+        A = a;
+    }
+
+    public RgbaColor(int r, int g, int b, int a) :this(
+        (byte)Math.Clamp(r, byte.MinValue, byte.MaxValue),
+        (byte)Math.Clamp(g, byte.MinValue, byte.MaxValue),
+        (byte)Math.Clamp(b, byte.MinValue, byte.MaxValue),
+        (byte)Math.Clamp(a, byte.MinValue, byte.MaxValue))
+    {
     }
 
     public int this[int i]
