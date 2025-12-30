@@ -22,7 +22,7 @@ namespace AstcSharp
 
         public LogicalAstcBlock(Footprint footprint)
         {
-            _endpoints = [(new RgbaColor(0,0,0,0), new RgbaColor(0,0,0,0))];
+            _endpoints = [(RgbaColor.Empty, RgbaColor.Empty)];
             _weights = [.. new int[footprint.NumPixels()]];
             // TODO: Add pixel count to Partition constructor
             _partition = new Partition(footprint, 1, 0)
@@ -201,7 +201,7 @@ namespace AstcSharp
             if (!p.footprint.Equals(_partition.footprint))
                 throw new InvalidOperationException("New partitions may not be for a different footprint");
             _partition = p;
-            while (_endpoints.Count < p.num_parts) _endpoints.Add((new RgbaColor(0,0,0,0), new RgbaColor(0,0,0,0)));
+            while (_endpoints.Count < p.num_parts) _endpoints.Add((RgbaColor.Empty, RgbaColor.Empty));
             if (_endpoints.Count > p.num_parts) _endpoints.RemoveRange(p.num_parts, _endpoints.Count - p.num_parts);
         }
 

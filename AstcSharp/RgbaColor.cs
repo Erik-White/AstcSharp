@@ -16,7 +16,7 @@ public struct RgbaColor
         A = a;
     }
 
-    public RgbaColor(int r, int g, int b, int a) :this(
+    public RgbaColor(int r, int g, int b, int a = byte.MaxValue) : this(
         (byte)Math.Clamp(r, byte.MinValue, byte.MaxValue),
         (byte)Math.Clamp(g, byte.MinValue, byte.MaxValue),
         (byte)Math.Clamp(b, byte.MinValue, byte.MaxValue),

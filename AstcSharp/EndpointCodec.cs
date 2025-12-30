@@ -588,8 +588,8 @@ internal static class EndpointCodec
 
     public static (RgbaColor endpoint_low_rgba, RgbaColor endpoint_high_rgba) DecodeColorsForMode(List<int> vals, int maxValue, ColorEndpointMode mode)
     {
-        var endpoint_low_rgba = new RgbaColor(0,0,0,0);
-        var endpoint_high_rgba = new RgbaColor(0,0,0,0);
+        var endpoint_low_rgba = RgbaColor.Empty;
+        var endpoint_high_rgba = RgbaColor.Empty;
 
         switch (mode)
         {
@@ -597,8 +597,8 @@ internal static class EndpointCodec
                 {
                     int l0 = Quantization.UnquantizeCEValueFromRange(vals[0], maxValue);
                     int l1 = Quantization.UnquantizeCEValueFromRange(vals[1], maxValue);
-                    endpoint_low_rgba = new RgbaColor(l0, l0, l0, 255);
-                    endpoint_high_rgba = new RgbaColor(l1, l1, l1, 255);
+                    endpoint_low_rgba = new RgbaColor(l0, l0, l0);
+                    endpoint_high_rgba = new RgbaColor(l1, l1, l1);
                 }
                 break;
             case ColorEndpointMode.kLdrLumaBaseOffset:
@@ -607,8 +607,8 @@ internal static class EndpointCodec
                     int v1 = Quantization.UnquantizeCEValueFromRange(vals[1], maxValue);
                     int l0 = (v0 >> 2) | (v1 & 0xC0);
                     int l1 = Math.Min(l0 + (v1 & 0x3F), 0xFF);
-                    endpoint_low_rgba = new RgbaColor(l0, l0, l0, 255);
-                    endpoint_high_rgba = new RgbaColor(l1, l1, l1, 255);
+                    endpoint_low_rgba = new RgbaColor(l0, l0, l0);
+                    endpoint_high_rgba = new RgbaColor(l1, l1, l1);
                 }
                 break;
             case ColorEndpointMode.kLdrLumaAlphaDirect:
@@ -629,12 +629,6 @@ internal static class EndpointCodec
                     endpoint_low_rgba = new RgbaColor(a0, a0, a0, a2);
                     int high_luma = a0 + b0;
                     endpoint_high_rgba = new RgbaColor(high_luma, high_luma, high_luma, a2 + b2);
-                    // endpoint_low_rgba[0] = Clamp(endpoint_low_rgba[0], 0, 255);
-                    // endpoint_low_rgba[1] = Clamp(endpoint_low_rgba[1], 0, 255);
-                    // endpoint_low_rgba[2] = Clamp(endpoint_low_rgba[2], 0, 255);
-                    // endpoint_high_rgba[0] = Clamp(endpoint_high_rgba[0], 0, 255);
-                    // endpoint_high_rgba[1] = Clamp(endpoint_high_rgba[1], 0, 255);
-                    // endpoint_high_rgba[2] = Clamp(endpoint_high_rgba[2], 0, 255);
                 }
                 break;
             case ColorEndpointMode.kLdrRgbBaseScale:
@@ -646,13 +640,11 @@ internal static class EndpointCodec
                     endpoint_low_rgba = new RgbaColor(
                         (uv[0] * uv[3]) >> 8,
                         (uv[1] * uv[3]) >> 8,
-                        (uv[2] * uv[3]) >> 8,
-                        byte.MaxValue);
+                        (uv[2] * uv[3]) >> 8);
                     endpoint_high_rgba = new RgbaColor(
                         uv[0],
                         uv[1],
-                        uv[2],
-                        255);
+                        uv[2]);
                 }
                 break;
             case ColorEndpointMode.kLdrRgbDirect:
@@ -666,20 +658,18 @@ internal static class EndpointCodec
                     if (s1 < s0)
                     {
                         endpoint_low_rgba = new RgbaColor(
-                            (uv[1] + uv[5]) >> 1,
-                            (uv[3] + uv[5]) >> 1,
-                            uv[5],
-                            byte.MaxValue);
+                            r: (uv[1] + uv[5]) >> 1,
+                            g: (uv[3] + uv[5]) >> 1,
+                            b: uv[5]);
                         endpoint_high_rgba = new RgbaColor(
-                            (uv[0] + uv[4]) >> 1,
-                            (uv[2] + uv[4]) >> 1,
-                            uv[4],
-                            byte.MaxValue);
+                            r: (uv[0] + uv[4]) >> 1,
+                            g: (uv[2] + uv[4]) >> 1,
+                            b: uv[4]);
                     }
                     else
                     {
-                        endpoint_low_rgba = new RgbaColor(uv[0], uv[2], uv[4], byte.MaxValue);
-                        endpoint_high_rgba = new RgbaColor(uv[1], uv[3], uv[5], byte.MaxValue);
+                        endpoint_low_rgba = new RgbaColor(uv[0], uv[2], uv[4]);
+                        endpoint_high_rgba = new RgbaColor(uv[1], uv[3], uv[5]);
                     }
                 }
                 break;
@@ -695,22 +685,19 @@ internal static class EndpointCodec
                     if (b0 + b1 + b2 < 0)
                     {
                         endpoint_low_rgba = new RgbaColor(
-                            (a0 + b0 + a2 + b2) >> 1,
-                            (a1 + b1 + a2 + b2) >> 1,
-                            a2 + b2,
-                            byte.MaxValue);
+                            r: (a0 + b0 + a2 + b2) >> 1,
+                            g: (a1 + b1 + a2 + b2) >> 1,
+                            b: a2 + b2);
                         endpoint_high_rgba = new RgbaColor(
-                            (a0 + a2) >> 1,
-                            (a1 + a2) >> 1,
-                            a2,
-                            byte.MaxValue);
+                            r: (a0 + a2) >> 1,
+                            g: (a1 + a2) >> 1,
+                            b: a2);
                     }
                     else
                     {
-                        endpoint_low_rgba = new RgbaColor(a0, a1, a2, byte.MaxValue);
-                        endpoint_high_rgba = new RgbaColor(a0 + b0, a1 + b1, a2 + b2, byte.MaxValue);
+                        endpoint_low_rgba = new RgbaColor(a0, a1, a2);
+                        endpoint_high_rgba = new RgbaColor(a0 + b0, a1 + b1, a2 + b2);
                     }
-                    //for (int i=0;i<3;++i) { endpoint_low_rgba[i] = Clamp(endpoint_low_rgba[i], 0, 255); endpoint_high_rgba[i] = Clamp(endpoint_high_rgba[i], 0, 255); }
                 }
                 break;
             case ColorEndpointMode.kLdrRgbBaseScaleTwoA:
@@ -719,10 +706,10 @@ internal static class EndpointCodec
                     var v = new int[kNumVals]; for (int i=0;i<kNumVals;++i) v[i] = i<vals.Count?vals[i]:0;
                     var uv = UnquantizeArray(v, maxValue);
                     endpoint_low_rgba = new RgbaColor(
-                        (uv[0] * uv[3]) >> 8,
-                        (uv[1] * uv[3]) >> 8,
-                        (uv[2] * uv[3]) >> 8,
-                        uv[4]);
+                        r: (uv[0] * uv[3]) >> 8,
+                        g: (uv[1] * uv[3]) >> 8,
+                        b: (uv[2] * uv[3]) >> 8,
+                        a: uv[4]);
                     endpoint_high_rgba = new RgbaColor(uv[0], uv[1], uv[2], uv[5]);
                 }
                 break;
@@ -742,15 +729,15 @@ internal static class EndpointCodec
                     else
                     {
                         endpoint_low_rgba = new RgbaColor(
-                            (uv[1] + uv[5]) >> 1,
-                            (uv[3] + uv[5]) >> 1,
-                            uv[5],
-                            uv[7]);
+                            r: (uv[1] + uv[5]) >> 1,
+                            g: (uv[3] + uv[5]) >> 1,
+                            b: uv[5],
+                            a: uv[7]);
                         endpoint_high_rgba = new RgbaColor(
-                            (uv[0] + uv[4]) >> 1,
-                            (uv[2] + uv[4]) >> 1,
-                            uv[4],
-                            uv[6]);
+                            r: (uv[0] + uv[4]) >> 1,
+                            g: (uv[2] + uv[4]) >> 1,
+                            b: uv[4],
+                            a: uv[6]);
                     }
                 }
                 break;
@@ -782,10 +769,6 @@ internal static class EndpointCodec
                         endpoint_low_rgba = new RgbaColor(a0, a1, a2, a3);
                         endpoint_high_rgba = new RgbaColor(a0 + b0, a1 + b1, a2 + b2, a3 + b3);
                     }
-                    // for (int i=0;i<4;++i) {
-                    //     endpoint_low_rgba[i] = Clamp(endpoint_low_rgba[i], 0, 255);
-                    //     endpoint_high_rgba[i] = Clamp(endpoint_high_rgba[i], 0, 255);
-                    //     }
                 }
                 break;
             default:

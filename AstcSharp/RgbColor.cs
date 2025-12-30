@@ -14,7 +14,7 @@ public struct RgbColor
         B = b;
     }
 
-    public RgbColor(int r, int g, int b) :this(
+    public RgbColor(int r, int g, int b) : this(
         (byte)Math.Clamp(r, byte.MinValue, byte.MaxValue),
         (byte)Math.Clamp(g, byte.MinValue, byte.MaxValue),
         (byte)Math.Clamp(b, byte.MinValue, byte.MaxValue))
