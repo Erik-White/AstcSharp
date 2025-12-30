@@ -21,9 +21,6 @@ internal static class EndpointCodec
                mode == EndpointEncodingMode.kDirectRGB ? 6 : 8;
     }
 
-    // TODO: Use math.clamp
-    private static int Clamp(int value, int min, int max) => value < min ? min : (value > max ? max : value);
-
     private static void BitTransferSigned(ref int a, ref int b)
     {
         b >>= 1;
@@ -347,7 +344,7 @@ internal static class EndpointCodec
                     vals[2] = q_base[2];
                     if (num_samples > 0)
                     {
-                        int avg_scale = Clamp(scale_sum / num_samples, 0, 255);
+                        int avg_scale = Math.Clamp(scale_sum / num_samples, 0, 255);
                         vals[3] = Quantization.QuantizeCEValueToRange(avg_scale, maxValue);
                     }
                     else
@@ -441,7 +438,7 @@ internal static class EndpointCodec
         for (int i = 0; i < 4; ++i)
         {
             direct_base[i] = endpoint_low_rgba[i];
-            direct_offset[i] = Clamp(endpoint_high_rgba[i] - endpoint_low_rgba[i], -32, 31);
+            direct_offset[i] = Math.Clamp(endpoint_high_rgba[i] - endpoint_low_rgba[i], -32, 31);
             int a = direct_offset[i], b = direct_base[i]; InvertBitTransferSigned(ref a, ref b); direct_offset[i] = a; direct_base[i] = b;
         }
 
@@ -450,7 +447,7 @@ internal static class EndpointCodec
         for (int i = 0; i < 4; ++i)
         {
             inv_bc_base[i] = inv_bc_high[i];
-            inv_bc_offset[i] = Clamp(inv_bc_low[i] - inv_bc_high[i], -32, 31);
+            inv_bc_offset[i] = Math.Clamp(inv_bc_low[i] - inv_bc_high[i], -32, 31);
             int a = inv_bc_offset[i], b = inv_bc_base[i]; InvertBitTransferSigned(ref a, ref b); inv_bc_offset[i] = a; inv_bc_base[i] = b;
         }
 
@@ -459,7 +456,7 @@ internal static class EndpointCodec
         for (int i = 0; i < 4; ++i)
         {
             direct_base_swapped[i] = endpoint_high_rgba[i];
-            direct_offset_swapped[i] = Clamp(endpoint_low_rgba[i] - endpoint_high_rgba[i], -32, 31);
+            direct_offset_swapped[i] = Math.Clamp(endpoint_low_rgba[i] - endpoint_high_rgba[i], -32, 31);
             int a = direct_offset_swapped[i], b = direct_base_swapped[i]; InvertBitTransferSigned(ref a, ref b); direct_offset_swapped[i] = a; direct_base_swapped[i] = b;
         }
 
@@ -468,7 +465,7 @@ internal static class EndpointCodec
         for (int i = 0; i < 4; ++i)
         {
             inv_bc_base_swapped[i] = inv_bc_low[i];
-            inv_bc_offset_swapped[i] = Clamp(inv_bc_high[i] - inv_bc_low[i], -32, 31);
+            inv_bc_offset_swapped[i] = Math.Clamp(inv_bc_high[i] - inv_bc_low[i], -32, 31);
             int a = inv_bc_offset_swapped[i], b = inv_bc_base_swapped[i]; InvertBitTransferSigned(ref a, ref b); inv_bc_offset_swapped[i] = a; inv_bc_base_swapped[i] = b;
         }
 
