@@ -1,30 +1,13 @@
 namespace AstcSharp;
 
-public struct RgbaColor
+public record RgbaColor : RgbColor
 {
-    public static int BytesPerPixel => 4;
-    public byte R { get; }
-    public byte G { get; }
-    public byte B { get; }
+    public static new int BytesPerPixel => 4;
     public byte A { get; }
 
-    /// <summary>
-    /// The average of the R, G, and B channels
-    /// </summary>
-    public byte Average
-    {
-        get
-        {
-            var sum = R + G + B;
-            return (byte)((sum * 256 + 384) / 768);
-        }
-    }
-
     public RgbaColor(byte r, byte g, byte b, byte a)
+        : base(r, g, b)
     {
-        R = r;
-        G = g;
-        B = b;
         A = a;
     }
 
@@ -36,7 +19,7 @@ public struct RgbaColor
     {
     }
 
-    public int this[int i]
+    public override int this[int i]
     {
         get => i switch
         {
@@ -48,5 +31,8 @@ public struct RgbaColor
         };
     }
 
-    public static RgbaColor Empty => new(0, 0, 0, 0);
+    public static new RgbaColor Empty => new(0, 0, 0, 0);
+
+    public static new int SquaredError(RgbColor a, RgbColor b)
+        => SquaredError(a, b, BytesPerPixel);
 }

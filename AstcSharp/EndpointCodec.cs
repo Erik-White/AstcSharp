@@ -12,14 +12,13 @@ public enum EndpointEncodingMode
 
 internal static class EndpointCodec
 {
-    public static int NumValuesForEncodingMode(EndpointEncodingMode mode)
+    public static int EncodingModeValuesCount(EndpointEncodingMode mode) => mode switch
     {
-        return mode == EndpointEncodingMode.kDirectLuma ? 2 :
-               mode == EndpointEncodingMode.kDirectLumaAlpha ? 4 :
-               mode == EndpointEncodingMode.kBaseScaleRGB ? 4 :
-               mode == EndpointEncodingMode.kBaseScaleRGBA ? 6 :
-               mode == EndpointEncodingMode.kDirectRGB ? 6 : 8;
-    }
+        EndpointEncodingMode.kDirectLuma => 2,
+        EndpointEncodingMode.kDirectLumaAlpha or EndpointEncodingMode.kBaseScaleRGB => 4,
+        EndpointEncodingMode.kDirectRGB or EndpointEncodingMode.kBaseScaleRGBA => 6,
+        _ => 8
+    };
 
     private static void BitTransferSigned(ref int a, ref int b)
     {
@@ -44,18 +43,6 @@ internal static class EndpointCodec
 
     // Move to rgb or rgb extensions?
     private static int SquaredError(int[] a, int[] b, int numChannels = 4)
-    {
-        int result = 0;
-        for (int i = 0; i < numChannels; ++i)
-        {
-            int diff = a[i] - b[i];
-            result += diff * diff;
-        }
-        return result;
-    }
-
-    // TODO: Move to rgba
-    private static int SquaredError(RgbaColor a, RgbaColor b, int numChannels = 4)
     {
         int result = 0;
         for (int i = 0; i < numChannels; ++i)
@@ -284,7 +271,7 @@ internal static class EndpointCodec
     {
         bool needs_weight_swap = false;
         astc_mode = ColorEndpointMode.kLdrLumaDirect;
-        int numVals = NumValuesForEncodingMode(encoding_mode);
+        int numVals = EncodingModeValuesCount(encoding_mode);
         for (int i = vals.Count; i < numVals; ++i) vals.Add(0);
 
         switch (encoding_mode)
@@ -393,13 +380,13 @@ internal static class EndpointCodec
         int calculate_error_dir = 0;
         if (needs_weight_swap)
         {
-            calculate_error_dir = SquaredError(dec_low_dir, endpoint_high, 4) + SquaredError(dec_high_dir, endpoint_low, 4);
-            calculate_error_off = SquaredError(dec_low_off, endpoint_high, 4) + SquaredError(dec_high_off, endpoint_low, 4);
+            calculate_error_dir = RgbaColor.SquaredError(dec_low_dir, endpoint_high) + RgbaColor.SquaredError(dec_high_dir, endpoint_low);
+            calculate_error_off = RgbaColor.SquaredError(dec_low_off, endpoint_high) + RgbaColor.SquaredError(dec_high_off, endpoint_low);
         }
         else
         {
-            calculate_error_dir = SquaredError(dec_low_dir, endpoint_low, 4) + SquaredError(dec_high_dir, endpoint_high, 4);
-            calculate_error_off = SquaredError(dec_low_off, endpoint_low, 4) + SquaredError(dec_high_off, endpoint_high, 4);
+            calculate_error_dir = RgbaColor.SquaredError(dec_low_dir, endpoint_low) + RgbaColor.SquaredError(dec_high_dir,  endpoint_high);
+            calculate_error_off = RgbaColor.SquaredError(dec_low_off, endpoint_low) + RgbaColor.SquaredError(dec_high_off, endpoint_high);
         }
 
         if (calculate_error_dir <= calculate_error_off)

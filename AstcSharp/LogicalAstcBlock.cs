@@ -164,7 +164,7 @@ namespace AstcSharp
             int part = _partition.assignment[index];
             var (firstColor, secondColor) = _endpoints[part];
 
-            var result = new int[RgbaColor.BytesPerPixel];
+            var result = new int[ChannelCount];
             for (int channel = 0; channel < ChannelCount; ++channel)
             {
                 int weight = (_dualPlane != null && _dualPlane.Channel == channel) ? _dualPlane.Weights[index] : _weights[index];
@@ -189,6 +189,7 @@ namespace AstcSharp
                     case 3: result[3] = quantized; break;
                 }
             }
+            
             return new RgbaColor(
                 r: result[0],
                 g: result[1],

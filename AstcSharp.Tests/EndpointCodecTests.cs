@@ -51,7 +51,7 @@ namespace AstcSharp.Tests
                     var vals = new List<int>();
                     var needsSwap = EndpointCodec.EncodeColorsForMode(low, high, i, mode, out var astcMode, vals);
                     // The resulting vals length should match the encoding hint's value count
-                    Assert.Equal(EndpointCodec.NumValuesForEncodingMode(mode), vals.Count);
+                    Assert.Equal(EndpointCodec.EncodingModeValuesCount(mode), vals.Count);
 
                     foreach (var v in vals)
                     {

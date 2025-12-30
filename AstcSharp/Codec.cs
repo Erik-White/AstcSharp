@@ -140,10 +140,10 @@ public static class Codec
                 var pixelOffset = (footprint.Width() * row * BytesPerPixelUnorm8) + (column * BytesPerPixelUnorm8);
                 var decoded = logicalBlock.ColorAt(column, row);
 
-                buffer[pixelOffset + 0] = (byte)decoded.R;
-                buffer[pixelOffset + 1] = (byte)decoded.G;
-                buffer[pixelOffset + 2] = (byte)decoded.B;
-                buffer[pixelOffset + 3] = (byte)decoded.A;
+                buffer[pixelOffset + 0] = decoded.R;
+                buffer[pixelOffset + 1] = decoded.G;
+                buffer[pixelOffset + 2] = decoded.B;
+                buffer[pixelOffset + 3] = decoded.A;
             }
         }
 
