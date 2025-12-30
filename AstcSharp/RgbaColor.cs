@@ -8,6 +8,18 @@ public struct RgbaColor
     public byte B { get; }
     public byte A { get; }
 
+    /// <summary>
+    /// The average of the R, G, and B channels
+    /// </summary>
+    public byte Average
+    {
+        get
+        {
+            var sum = R + G + B;
+            return (byte)((sum * 256 + 384) / 768);
+        }
+    }
+
     public RgbaColor(byte r, byte g, byte b, byte a)
     {
         R = r;

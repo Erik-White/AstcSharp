@@ -42,13 +42,6 @@ internal static class EndpointCodec
         b &= 0xff;
     }
 
-    //TODO: Move to rgba
-    private static int AverageRGB(RgbaColor c)
-    {
-        int sum = c[0] + c[1] + c[2];
-        return (sum * 256 + 384) / 768;
-    }
-
     // Move to rgb or rgb extensions?
     private static int SquaredError(int[] a, int[] b, int numChannels = 4)
     {
@@ -300,8 +293,8 @@ internal static class EndpointCodec
                 return EncodeColorsLuma(endpoint_low_rgba, endpoint_high_rgba, maxValue, out astc_mode, vals);
             case EndpointEncodingMode.kDirectLumaAlpha:
                 {
-                    int avg1 = AverageRGB(endpoint_low_rgba);
-                    int avg2 = AverageRGB(endpoint_high_rgba);
+                    int avg1 = endpoint_low_rgba.Average;
+                    int avg2 = endpoint_high_rgba.Average;
                     vals[0] = Quantization.QuantizeCEValueToRange(avg1, maxValue);
                     vals[1] = Quantization.QuantizeCEValueToRange(avg2, maxValue);
                     vals[2] = Quantization.QuantizeCEValueToRange(endpoint_low_rgba[3], maxValue);
@@ -375,8 +368,8 @@ internal static class EndpointCodec
     {
         astc_mode = ColorEndpointMode.kLdrLumaDirect;
         if (vals.Count < 2) throw new ArgumentException();
-        int avg1 = AverageRGB(endpoint_low);
-        int avg2 = AverageRGB(endpoint_high);
+        int avg1 = endpoint_low.Average;
+        int avg2 = endpoint_high.Average;
 
         bool needs_weight_swap = false;
         if (avg1 > avg2) { needs_weight_swap = true; var t = avg1; avg1 = avg2; avg2 = t; }
