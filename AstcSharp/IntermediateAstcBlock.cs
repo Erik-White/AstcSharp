@@ -99,7 +99,8 @@ internal static class IntermediateAstcBlock
         if (maybeErr != null) return maybeErr;
 
         // Ensure top two bits of r1 and r2 not both zero per reference
-        Debug.Assert((rvals[1] | rvals[2]) > 0);
+        if ((rvals[1] | rvals[2]) <= 0)
+            throw new InvalidOperationException($"{nameof(rvals)}[1] | {nameof(rvals)}[2] must be > 0");
 
         for (int mode = 0; mode < kBlockModeInfo.Length; ++mode)
         {
@@ -134,7 +135,8 @@ internal static class IntermediateAstcBlock
             }
             else
             {
-                Debug.Assert(offset_x == 0);
+                if (offset_x != 0)
+                    throw new ArgumentOutOfRangeException(nameof(offset_x), offset_x, $"{nameof(offset_x)} must be 0");
             }
 
             if (block_mode.weight_grid_y_offset_bit_pos >= 0)
@@ -143,7 +145,8 @@ internal static class IntermediateAstcBlock
             }
             else
             {
-                Debug.Assert(offset_y == 0);
+                if (offset_y != 0)
+                    throw new ArgumentOutOfRangeException(nameof(offset_y), offset_y, $"{nameof(offset_y)} must be 0");
             }
 
             if (!block_mode.require_single_plane_low_prec)
@@ -153,7 +156,8 @@ internal static class IntermediateAstcBlock
             }
 
             // bit_sink should be empty
-            Debug.Assert(bit_sink.Bits == 0);
+            if (bit_sink.Bits != 0)
+                throw new InvalidOperationException($"{nameof(bit_sink)}.{nameof(bit_sink.Bits)} must be 0");
             bit_sink.PutBits<uint>(encoded_mode, 11);
             return null;
         }
@@ -337,7 +341,8 @@ internal static class IntermediateAstcBlock
         if (partitionCount > 1)
         {
             int id = data.partitionId ?? 0;
-            Debug.Assert(id >= 0);
+            if (id < 0)
+                throw new ArgumentOutOfRangeException(nameof(id), id, $"{nameof(id)} must be non-negative");
             bitSink.PutBits<uint>((uint)id, 10);
         }
 
@@ -349,7 +354,8 @@ internal static class IntermediateAstcBlock
 
         int weightBitsCount = (int)weightSink.Bits;
         // TODO: Throw here instead
-        Debug.Assert((int)weightSink.Bits == IntegerSequenceCodec.GetBitCountForRange(data.weights.Count, data.weightRange));
+        if ((int)weightSink.Bits != IntegerSequenceCodec.GetBitCountForRange(data.weights.Count, data.weightRange))
+            throw new InvalidOperationException($"{nameof(weightSink)}.{nameof(weightSink.Bits)} does not match expected bit count");
 
         int extra_config = 0;
         bool shared_endpoint_mode = SharedEndpointModes(data);
@@ -400,13 +406,15 @@ internal static class IntermediateAstcBlock
         if (data.dualPlaneChannel.HasValue)
         {
             int channel = data.dualPlaneChannel.Value;
-            Debug.Assert(channel < 4);
+            if (channel < 0 || channel >= 4)
+                throw new ArgumentOutOfRangeException(nameof(channel), channel, $"{nameof(channel)} must be in [0,3]");
             extra_config = (extra_config << 2) | channel;
         }
 
         int colorValueRange = data.endpoint_range.HasValue ? data.endpoint_range.Value : EndpointRangeForBlock(data);
         // TODO: Throw here instead
-        Debug.Assert(colorValueRange != kEndpointRange_ReturnInvalidWeightDims);
+        if (colorValueRange == kEndpointRange_ReturnInvalidWeightDims)
+            throw new InvalidOperationException($"{nameof(colorValueRange)} must not be {nameof(kEndpointRange_ReturnInvalidWeightDims)}");
         if (colorValueRange == kEndpointRange_ReturnNotEnoughColorBits)
         {
             return "Intermediate block emits illegal color range";
@@ -427,11 +435,14 @@ internal static class IntermediateAstcBlock
         int extraConfigBits = 128 - weightBitsCount - extraConfigBitPosition;
 
         // TODO: Throw here instead
-        Debug.Assert(extraConfigBits >= 0);
-        Debug.Assert(extra_config < (1 << extraConfigBits));
+        if (extraConfigBits < 0)
+            throw new ArgumentOutOfRangeException(nameof(extraConfigBits), extraConfigBits, $"{nameof(extraConfigBits)} must be non-negative");
+        if (extra_config >= (1 << extraConfigBits))
+            throw new ArgumentOutOfRangeException(nameof(extra_config), extra_config, $"{nameof(extra_config)} must be less than {1 << extraConfigBits}");
 
         int bitsToSkip = extraConfigBitPosition - (int)bitSink.Bits;
-        Debug.Assert(bitsToSkip >= 0);
+        if (bitsToSkip < 0)
+            throw new ArgumentOutOfRangeException(nameof(bitsToSkip), bitsToSkip, $"{nameof(bitsToSkip)} must be non-negative");
         while (bitsToSkip > 0)
         {
             int skipping = Math.Min(32, bitsToSkip);
@@ -445,7 +456,8 @@ internal static class IntermediateAstcBlock
         }
 
         // Throw here instead
-        Debug.Assert(bitSink.Bits == 128 - weightBitsCount);
+        if (bitSink.Bits != 128 - weightBitsCount)
+            throw new InvalidOperationException($"{nameof(bitSink)}.{nameof(bitSink.Bits)} does not match expected value");
 
         // Flush out the bit writer
         if (!bitSink.GetBits<UInt128Ex>(128 - weightBitsCount, out var astc_bits)) throw new InvalidOperationException();

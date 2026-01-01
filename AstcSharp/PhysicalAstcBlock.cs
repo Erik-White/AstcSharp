@@ -349,9 +349,7 @@ namespace AstcSharp
                     error = "Void extent block has no weight grid";
                     return null;
                 default:
-                    Debug.Assert(false, "Error decoding weight grid");
-                    error = "Internal error";
-                    return null;
+                    throw new InvalidOperationException($"Error decoding weight grid for block mode {block_mode}");
             }
 
             uint r = (uint)BitOps.GetBits(low32, 4, 1);
@@ -464,7 +462,8 @@ namespace AstcSharp
             const int kNumPartitionsBitLength = 2;
             ulong low_bits = astc_bits.Low;
             int num_partitions = 1 + (int)BitOps.GetBits(low_bits, kNumPartitionsBitPosition, kNumPartitionsBitLength);
-            Debug.Assert(num_partitions > 0 && num_partitions <= 4);
+            if (num_partitions <= 0 || num_partitions > 4)
+                throw new ArgumentOutOfRangeException(nameof(num_partitions), num_partitions, $"{nameof(num_partitions)} must be in [1,4]");
             return num_partitions;
         }
 
@@ -500,7 +499,8 @@ namespace AstcSharp
         private static ColorEndpointMode DecodeEndpointMode(UInt128Ex astc_bits, int partition)
         {
             int num_partitions = DecodeNumPartitions(astc_bits);
-            Debug.Assert(partition >= 0 && partition < num_partitions);
+            if (partition < 0 || partition >= num_partitions)
+                throw new ArgumentOutOfRangeException(nameof(partition), partition, $"{nameof(partition)} must be in [0,{num_partitions-1}]");
             ulong low_bits = astc_bits.Low;
             if (num_partitions == 1)
             {
@@ -535,9 +535,13 @@ namespace AstcSharp
                 if (i == partition) m = (int)(cembits & 0x3);
                 cembits >>= 2;
             }
-            Debug.Assert(c >= 0 && m >= 0);
+            if (c < 0)
+                throw new ArgumentOutOfRangeException(nameof(c), c, $"{nameof(c)} must be non-negative");
+            if (m < 0)
+                throw new ArgumentOutOfRangeException(nameof(m), m, $"{nameof(m)} must be non-negative");
             int mode = base_cem + 4 * c + m;
-            Debug.Assert(mode < (int)ColorEndpointMode.kColorEndpointModeCount);
+            if (mode < 0 || mode >= (int)ColorEndpointMode.kColorEndpointModeCount)
+                throw new ArgumentOutOfRangeException(nameof(mode), mode, $"{nameof(mode)} must be in [0,{(int)ColorEndpointMode.kColorEndpointModeCount-1}]");
             return (ColorEndpointMode)mode;
         }
 
@@ -575,8 +579,7 @@ namespace AstcSharp
                     return;
                 }
             }
-            Debug.Assert(false, "Not enough bits to store color values");
-            color_bits = 0; color_range = 0;
+            throw new InvalidOperationException("Not enough bits to store color values");
         }
     }
 

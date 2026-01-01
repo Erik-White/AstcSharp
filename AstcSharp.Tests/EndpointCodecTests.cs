@@ -46,7 +46,7 @@ namespace AstcSharp.Tests
 
             foreach (var mode in modes)
             {
-                for (int i = 5; i < 256; ++i)
+                for (int i = 5; i < 256; i++)
                 {
                     var vals = new List<int>();
                     var needsSwap = EndpointCodec.EncodeColorsForMode(low, high, i, mode, out var astcMode, vals);
@@ -57,9 +57,6 @@ namespace AstcSharp.Tests
                     {
                         Assert.InRange(v, 0, i);
                     }
-
-                    // just ensure the return is a bool (we don't assert a specific value)
-                    Assert.IsType<bool>(needsSwap);
                 }
             }
         }

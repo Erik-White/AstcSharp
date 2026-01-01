@@ -139,7 +139,9 @@ namespace AstcSharp
         // Decode a trit/quint block
         public static int[] DecodeISEBlock(int valRange, ulong blockBits, int numBits)
         {
-            if (!(valRange == 3 || valRange == 5)) throw new ArgumentException("valRange");
+            if (!(valRange == 3 || valRange == 5))
+                throw new ArgumentException("valRange must be 3 or 5", nameof(valRange));
+
             int kNumVals = (valRange == 5) ? 3 : 5;
             int[] kInterleavedBits = (valRange == 5) ? kInterleavedQuintBits : kInterleavedTritBits;
 

@@ -24,7 +24,8 @@ namespace AstcSharp
 
         public static UInt128Ex FromBytes(ReadOnlySpan<byte> bytes)
         {
-            if (bytes.Length < 16) throw new ArgumentException("Need 16 bytes");
+            ArgumentOutOfRangeException.ThrowIfLessThan(bytes.Length, 16);
+            
             // Restore original mapping: first 8 bytes -> Low, next 8 bytes -> High
             ulong low = BitConverter.ToUInt64(bytes.Slice(0, 8));
             ulong high = BitConverter.ToUInt64(bytes.Slice(8, 8));

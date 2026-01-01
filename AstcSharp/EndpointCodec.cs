@@ -31,8 +31,10 @@ internal static class EndpointCodec
 
     private static void InvertBitTransferSigned(ref int a, ref int b)
     {
-        if (a < -32 || a >= 32) throw new ArgumentOutOfRangeException();
-        if (b < 0 || b >= 256) throw new ArgumentOutOfRangeException();
+        ArgumentOutOfRangeException.ThrowIfLessThan(a, -32);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(a, 32);
+        ArgumentOutOfRangeException.ThrowIfLessThan(b, byte.MinValue);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(b, byte.MaxValue);
 
         if (a < 0) a += 0x40;
         a <<= 1;
@@ -235,7 +237,7 @@ internal static class EndpointCodec
     public static bool UsesBlueContract(int maxValue, ColorEndpointMode mode, List<int> values)
     {
         int numVals = Types.NumColorValuesForEndpointMode(mode);
-        if (values.Count < numVals) throw new ArgumentException("vals size");
+        ArgumentOutOfRangeException.ThrowIfLessThan(values.Count, numVals);
 
         switch (mode)
         {
@@ -354,7 +356,8 @@ internal static class EndpointCodec
     private static bool EncodeColorsLuma(RgbaColor endpoint_low, RgbaColor endpoint_high, int maxValue, out ColorEndpointMode astc_mode, List<int> vals)
     {
         astc_mode = ColorEndpointMode.kLdrLumaDirect;
-        if (vals.Count < 2) throw new ArgumentException();
+        ArgumentOutOfRangeException.ThrowIfLessThan(vals.Count, 2);
+        
         int avg1 = endpoint_low.Average;
         int avg2 = endpoint_high.Average;
 
@@ -385,7 +388,7 @@ internal static class EndpointCodec
         }
         else
         {
-            calculate_error_dir = RgbaColor.SquaredError(dec_low_dir, endpoint_low) + RgbaColor.SquaredError(dec_high_dir,  endpoint_high);
+            calculate_error_dir = RgbaColor.SquaredError(dec_low_dir, endpoint_low) + RgbaColor.SquaredError(dec_high_dir, endpoint_high);
             calculate_error_off = RgbaColor.SquaredError(dec_low_off, endpoint_low) + RgbaColor.SquaredError(dec_high_off, endpoint_high);
         }
 
