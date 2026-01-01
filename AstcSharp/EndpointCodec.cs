@@ -2,25 +2,37 @@ namespace AstcSharp;
 
 internal static class EndpointCodec
 {
+    /// <summary>
+    /// The 'bit_transfer_signed' function defined in Section C.2.14 of the ASTC specification
+    /// </summary>
     private static void BitTransferSigned(ref int a, ref int b)
     {
         b >>= 1;
         b |= a & 0x80;
         a >>= 1;
         a &= 0x3F;
-        if ((a & 0x20) != 0) a -= 0x40;
+
+        if ((a & 0x20) != 0)
+            a -= 0x40;
     }
 
+    /// <summary>
+    /// Takes two values, |a| in the range [-32, 31], and |b| in the range [0, 255],
+    /// and returns the two values in [0, 255] that will reconstruct |a| and |b| when
+    /// passed to the <see cref="BitTransferSigned"/> function.
+    /// </summary>
     private static void InvertBitTransferSigned(ref int a, ref int b)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(a, -32);
-        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(a, 32);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(a, 31);
         ArgumentOutOfRangeException.ThrowIfLessThan(b, byte.MinValue);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(b, byte.MaxValue);
 
-        if (a < 0) a += 0x40;
+        if (a < 0)
+            a += 0x40;
+
         a <<= 1;
-        a |= (b & 0x80);
+        a |= b & 0x80;
         b <<= 1;
         b &= 0xff;
     }
@@ -49,19 +61,6 @@ internal static class EndpointCodec
         var res = new int[v.Length];
         for (int i = 0; i < v.Length; ++i) res[i] = Quantization.UnquantizeCEValueFromRange(v[i], maxValue);
         return res;
-    }
-
-    private static RgbaColor InvertBlueContract(RgbaColor color)
-    {
-        // result[0] = Clamp(2 * c[0] - c[2], 0, 255);
-        // result[1] = Clamp(2 * c[1] - c[2], 0, 255);
-        
-        return new RgbaColor(
-            r: 2 * color[0] - color[2],
-            g: 2 * color[1] - color[2],
-            b: color.B,
-            a: color.A
-        );
     }
 
     private class QuantizedEndpointPair
@@ -395,8 +394,8 @@ internal static class EndpointCodec
         astc_mode = ColorEndpointMode.LdrRgbDirect;
         int num_channels = with_alpha ? 4 : 3;
 
-        var inv_bc_low = InvertBlueContract(endpoint_low_rgba);
-        var inv_bc_high = InvertBlueContract(endpoint_high_rgba);
+        var inv_bc_low = endpoint_low_rgba.WithInvertedBlueContract();
+        var inv_bc_high = endpoint_high_rgba.WithInvertedBlueContract();
 
         var direct_base = new int[4];
         var direct_offset = new int[4];
@@ -456,19 +455,16 @@ internal static class EndpointCodec
 
         // 3.2 blue-contract
         {
-            var bc_low = bc_quantized.UnquantizedLow();
-            var bc_high = bc_quantized.UnquantizedHigh();
-            var bc_low_arr = (int[])bc_low.Clone();
-            var bc_high_arr = (int[])bc_high.Clone();
-            // BlueContract on arrays -> modify first two channels
-            bc_low_arr[0] = (bc_low_arr[0] + bc_low_arr[2]) >> 1;
-            bc_low_arr[1] = (bc_low_arr[1] + bc_low_arr[2]) >> 1;
-            bc_high_arr[0] = (bc_high_arr[0] + bc_high_arr[2]) >> 1;
-            bc_high_arr[1] = (bc_high_arr[1] + bc_high_arr[2]) >> 1;
-
-            int sq_bc_error = SquaredError(bc_low_arr, new int[] { endpoint_low_rgba[0], endpoint_low_rgba[1], endpoint_low_rgba[2], endpoint_low_rgba[3] }, num_channels)
-                + SquaredError(bc_high_arr, new int[] { endpoint_high_rgba[0], endpoint_high_rgba[1], endpoint_high_rgba[2], endpoint_high_rgba[3] }, num_channels);
-            errors.Add(new CEEncodingOption(sq_bc_error, bc_quantized, false, true, false));
+            var blueContractUnquantizedLow = bc_quantized.UnquantizedLow();
+            var blueContractUnquantizedHigh = bc_quantized.UnquantizedHigh();
+            var blueContractLow = RgbaColorExtensions.WithBlueContract(blueContractUnquantizedLow[0], blueContractUnquantizedLow[1], blueContractUnquantizedLow[2], blueContractUnquantizedLow[3]);
+            var blueContractHigh = RgbaColorExtensions.WithBlueContract(blueContractUnquantizedHigh[0], blueContractUnquantizedHigh[1], blueContractUnquantizedHigh[2], blueContractUnquantizedHigh[3]);
+            // TODO: How to handle alpha for this entire functions??
+            var blueContractSquaredError = with_alpha
+                ? RgbaColor.SquaredError(blueContractLow, endpoint_low_rgba) + RgbaColor.SquaredError(blueContractHigh, endpoint_high_rgba)
+                : RgbColor.SquaredError(blueContractLow, endpoint_low_rgba) + RgbColor.SquaredError(blueContractHigh, endpoint_high_rgba);
+            
+            errors.Add(new CEEncodingOption(blueContractSquaredError, bc_quantized, swapEndpoints: false, blueContract: true, useOffsetMode: false));
         }
 
         // 3.3 base/offset
@@ -508,11 +504,16 @@ internal static class EndpointCodec
             var offsetCopy = (int[])offsetArr.Clone();
             for (int i = 0; i < num_channels; ++i)
             {
-                int a = offsetCopy[i], b = baseCopy[i]; BitTransferSigned(ref a, ref b); offsetCopy[i] = Math.Clamp(baseCopy[i] + a, 0, 255);
+                int a = offsetCopy[i],
+                b = baseCopy[i];
+                BitTransferSigned(ref a, ref b);
+                offsetCopy[i] = Math.Clamp(baseCopy[i] + a, 0, 255);
             }
-            // BlueContract
-            baseCopy[0] = (baseCopy[0] + baseCopy[2]) >> 1; baseCopy[1] = (baseCopy[1] + baseCopy[2]) >> 1;
-            offsetCopy[0] = (offsetCopy[0] + offsetCopy[2]) >> 1; offsetCopy[1] = (offsetCopy[1] + offsetCopy[2]) >> 1;
+            // BlueContract, see section C.2.14 of the ASTC specification
+            baseCopy[0] = (baseCopy[0] + baseCopy[2]) >> 1;
+            baseCopy[1] = (baseCopy[1] + baseCopy[2]) >> 1;
+            offsetCopy[0] = (offsetCopy[0] + offsetCopy[2]) >> 1;
+            offsetCopy[1] = (offsetCopy[1] + offsetCopy[2]) >> 1;
 
             int sq_bc_error = 0;
             if (swapped)
