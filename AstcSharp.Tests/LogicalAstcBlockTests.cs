@@ -96,8 +96,8 @@ public class LogicalAstcBlockTests
 
         var our_decoded_image = ImageBuffer.Allocate(width, height, has_alpha ? 4 : 3);
 
-        int block_width = fp.Width();
-        int block_height = fp.Height();
+        int block_width = fp.Width;
+        int block_height = fp.Height;
 
         for (int i = 0; i < astc.Length; i += PhysicalAstcBlock.kSizeInBytes)
         {

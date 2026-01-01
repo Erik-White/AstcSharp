@@ -23,20 +23,20 @@ namespace AstcSharp
         public LogicalAstcBlock(Footprint footprint)
         {
             _endpoints = [(RgbaColor.Empty, RgbaColor.Empty)];
-            _weights = [.. new int[footprint.NumPixels()]];
+            _weights = [.. new int[footprint.PixelCount]];
             // TODO: Add pixel count to Partition constructor
             _partition = new Partition(footprint, 1, 0)
             {
-                assignment = new List<int>(footprint.NumPixels())
+                assignment = new List<int>(footprint.PixelCount)
             };
-            for (int i = 0; i < footprint.NumPixels(); ++i) _partition.assignment.Add(0);
+            for (int i = 0; i < footprint.PixelCount; ++i) _partition.assignment.Add(0);
         }
 
         public LogicalAstcBlock(Footprint footprint, IntermediateAstcBlock.IntermediateBlockData block)
         {
             _endpoints = DecodeEndpoints(block);
             _partition = ComputePartition(footprint, block);
-            _weights = [.. new int[footprint.NumPixels()]];
+            _weights = [.. new int[footprint.PixelCount]];
             CalculateWeights(footprint, block);
         }
 
@@ -44,7 +44,7 @@ namespace AstcSharp
         {
             _endpoints = DecodeEndpoints(block);
             _partition = ComputePartition(footprint, block);
-            _weights = [.. new int[footprint.NumPixels()]];
+            _weights = [.. new int[footprint.PixelCount]];
             CalculateWeights(footprint, block);
         }
 
@@ -71,8 +71,8 @@ namespace AstcSharp
         private static Partition GenerateSinglePartition(Footprint footprint)
         {
             var p = new Partition(footprint, 1, 0);
-            p.assignment = new List<int>(footprint.NumPixels());
-            for (int i = 0; i < footprint.NumPixels(); ++i) p.assignment.Add(0);
+            p.assignment = new List<int>(footprint.PixelCount);
+            for (int i = 0; i < footprint.PixelCount; ++i) p.assignment.Add(0);
             return p;
         }
 
@@ -112,7 +112,7 @@ namespace AstcSharp
 
         private void CalculateWeights(Footprint footprint, IntermediateAstcBlock.VoidExtentData block)
         {
-            _weights = [.. new int[footprint.NumPixels()]];
+            _weights = [.. new int[footprint.PixelCount]];
         }
 
         public Footprint GetFootprint() => _partition.footprint;
@@ -122,10 +122,10 @@ namespace AstcSharp
             if (weight < 0 || weight > 64)
                 throw new ArgumentOutOfRangeException(nameof(weight));
 
-            _weights[y * GetFootprint().Width() + x] = weight;
+            _weights[y * GetFootprint().Width + x] = weight;
         }
 
-        public int WeightAt(int x, int y) => _weights[y * GetFootprint().Width() + x];
+        public int WeightAt(int x, int y) => _weights[y * GetFootprint().Width + x];
 
         public void SetDualPlaneWeightAt(int channel, int x, int y, int weight)
         {
@@ -136,7 +136,7 @@ namespace AstcSharp
                 throw new InvalidOperationException("Not a dual plane block");
             
             if (_dualPlane is not null && _dualPlane.Channel == channel)
-                _dualPlane.Weights[y * GetFootprint().Width() + x] = weight;
+                _dualPlane.Weights[y * GetFootprint().Width + x] = weight;
             else
                 SetWeightAt(x, y, weight);
         }
@@ -147,7 +147,7 @@ namespace AstcSharp
                 return WeightAt(x, y);
 
             return _dualPlane is not null && _dualPlane.Channel == channel
-                ? _dualPlane.Weights[y * GetFootprint().Width() + x]
+                ? _dualPlane.Weights[y * GetFootprint().Width + x]
                 : WeightAt(x, y);
         }
 
@@ -157,10 +157,10 @@ namespace AstcSharp
 
             ArgumentOutOfRangeException.ThrowIfNegative(x);
             ArgumentOutOfRangeException.ThrowIfNegative(y);
-            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(x, footprint.Width());
-            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(y, footprint.Height());
+            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(x, footprint.Width);
+            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(y, footprint.Height);
 
-            int index = y * footprint.Width() + x;
+            int index = y * footprint.Width + x;
             int part = _partition.assignment[index];
             var (firstColor, secondColor) = _endpoints[part];
 

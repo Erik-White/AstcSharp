@@ -14,8 +14,8 @@ namespace AstcSharp
 
         private static (int, int) GetGridSpaceCoordinates(Footprint footprint, int s, int t, int weight_dim_x, int weight_dim_y)
         {
-            int ds = GetScaleFactorD(footprint.Width());
-            int dt = GetScaleFactorD(footprint.Height());
+            int ds = GetScaleFactorD(footprint.Width);
+            int dt = GetScaleFactorD(footprint.Height);
 
             int cs = ds * s;
             int ct = dt * t;
@@ -71,10 +71,10 @@ namespace AstcSharp
         // grid will be unquantized as well (i.e. each weight within the range [0, 64]).
         public static List<int> InfillWeights(IReadOnlyList<int> weights, Footprint footprint, int dim_x, int dim_y)
         {
-            var result = new List<int>(footprint.NumPixels());
-            for (int t = 0; t < footprint.Height(); ++t)
+            var result = new List<int>(footprint.PixelCount);
+            for (int t = 0; t < footprint.Height; ++t)
             {
-                for (int s = 0; s < footprint.Width(); ++s)
+                for (int s = 0; s < footprint.Width; ++s)
                 {
                     var gridSpaceCoords = GetGridSpaceCoordinates(footprint, s, t, dim_x, dim_y);
                     var gridPts = BilerpGridPointsForWeight(gridSpaceCoords, dim_x);

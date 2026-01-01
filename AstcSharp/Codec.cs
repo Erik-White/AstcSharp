@@ -24,8 +24,8 @@ public static class Codec
     // TODO: Return a normal array instead of Span<byte>?
     public static Span<byte> DecompressToImage(ReadOnlySpan<byte> astcData, int width, int height, Footprint footprint)
     {
-        int blockWidth = footprint.Width();
-        int blockHeight = footprint.Height();
+        int blockWidth = footprint.Width;
+        int blockHeight = footprint.Height;
 
         if (blockWidth == 0 || blockHeight == 0 || width == 0 || height == 0)
             return [];
@@ -44,9 +44,9 @@ public static class Codec
         try
         {
             // Create a buffer once, and reuse for all the blocks in the image
-            decodedBlock = _arrayPool.Rent(footprint.Width() * footprint.Height() * BytesPerPixelUnorm8);
+            decodedBlock = _arrayPool.Rent(footprint.Width * footprint.Height * BytesPerPixelUnorm8);
             var decodedPixels = decodedBlock.AsSpan();
-            int blocksHigh = (height + footprint.Height() - 1) / footprint.Height();
+            int blocksHigh = (height + footprint.Height - 1) / footprint.Height;
             int blockIndex = 0;
             
             for (int blockY = 0; blockY < blocksHigh; blockY++)
@@ -65,13 +65,13 @@ public static class Codec
                     if (decodedPixels.Length == 0)
                         throw new InvalidOperationException("Failed to decompress ASTC block.");
 
-                    for (int pixelY = 0; pixelY < footprint.Height() && (blockY * footprint.Height() + pixelY) < height; pixelY++)
+                    for (int pixelY = 0; pixelY < footprint.Height && (blockY * footprint.Height + pixelY) < height; pixelY++)
                     {
-                        for (int pixelX = 0; pixelX < footprint.Width() && (blockX * footprint.Width() + pixelX) < width; pixelX++)
+                        for (int pixelX = 0; pixelX < footprint.Width && (blockX * footprint.Width + pixelX) < width; pixelX++)
                         {
-                            int srcIndex = (pixelY * footprint.Width() + pixelX) * 4;
-                            int dstX = blockX * footprint.Width() + pixelX;
-                            int dstY = blockY * footprint.Height() + pixelY;
+                            int srcIndex = (pixelY * footprint.Width + pixelX) * 4;
+                            int dstX = blockX * footprint.Width + pixelX;
+                            int dstY = blockY * footprint.Height + pixelY;
                             int dstIndex = (dstY * width + dstX) * 4;
 
                             imageBuffer[dstIndex] = decodedPixels[srcIndex];
@@ -102,7 +102,7 @@ public static class Codec
         var decodedPixels = Array.Empty<byte>();
         try
         {
-            decodedPixels = _arrayPool.Rent(footprint.Width() * footprint.Height() * BytesPerPixelUnorm8);
+            decodedPixels = _arrayPool.Rent(footprint.Width * footprint.Height * BytesPerPixelUnorm8);
             var decodedPixelBuffer = decodedPixels.AsSpan();
 
             DecompressBlock(blockData, footprint, ref decodedPixelBuffer);
@@ -127,11 +127,11 @@ public static class Codec
         if (logicalBlock is null)
             return;
 
-        for (int row = 0; row < footprint.Height(); ++row)
+        for (int row = 0; row < footprint.Height; row++)
         {
-            for (int column = 0; column < footprint.Width(); ++column)
+            for (int column = 0; column < footprint.Width; ++column)
             {
-                var pixelOffset = (footprint.Width() * row * BytesPerPixelUnorm8) + (column * BytesPerPixelUnorm8);
+                var pixelOffset = (footprint.Width * row * BytesPerPixelUnorm8) + (column * BytesPerPixelUnorm8);
                 var decoded = logicalBlock.ColorAt(column, row);
 
                 buffer[pixelOffset + 0] = decoded.R;

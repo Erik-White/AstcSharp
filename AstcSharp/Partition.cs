@@ -31,8 +31,8 @@ namespace AstcSharp
             ArgumentOutOfRangeException.ThrowIfNotEqual(a.footprint, b.footprint);
             
             const int kMaxNumSubsets = 4;
-            int w = a.footprint.Width();
-            int h = a.footprint.Height();
+            int w = a.footprint.Width;
+            int h = a.footprint.Height;
 
             var pair_counts = new List<(int a, int b, int count)>();
             for (int y = 0; y < 4; ++y) for (int x = 0; x < 4; ++x) pair_counts.Add((x, y, 0));
@@ -72,12 +72,12 @@ namespace AstcSharp
         public static Partition GetASTCPartition(Footprint footprint, int num_parts, int partition_id)
         {
             var part = new Partition(footprint, num_parts, partition_id);
-            int w = footprint.Width();
-            int h = footprint.Height();
+            int w = footprint.Width;
+            int h = footprint.Height;
             part.assignment = new List<int>(w * h);
             for (int y = 0; y < h; ++y)
                 for (int x = 0; x < w; ++x)
-                    part.assignment.Add(SelectASTCPartition(partition_id, x, y, 0, num_parts, footprint.NumPixels()));
+                    part.assignment.Add(SelectASTCPartition(partition_id, x, y, 0, num_parts, footprint.PixelCount));
             return part;
         }
 
