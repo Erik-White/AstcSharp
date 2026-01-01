@@ -233,8 +233,8 @@ internal static class IntermediateAstcBlock
             if (!endpointModeOpt.HasValue)
                 return null;
             endpoint.mode = endpointModeOpt.Value;
-            int colorCount = Types.NumColorValuesForEndpointMode(endpoint.mode);
-            for (int j = 0; j < colorCount; ++j)
+            
+            for (int j = 0; j < endpoint.mode.GetColorValuesCount(); ++j)
             {
                 endpoint.colors.Add(colors[colorIndex++]);
             }
@@ -271,7 +271,7 @@ internal static class IntermediateAstcBlock
         int availableColorBitsCount = ExtraConfigBitPosition(data) - bitsWrittenCount;
 
         int colorValuesCount = 0;
-        foreach (var ep in data.endpoints) colorValuesCount += Types.NumColorValuesForEndpointMode(ep.mode);
+        foreach (var ep in data.endpoints) colorValuesCount += ep.mode.GetColorValuesCount();
 
         int bitsNeededCount = (13 * colorValuesCount + 4) / 5;
         if (availableColorBitsCount < bitsNeededCount) return kEndpointRange_ReturnNotEnoughColorBits;

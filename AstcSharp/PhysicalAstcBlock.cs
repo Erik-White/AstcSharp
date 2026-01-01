@@ -229,7 +229,7 @@ namespace AstcSharp
         {
             const int kVoidExtentMaskBits = 9;
             const uint kVoidExtentMask = 0x1FC;
-            
+
             // The void-extent header is found in the low 64-bit word of the
             // canonical representation.
             if (BitOps.GetBits(astc_bits.Low, 0, kVoidExtentMaskBits) == kVoidExtentMask)
@@ -542,7 +542,7 @@ namespace AstcSharp
             ArgumentOutOfRangeException.ThrowIfLessThan(m, 0);
             int mode = base_cem + 4 * c + m;
             ArgumentOutOfRangeException.ThrowIfLessThan(mode, 0);
-            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(mode, (int)ColorEndpointMode.kColorEndpointModeCount);
+            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(mode, (int)ColorEndpointMode.ColorEndpointModeCount);
             
             return (ColorEndpointMode)mode;
         }
@@ -554,7 +554,7 @@ namespace AstcSharp
             for (int i = 0; i < num_partitions; ++i)
             {
                 var endpoint_mode = DecodeEndpointMode(astc_bits, i);
-                num_color_values += Types.NumColorValuesForEndpointMode(endpoint_mode);
+                num_color_values += endpoint_mode.GetColorValuesCount();
             }
             return num_color_values;
         }

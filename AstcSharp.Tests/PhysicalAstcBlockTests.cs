@@ -247,7 +247,7 @@ namespace AstcSharp.Tests
             for (int i = 0; i < 4; ++i)
             {
                 var mode = blk1.GetEndpointMode(i);
-                Assert.Equal(ColorEndpointMode.kLdrLumaDirect, mode);
+                Assert.Equal(ColorEndpointMode.LdrLumaDirect, mode);
             }
 
             Assert.Null(new PhysicalAstcBlock(0xFFF8003FFE000DFCUL).GetEndpointMode(0));
@@ -256,8 +256,8 @@ namespace AstcSharp.Tests
             Assert.Null(new PhysicalAstcBlock(0x0000000001FE000173UL).GetEndpointMode(100));
 
             var non_shared = new PhysicalAstcBlock(0x4000000000800D44UL);
-            Assert.Equal(ColorEndpointMode.kLdrLumaDirect, non_shared.GetEndpointMode(0));
-            Assert.Equal(ColorEndpointMode.kLdrLumaBaseOffset, non_shared.GetEndpointMode(1));
+            Assert.Equal(ColorEndpointMode.LdrLumaDirect, non_shared.GetEndpointMode(0));
+            Assert.Equal(ColorEndpointMode.LdrLumaBaseOffset, non_shared.GetEndpointMode(1));
         }
 
         [Fact]

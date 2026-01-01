@@ -133,7 +133,7 @@ internal static class EndpointCodec
 
         public bool Pack(bool hasAlpha, out ColorEndpointMode endpointMode, List<int> values, ref bool needsWeightSwap)
         {
-            endpointMode = ColorEndpointMode.kLdrLumaDirect;
+            endpointMode = ColorEndpointMode.LdrLumaDirect;
             var unquantizedLow = _quantizedEndpoints.UnquantizedLow();
             var unquantizedHigh = _quantizedEndpoints.UnquantizedHigh();
 
@@ -207,19 +207,19 @@ internal static class EndpointCodec
 
             if (_useOffsetMode)
             {
-                endpointMode = ColorEndpointMode.kLdrRgbBaseOffset;
+                endpointMode = ColorEndpointMode.LdrRgbBaseOffset;
             }
             else
             {
-                endpointMode = ColorEndpointMode.kLdrRgbDirect;
+                endpointMode = ColorEndpointMode.LdrRgbDirect;
             }
 
             if (hasAlpha)
             {
                 values[6] = qLow[3];
                 values[7] = qHigh[3];
-                if (_useOffsetMode) endpointMode = ColorEndpointMode.kLdrRgbaBaseOffset;
-                else endpointMode = ColorEndpointMode.kLdrRgbaDirect;
+                if (_useOffsetMode) endpointMode = ColorEndpointMode.LdrRgbaBaseOffset;
+                else endpointMode = ColorEndpointMode.LdrRgbaDirect;
             }
 
             if (_swapEndpoints)
@@ -236,15 +236,15 @@ internal static class EndpointCodec
 
     public static bool UsesBlueContract(int maxValue, ColorEndpointMode mode, List<int> values)
     {
-        int numVals = Types.NumColorValuesForEndpointMode(mode);
+        int numVals = mode.GetColorValuesCount();
         ArgumentOutOfRangeException.ThrowIfLessThan(values.Count, numVals);
 
         switch (mode)
         {
-            case ColorEndpointMode.kLdrRgbDirect:
-            case ColorEndpointMode.kLdrRgbaDirect:
+            case ColorEndpointMode.LdrRgbDirect:
+            case ColorEndpointMode.LdrRgbaDirect:
                 {
-                    int kNumVals = Math.Max(Types.NumColorValuesForEndpointMode(ColorEndpointMode.kLdrRgbDirect), Types.NumColorValuesForEndpointMode(ColorEndpointMode.kLdrRgbaDirect));
+                    int kNumVals = Math.Max(ColorEndpointMode.LdrRgbDirect.GetColorValuesCount(), ColorEndpointMode.LdrRgbaDirect.GetColorValuesCount());
                     var v = new int[kNumVals];
                     for (int i = 0; i < kNumVals; ++i) v[i] = i < values.Count ? values[i] : 0;
                     var uv = UnquantizeArray(v, maxValue);
@@ -252,10 +252,10 @@ internal static class EndpointCodec
                     int s1 = uv[1] + uv[3] + uv[5];
                     return s0 > s1;
                 }
-            case ColorEndpointMode.kLdrRgbBaseOffset:
-            case ColorEndpointMode.kLdrRgbaBaseOffset:
+            case ColorEndpointMode.LdrRgbBaseOffset:
+            case ColorEndpointMode.LdrRgbaBaseOffset:
                 {
-                    int kNumVals = Math.Max(Types.NumColorValuesForEndpointMode(ColorEndpointMode.kLdrRgbBaseOffset), Types.NumColorValuesForEndpointMode(ColorEndpointMode.kLdrRgbaBaseOffset));
+                    int kNumVals = Math.Max(ColorEndpointMode.LdrRgbBaseOffset.GetColorValuesCount(), ColorEndpointMode.LdrRgbaBaseOffset.GetColorValuesCount());
                     var v = new int[kNumVals];
                     for (int i = 0; i < kNumVals; ++i) v[i] = i < values.Count ? values[i] : 0;
                     var uv = UnquantizeArray(v, maxValue);
@@ -272,7 +272,7 @@ internal static class EndpointCodec
     public static bool EncodeColorsForMode(RgbaColor endpoint_low_rgba, RgbaColor endpoint_high_rgba, int maxValue, EndpointEncodingMode encoding_mode, out ColorEndpointMode astc_mode, List<int> vals)
     {
         bool needs_weight_swap = false;
-        astc_mode = ColorEndpointMode.kLdrLumaDirect;
+        astc_mode = ColorEndpointMode.LdrLumaDirect;
         int numVals = EncodingModeValuesCount(encoding_mode);
         for (int i = vals.Count; i < numVals; ++i) vals.Add(0);
 
@@ -288,7 +288,7 @@ internal static class EndpointCodec
                     vals[1] = Quantization.QuantizeCEValueToRange(avg2, maxValue);
                     vals[2] = Quantization.QuantizeCEValueToRange(endpoint_low_rgba[3], maxValue);
                     vals[3] = Quantization.QuantizeCEValueToRange(endpoint_high_rgba[3], maxValue);
-                    astc_mode = ColorEndpointMode.kLdrLumaAlphaDirect;
+                    astc_mode = ColorEndpointMode.LdrLumaAlphaDirect;
                 }
                 break;
             case EndpointEncodingMode.kBaseScaleRGB:
@@ -333,13 +333,13 @@ internal static class EndpointCodec
                     {
                         vals[3] = maxValue;
                     }
-                    astc_mode = ColorEndpointMode.kLdrRgbBaseScale;
+                    astc_mode = ColorEndpointMode.LdrRgbBaseScale;
 
                     if (encoding_mode == EndpointEncodingMode.kBaseScaleRGBA)
                     {
                         vals[4] = Quantization.QuantizeCEValueToRange(scaled[3], maxValue);
                         vals[5] = Quantization.QuantizeCEValueToRange(basec[3], maxValue);
-                        astc_mode = ColorEndpointMode.kLdrRgbBaseScaleTwoA;
+                        astc_mode = ColorEndpointMode.LdrRgbBaseScaleTwoA;
                     }
                 }
                 break;
@@ -355,7 +355,7 @@ internal static class EndpointCodec
 
     private static bool EncodeColorsLuma(RgbaColor endpoint_low, RgbaColor endpoint_high, int maxValue, out ColorEndpointMode astc_mode, List<int> vals)
     {
-        astc_mode = ColorEndpointMode.kLdrLumaDirect;
+        astc_mode = ColorEndpointMode.LdrLumaDirect;
         ArgumentOutOfRangeException.ThrowIfLessThan(vals.Count, 2);
         
         int avg1 = endpoint_low.Average;
@@ -373,11 +373,11 @@ internal static class EndpointCodec
 
         vals[0] = quant_off_low;
         vals[1] = quant_off_high;
-        var (dec_low_off, dec_high_off) = DecodeColorsForMode(vals, maxValue, ColorEndpointMode.kLdrLumaBaseOffset);
+        var (dec_low_off, dec_high_off) = DecodeColorsForMode(vals, maxValue, ColorEndpointMode.LdrLumaBaseOffset);
 
         vals[0] = quant_low;
         vals[1] = quant_high;
-        var (dec_low_dir, dec_high_dir) = DecodeColorsForMode(vals, maxValue, ColorEndpointMode.kLdrLumaDirect);
+        var (dec_low_dir, dec_high_dir) = DecodeColorsForMode(vals, maxValue, ColorEndpointMode.LdrLumaDirect);
         
         int calculate_error_off = 0;
         int calculate_error_dir = 0;
@@ -396,13 +396,13 @@ internal static class EndpointCodec
         {
             vals[0] = quant_low;
             vals[1] = quant_high;
-            astc_mode = ColorEndpointMode.kLdrLumaDirect;
+            astc_mode = ColorEndpointMode.LdrLumaDirect;
         }
         else
         {
             vals[0] = quant_off_low;
             vals[1] = quant_off_high;
-            astc_mode = ColorEndpointMode.kLdrLumaBaseOffset;
+            astc_mode = ColorEndpointMode.LdrLumaBaseOffset;
         }
 
         return needs_weight_swap;
@@ -410,7 +410,7 @@ internal static class EndpointCodec
 
     private static bool EncodeColorsRGBA(RgbaColor endpoint_low_rgba, RgbaColor endpoint_high_rgba, int maxValue, bool with_alpha, out ColorEndpointMode astc_mode, List<int> vals)
     {
-        astc_mode = ColorEndpointMode.kLdrRgbDirect;
+        astc_mode = ColorEndpointMode.LdrRgbDirect;
         int num_channels = with_alpha ? 4 : 3;
 
         var inv_bc_low = InvertBlueContract(endpoint_low_rgba);
@@ -573,7 +573,7 @@ internal static class EndpointCodec
 
         switch (mode)
         {
-            case ColorEndpointMode.kLdrLumaDirect:
+            case ColorEndpointMode.LdrLumaDirect:
                 {
                     int l0 = Quantization.UnquantizeCEValueFromRange(vals[0], maxValue);
                     int l1 = Quantization.UnquantizeCEValueFromRange(vals[1], maxValue);
@@ -581,7 +581,7 @@ internal static class EndpointCodec
                     endpoint_high_rgba = new RgbaColor(l1, l1, l1);
                 }
                 break;
-            case ColorEndpointMode.kLdrLumaBaseOffset:
+            case ColorEndpointMode.LdrLumaBaseOffset:
                 {
                     int v0 = Quantization.UnquantizeCEValueFromRange(vals[0], maxValue);
                     int v1 = Quantization.UnquantizeCEValueFromRange(vals[1], maxValue);
@@ -591,7 +591,7 @@ internal static class EndpointCodec
                     endpoint_high_rgba = new RgbaColor(l1, l1, l1);
                 }
                 break;
-            case ColorEndpointMode.kLdrLumaAlphaDirect:
+            case ColorEndpointMode.LdrLumaAlphaDirect:
                 {
                     var v = new int[4];
                     for (int i = 0; i < 4; ++i) v[i] = i < vals.Count ? vals[i] : 0;
@@ -600,7 +600,7 @@ internal static class EndpointCodec
                     endpoint_high_rgba = new RgbaColor(uv[1], uv[1], uv[1], uv[3]);
                 }
                 break;
-            case ColorEndpointMode.kLdrLumaAlphaBaseOffset:
+            case ColorEndpointMode.LdrLumaAlphaBaseOffset:
                 {
                     var v = new int[4]; for (int i=0;i<4;i++) v[i] = i<vals.Count?vals[i]:0;
                     var uv = UnquantizeArray(v, maxValue);
@@ -611,9 +611,9 @@ internal static class EndpointCodec
                     endpoint_high_rgba = new RgbaColor(high_luma, high_luma, high_luma, a2 + b2);
                 }
                 break;
-            case ColorEndpointMode.kLdrRgbBaseScale:
+            case ColorEndpointMode.LdrRgbBaseScale:
                 {
-                    int kNumVals = Types.NumColorValuesForEndpointMode(ColorEndpointMode.kLdrRgbBaseScale);
+                    int kNumVals = ColorEndpointMode.LdrRgbBaseScale.GetColorValuesCount();
                     var v = new int[kNumVals]; for (int i=0;i<kNumVals;++i) v[i] = i<vals.Count?vals[i]:0;
                     var uv = UnquantizeArray(v, maxValue);
 
@@ -627,9 +627,9 @@ internal static class EndpointCodec
                         uv[2]);
                 }
                 break;
-            case ColorEndpointMode.kLdrRgbDirect:
+            case ColorEndpointMode.LdrRgbDirect:
                 {
-                    int kNumVals = Types.NumColorValuesForEndpointMode(ColorEndpointMode.kLdrRgbDirect);
+                    int kNumVals = ColorEndpointMode.LdrRgbDirect.GetColorValuesCount();
                     var v = new int[kNumVals]; for (int i=0;i<kNumVals;++i) v[i] = i<vals.Count?vals[i]:0;
                     var uv = UnquantizeArray(v, maxValue);
                     int s0 = uv[0] + uv[2] + uv[4];
@@ -653,9 +653,9 @@ internal static class EndpointCodec
                     }
                 }
                 break;
-            case ColorEndpointMode.kLdrRgbBaseOffset:
+            case ColorEndpointMode.LdrRgbBaseOffset:
                 {
-                    int kNumVals = Types.NumColorValuesForEndpointMode(ColorEndpointMode.kLdrRgbBaseOffset);
+                    int kNumVals = ColorEndpointMode.LdrRgbBaseOffset.GetColorValuesCount();
                     var v = new int[kNumVals]; for (int i=0;i<kNumVals;++i) v[i] = i<vals.Count?vals[i]:0;
                     var uv = UnquantizeArray(v, maxValue);
                     int a0 = uv[0], b0 = uv[1]; BitTransferSigned(ref b0, ref a0);
@@ -680,9 +680,9 @@ internal static class EndpointCodec
                     }
                 }
                 break;
-            case ColorEndpointMode.kLdrRgbBaseScaleTwoA:
+            case ColorEndpointMode.LdrRgbBaseScaleTwoA:
                 {
-                    int kNumVals = Types.NumColorValuesForEndpointMode(ColorEndpointMode.kLdrRgbBaseScaleTwoA);
+                    int kNumVals = ColorEndpointMode.LdrRgbBaseScaleTwoA.GetColorValuesCount();
                     var v = new int[kNumVals]; for (int i=0;i<kNumVals;++i) v[i] = i<vals.Count?vals[i]:0;
                     var uv = UnquantizeArray(v, maxValue);
                     endpoint_low_rgba = new RgbaColor(
@@ -693,9 +693,9 @@ internal static class EndpointCodec
                     endpoint_high_rgba = new RgbaColor(uv[0], uv[1], uv[2], uv[5]);
                 }
                 break;
-            case ColorEndpointMode.kLdrRgbaDirect:
+            case ColorEndpointMode.LdrRgbaDirect:
                 {
-                    int kNumVals = Types.NumColorValuesForEndpointMode(ColorEndpointMode.kLdrRgbaDirect);
+                    int kNumVals = ColorEndpointMode.LdrRgbaDirect.GetColorValuesCount();
                     var v = new int[kNumVals]; for (int i=0;i<kNumVals;++i) v[i] = i<vals.Count?vals[i]:0;
                     var uv = UnquantizeArray(v, maxValue);
                     int s0 = uv[0] + uv[2] + uv[4];
@@ -721,9 +721,9 @@ internal static class EndpointCodec
                     }
                 }
                 break;
-            case ColorEndpointMode.kLdrRgbaBaseOffset:
+            case ColorEndpointMode.LdrRgbaBaseOffset:
                 {
-                    int kNumVals = Types.NumColorValuesForEndpointMode(ColorEndpointMode.kLdrRgbaBaseOffset);
+                    int kNumVals = ColorEndpointMode.LdrRgbaBaseOffset.GetColorValuesCount();
                     var v = new int[kNumVals]; for (int i=0;i<kNumVals;++i) v[i] = i<vals.Count?vals[i]:0;
                     var uv = UnquantizeArray(v, maxValue);
                     int a0 = uv[0], b0 = uv[1]; BitTransferSigned(ref b0, ref a0);

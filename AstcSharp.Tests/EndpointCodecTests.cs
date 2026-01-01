@@ -91,8 +91,8 @@ namespace AstcSharp.Tests
         public void UsesBlueContract_SimpleCases()
         {
             var vals = new List<int>{ 132, 127, 116, 112, 183, 180, 31, 22 };
-            Assert.True(EndpointCodec.UsesBlueContract(255, ColorEndpointMode.kLdrRgbDirect, vals));
-            Assert.True(EndpointCodec.UsesBlueContract(255, ColorEndpointMode.kLdrRgbaDirect, vals));
+            Assert.True(EndpointCodec.UsesBlueContract(255, ColorEndpointMode.LdrRgbDirect, vals));
+            Assert.True(EndpointCodec.UsesBlueContract(255, ColorEndpointMode.LdrRgbaDirect, vals));
 
             // For offset modes, flip certain bits to test negative cases as in reference
             var vals2 = new List<int>(vals);
@@ -100,16 +100,16 @@ namespace AstcSharp.Tests
             vals2[3] &= 0xBF;
             vals2[5] &= 0xBF;
             vals2[7] &= 0xBF;
-            Assert.False(EndpointCodec.UsesBlueContract(255, ColorEndpointMode.kLdrRgbBaseOffset, vals2));
-            Assert.False(EndpointCodec.UsesBlueContract(255, ColorEndpointMode.kLdrRgbaBaseOffset, vals2));
+            Assert.False(EndpointCodec.UsesBlueContract(255, ColorEndpointMode.LdrRgbBaseOffset, vals2));
+            Assert.False(EndpointCodec.UsesBlueContract(255, ColorEndpointMode.LdrRgbaBaseOffset, vals2));
 
             vals2 = new List<int>(vals);
             vals2[1] |= 0x40;
             vals2[3] |= 0x40;
             vals2[5] |= 0x40;
             vals2[7] |= 0x40;
-            Assert.True(EndpointCodec.UsesBlueContract(255, ColorEndpointMode.kLdrRgbBaseOffset, vals2));
-            Assert.True(EndpointCodec.UsesBlueContract(255, ColorEndpointMode.kLdrRgbaBaseOffset, vals2));
+            Assert.True(EndpointCodec.UsesBlueContract(255, ColorEndpointMode.LdrRgbBaseOffset, vals2));
+            Assert.True(EndpointCodec.UsesBlueContract(255, ColorEndpointMode.LdrRgbaBaseOffset, vals2));
         }
 
         [Fact]
@@ -242,7 +242,7 @@ namespace AstcSharp.Tests
                     vals.Add(diff);
                 }
 
-                var (decLow, decHigh) = EndpointCodec.DecodeColorsForMode(vals, 255, ColorEndpointMode.kLdrRgbBaseOffset);
+                var (decLow, decHigh) = EndpointCodec.DecodeColorsForMode(vals, 255, ColorEndpointMode.LdrRgbBaseOffset);
                 Assert.True(AreEqual(decLow, low));
                 Assert.True(AreEqual(decHigh, high));
             }
