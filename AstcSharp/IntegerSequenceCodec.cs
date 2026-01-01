@@ -53,8 +53,8 @@ namespace AstcSharp
 
         public static (int trits, int quints, int bits) GetCountsForRange(int range)
         {
-            if (range <= 0 || range >= (1 << kLog2MaxRangeForBits))
-                throw new ArgumentOutOfRangeException(nameof(range));
+            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(range, 0);
+            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(range, 1 << kLog2MaxRangeForBits);
 
             int trits = 0, quints = 0, bits = 0;
             int idx = Array.FindIndex(kMaxRanges, v => v >= range);
@@ -252,7 +252,7 @@ namespace AstcSharp
             int quints = (encoding_ == EncodingMode.kQuintEncoding) ? 1 : 0;
             int total_num_bits = GetBitCount(num_vals, trits, quints, bits_);
             int bits_per_block = EncodedBlockSize();
-            if (bits_per_block >= 64) throw new InvalidOperationException();
+            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(bits_per_block, 64);
 
             int bits_left = total_num_bits;
             var result = new List<int>();

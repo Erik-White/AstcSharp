@@ -229,11 +229,12 @@ namespace AstcSharp
         {
             const int kVoidExtentMaskBits = 9;
             const uint kVoidExtentMask = 0x1FC;
+            
             // The void-extent header is found in the low 64-bit word of the
             // canonical representation.
             if (BitOps.GetBits(astc_bits.Low, 0, kVoidExtentMaskBits) == kVoidExtentMask)
             {
-                return PhysicalAstcBlock.BlockMode.kVoidExtent;
+                return BlockMode.kVoidExtent;
             }
 
             // For decoding block mode fields the relevant bits live in the low
@@ -245,11 +246,11 @@ namespace AstcSharp
                 var mode_bits = BitOps.GetBits(low_bits, 2, 2);
                 switch (mode_bits)
                 {
-                    case 0: return PhysicalAstcBlock.BlockMode.kB4_A2;
-                    case 1: return PhysicalAstcBlock.BlockMode.kB8_A2;
-                    case 2: return PhysicalAstcBlock.BlockMode.kA2_B8;
+                    case 0: return BlockMode.kB4_A2;
+                    case 1: return BlockMode.kB8_A2;
+                    case 2: return BlockMode.kA2_B8;
                     case 3:
-                        return (BitOps.GetBits(low_bits, 8, 1) != 0) ? PhysicalAstcBlock.BlockMode.kB2_A2 : PhysicalAstcBlock.BlockMode.kA2_B6;
+                        return (BitOps.GetBits(low_bits, 8, 1) != 0) ? BlockMode.kB2_A2 : BlockMode.kA2_B6;
                 }
             }
             else
@@ -258,12 +259,12 @@ namespace AstcSharp
                 if ((mode_bits & 0xC) == 0x0)
                 {
                     if (BitOps.GetBits(low_bits, 0, 4) == 0) return null; // reserved
-                    else return PhysicalAstcBlock.BlockMode.k12_A2;
+                    else return BlockMode.k12_A2;
                 }
-                else if ((mode_bits & 0xC) == 0x4) return PhysicalAstcBlock.BlockMode.kA2_12;
-                else if (mode_bits == 0xC) return PhysicalAstcBlock.BlockMode.k6_10;
-                else if (mode_bits == 0xD) return PhysicalAstcBlock.BlockMode.k10_6;
-                else if ((mode_bits & 0xC) == 0x8) return PhysicalAstcBlock.BlockMode.kA6_B6;
+                else if ((mode_bits & 0xC) == 0x4) return BlockMode.kA2_12;
+                else if (mode_bits == 0xC) return BlockMode.k6_10;
+                else if (mode_bits == 0xD) return BlockMode.k10_6;
+                else if ((mode_bits & 0xC) == 0x8) return BlockMode.kA6_B6;
             }
 
             return null;
@@ -273,17 +274,14 @@ namespace AstcSharp
         {
             error = null;
             var block_mode = DecodeBlockMode(astc_bits);
-            if (block_mode == null)
+            if (block_mode is null)
             {
                 error = "Reserved block mode";
                 return null;
             }
 
             var props = new WeightGridProperties();
-            // diagnostic removed
             uint low32 = (uint)(astc_bits.Low & 0xFFFFFFFFUL);
-            // diagnostic
-            // Console.WriteLine($"DecodeWeightProps: low32=0x{low32:X8} block_mode={block_mode}");
 
             switch (block_mode.Value)
             {
@@ -462,8 +460,10 @@ namespace AstcSharp
             const int kNumPartitionsBitLength = 2;
             ulong low_bits = astc_bits.Low;
             int num_partitions = 1 + (int)BitOps.GetBits(low_bits, kNumPartitionsBitPosition, kNumPartitionsBitLength);
-            if (num_partitions <= 0 || num_partitions > 4)
-                throw new ArgumentOutOfRangeException(nameof(num_partitions), num_partitions, $"{nameof(num_partitions)} must be in [1,4]");
+            
+            ArgumentOutOfRangeException.ThrowIfLessThan(num_partitions, 1);
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(num_partitions, 4);
+
             return num_partitions;
         }
 
@@ -474,6 +474,7 @@ namespace AstcSharp
             var props = maybe.Value;
             int numWeights = props.Width * props.Height;
             if (DecodeDualPlaneBit(astc_bits)) numWeights *= 2;
+
             return IntegerSequenceCodec.GetBitCountForRange(numWeights, props.Range);
         }
 
@@ -493,15 +494,17 @@ namespace AstcSharp
         {
             int start_pos = 128 - DecodeNumWeightBits(astc_bits) - DecodeNumExtraCEMBits(astc_bits);
             if (DecodeDualPlaneBit(astc_bits)) return start_pos - 2;
+
             return start_pos;
         }
 
         private static ColorEndpointMode DecodeEndpointMode(UInt128Ex astc_bits, int partition)
         {
             int num_partitions = DecodeNumPartitions(astc_bits);
-            if (partition < 0 || partition >= num_partitions)
-                throw new ArgumentOutOfRangeException(nameof(partition), partition, $"{nameof(partition)} must be in [0,{num_partitions-1}]");
             ulong low_bits = astc_bits.Low;
+            ArgumentOutOfRangeException.ThrowIfLessThan(partition, 0);
+            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(partition, num_partitions);
+            
             if (num_partitions == 1)
             {
                 ulong cem = BitOps.GetBits(low_bits, 13, 4);
@@ -535,13 +538,12 @@ namespace AstcSharp
                 if (i == partition) m = (int)(cembits & 0x3);
                 cembits >>= 2;
             }
-            if (c < 0)
-                throw new ArgumentOutOfRangeException(nameof(c), c, $"{nameof(c)} must be non-negative");
-            if (m < 0)
-                throw new ArgumentOutOfRangeException(nameof(m), m, $"{nameof(m)} must be non-negative");
+            ArgumentOutOfRangeException.ThrowIfLessThan(c, 0);
+            ArgumentOutOfRangeException.ThrowIfLessThan(m, 0);
             int mode = base_cem + 4 * c + m;
-            if (mode < 0 || mode >= (int)ColorEndpointMode.kColorEndpointModeCount)
-                throw new ArgumentOutOfRangeException(nameof(mode), mode, $"{nameof(mode)} must be in [0,{(int)ColorEndpointMode.kColorEndpointModeCount-1}]");
+            ArgumentOutOfRangeException.ThrowIfLessThan(mode, 0);
+            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(mode, (int)ColorEndpointMode.kColorEndpointModeCount);
+            
             return (ColorEndpointMode)mode;
         }
 
@@ -569,7 +571,7 @@ namespace AstcSharp
             }
             int maxColorBits = dualPlaneStartPos - colorStartBitOpt.Value;
             int numColorValues = numColorValuesOpt.Value;
-            for (int range = 255; range > 0; --range)
+            for (int range = byte.MaxValue; range > byte.MinValue; --range)
             {
                 int bitCount = IntegerSequenceCodec.GetBitCountForRange(numColorValues, range);
                 if (bitCount <= maxColorBits)

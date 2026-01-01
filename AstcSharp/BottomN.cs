@@ -13,9 +13,10 @@ namespace AstcSharp
 
         public BottomN(int maxSize, IComparer<T>? comparer = null)
         {
-            if (maxSize <= 0) throw new ArgumentOutOfRangeException(nameof(maxSize));
+            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(maxSize, 0);
+            
             _maxSize = maxSize;
-            _data = new List<T>();
+            _data = [];
             _comparer = comparer is null ? Comparer<T>.Default : Comparer<T>.Create(comparer.Compare);
         }
 

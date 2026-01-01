@@ -28,7 +28,8 @@ namespace AstcSharp
         // PartitionMetric implementation based on C++ reference.
         public static int PartitionMetric(Partition a, Partition b)
         {
-            if (!a.footprint.Equals(b.footprint)) throw new InvalidOperationException("Footprints must match");
+            ArgumentOutOfRangeException.ThrowIfNotEqual(a.footprint, b.footprint);
+            
             const int kMaxNumSubsets = 4;
             int w = a.footprint.Width();
             int h = a.footprint.Height();
