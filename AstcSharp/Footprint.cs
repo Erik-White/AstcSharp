@@ -80,32 +80,29 @@ namespace AstcSharp
             {
                 if (t == FootprintType.kCount) continue;
                 var fp = FromFootprintType(t);
-                if (fp.HasValue && fp.Value.Width() == width && fp.Value.Height() == height) return fp.Value;
+                if (fp.Width() == width && fp.Height() == height) return fp;
             }
             return null;
         }
 
-        public static Footprint? FromFootprintType(FootprintType type)
+        public static Footprint FromFootprintType(FootprintType type) => type switch
         {
-            return type switch
-            {
-                FootprintType.k4x4 => Get4x4(),
-                FootprintType.k5x4 => Get5x4(),
-                FootprintType.k5x5 => Get5x5(),
-                FootprintType.k6x5 => Get6x5(),
-                FootprintType.k6x6 => Get6x6(),
-                FootprintType.k8x5 => Get8x5(),
-                FootprintType.k8x6 => Get8x6(),
-                FootprintType.k8x8 => Get8x8(),
-                FootprintType.k10x5 => Get10x5(),
-                FootprintType.k10x6 => Get10x6(),
-                FootprintType.k10x8 => Get10x8(),
-                FootprintType.k10x10 => Get10x10(),
-                FootprintType.k12x10 => Get12x10(),
-                FootprintType.k12x12 => Get12x12(),
-                _ => (Footprint?)null
-            };
-        }
+            FootprintType.k4x4 => Get4x4(),
+            FootprintType.k5x4 => Get5x4(),
+            FootprintType.k5x5 => Get5x5(),
+            FootprintType.k6x5 => Get6x5(),
+            FootprintType.k6x6 => Get6x6(),
+            FootprintType.k8x5 => Get8x5(),
+            FootprintType.k8x6 => Get8x6(),
+            FootprintType.k8x8 => Get8x8(),
+            FootprintType.k10x5 => Get10x5(),
+            FootprintType.k10x6 => Get10x6(),
+            FootprintType.k10x8 => Get10x8(),
+            FootprintType.k10x10 => Get10x10(),
+            FootprintType.k12x10 => Get12x10(),
+            FootprintType.k12x12 => Get12x12(),
+            _ => throw new ArgumentOutOfRangeException($"Invalid FootprintType: {type}"),
+        };
 
         public float Bitrate()
         {

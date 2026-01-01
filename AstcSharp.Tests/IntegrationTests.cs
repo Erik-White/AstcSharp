@@ -14,10 +14,7 @@ public class IntegrationTests
         foreach (var file in files)
         {
             var bytes = File.ReadAllBytes(file);
-            var astc = AstcFile.LoadFromMemory(bytes, out var err);
-            Assert.Null(err);
-            Assert.NotNull(astc);
-            Assert.True(astc.GetFootprint().HasValue, $"Unknown footprint for {file}");
+            var astc = AstcFile.FromMemory(bytes);
 
             var result = Codec.DecompressToImage(astc);
             Assert.True(result.Length > 0, $"Decoding failed for {Path.GetFileName(file)}");

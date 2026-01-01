@@ -16,12 +16,7 @@ namespace AstcSharp.Benchmarks
         {
             var path = BenchmarkTestDataLocator.FindTestData(Path.Combine("Input", "atlas_small_4x4.astc"));
             astcData = File.ReadAllBytes(path);
-            astcFile = AstcFile.LoadFromMemory(astcData, out var error);
-            if (astcFile == null)
-                throw new InvalidOperationException($"Failed to load ASTC file: {error}");
-            footprint = astcFile.GetFootprint();
-            if (!footprint.HasValue)
-                throw new InvalidOperationException("Could not determine ASTC footprint");
+            astcFile = AstcFile.FromMemory(astcData);
         }
 
         [Benchmark]

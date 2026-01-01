@@ -10,21 +10,15 @@ public static class Codec
     public static Span<byte> ASTCDecompressToRGBA(ReadOnlySpan<byte> astcData, int width, int height, FootprintType footprint)
     {
         var footPrint = Footprint.FromFootprintType(footprint);
-        if (footPrint is null)
-            return [];
         
-        return DecompressToImage(astcData, width, height, footPrint.Value);
+        return DecompressToImage(astcData, width, height, footPrint);
     }
 
     public static Span<byte> DecompressToImage(AstcFile file)
     {
         ArgumentNullException.ThrowIfNull(file);
-
-        var footprint = file.GetFootprint();
-        if (!footprint.HasValue)
-            return [];
         
-        return DecompressToImage(file.Blocks, file.GetWidth(), file.GetHeight(), footprint.Value);
+        return DecompressToImage(file.Blocks, file.Width, file.Height, file.Footprint);
     }
 
     // TODO: Return a normal array instead of Span<byte>?

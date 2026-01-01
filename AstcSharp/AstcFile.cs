@@ -1,109 +1,60 @@
-using System;
-using System.Text;
+namespace AstcSharp;
 
-namespace AstcSharp
+/// <summary>
+/// a very simple format consisting of a small header followed immediately
+/// by the binary payload for a single image surface.
+/// </summary>
+/// <remarks>
+/// See https://github.com/ARM-software/astc-encoder/blob/main/Docs/FileFormat.md
+// </remarks>
+public record AstcFile
 {
-    public sealed class AstcFile
+    private readonly AstcFileHeader _header;
+    private readonly byte[] _blocks;
+
+    public ReadOnlySpan<byte> Blocks => _blocks;
+    public Footprint Footprint { get; }
+    public int Width => _header.ImageWidth;
+    public int Height => _header.ImageHeight;
+    public int Depth => _header.ImageDepth;
+
+    internal AstcFile(AstcFileHeader header, byte[] blocks)
     {
-        public struct Header
-        {
-            public int Magic; // should be 0x5CA1AB13 (little-endian)
-            public byte BlockDimX;
-            public byte BlockDimY;
-            public byte BlockDimZ;
-            public int Xsize;
-            public int Ysize;
-            public int Zsize;
-        }
-
-        private Header _header;
-        private byte[] _blocks;
-
-        private AstcFile(Header header, byte[] blocks)
-        {
-            _header = header;
-            _blocks = blocks;
-        }
-
-        public ReadOnlySpan<byte> Blocks => _blocks;
-
-        public static AstcFile? LoadFromMemory(byte[] data, out string? error)
-        {
-            error = null;
-            if (data == null || data.Length < 16)
-            {
-                error = "data too small";
-                return null;
-            }
-
-            // ASTC header is 16 bytes: magic (4), blockdim (3), xsize,y,z (each 3 little-endian bytes)
-            uint magic = BitConverter.ToUInt32(data, 0);
-            if (magic != 0x5CA1AB13u)
-            {
-                error = "invalid magic";
-                return null;
-            }
-
-            byte blockdimx = data[4];
-            byte blockdimy = data[5];
-            byte blockdimz = data[6];
-
-            int xsize = data[7] | (data[8] << 8) | (data[9] << 16);
-            int ysize = data[10] | (data[11] << 8) | (data[12] << 16);
-            int zsize = data[13] | (data[14] << 8) | (data[15] << 16);
-
-            var header = new Header { Magic = (int)magic, BlockDimX = blockdimx, BlockDimY = blockdimy, BlockDimZ = blockdimz, Xsize = xsize, Ysize = ysize, Zsize = zsize };
-
-            // Remaining bytes are blocks; C++ reference keeps them as string; here we keep as byte[]
-            var blocks_len = data.Length - 16;
-            var blocks = new byte[blocks_len];
-            Array.Copy(data, 16, blocks, 0, blocks_len);
-
-            return new AstcFile(header, blocks);
-        }
-
-        public int GetWidth() => _header.Xsize;
-        public int GetHeight() => _header.Ysize;
-        public int GetDepth() => _header.Zsize;
-
-        public Footprint? GetFootprint()
-        {
-            // Map block dims to FootprintType
-            switch ((_header.BlockDimX, _header.BlockDimY))
-            {
-                case (4,4): return Footprint.FromFootprintType(FootprintType.k4x4).Value;
-                case (5,4): return Footprint.FromFootprintType(FootprintType.k5x4).Value;
-                case (5,5): return Footprint.FromFootprintType(FootprintType.k5x5).Value;
-                case (6,5): return Footprint.FromFootprintType(FootprintType.k6x5).Value;
-                case (6,6): return Footprint.FromFootprintType(FootprintType.k6x6).Value;
-                case (8,5): return Footprint.FromFootprintType(FootprintType.k8x5).Value;
-                case (8,6): return Footprint.FromFootprintType(FootprintType.k8x6).Value;
-                case (8,8): return Footprint.FromFootprintType(FootprintType.k8x8).Value;
-                case (10,5): return Footprint.FromFootprintType(FootprintType.k10x5).Value;
-                case (10,6): return Footprint.FromFootprintType(FootprintType.k10x6).Value;
-                case (10,8): return Footprint.FromFootprintType(FootprintType.k10x8).Value;
-                case (10,10): return Footprint.FromFootprintType(FootprintType.k10x10).Value;
-                case (12,10): return Footprint.FromFootprintType(FootprintType.k12x10).Value;
-                case (12,12): return Footprint.FromFootprintType(FootprintType.k12x12).Value;
-                default: return null;
-            }
-        }
-
+        _header = header;
+        _blocks = blocks;
+        Footprint = GetFootprint();
     }
+
+    public static AstcFile FromMemory(byte[] data)
+    {
+        var header = AstcFileHeader.FromMemory(data.AsSpan(0, AstcFileHeader.SizeInBytes));
+
+        // Remaining bytes are blocks; C++ reference keeps them as string; here we keep as byte[]
+        var blocks = new byte[data.Length - AstcFileHeader.SizeInBytes];
+        Array.Copy(data, AstcFileHeader.SizeInBytes, blocks, 0, blocks.Length);
+
+        return new AstcFile(header, blocks);
+    }
+
+    /// <summary>
+    /// Map the block dimensions in the header to a Footprint, if possible.
+    /// </summary>
+    private Footprint GetFootprint() => (_header.BlockWidth, _header.BlockHeight) switch
+    {
+        (4, 4) => Footprint.FromFootprintType(FootprintType.k4x4),
+        (5, 4) => Footprint.FromFootprintType(FootprintType.k5x4),
+        (5, 5) => Footprint.FromFootprintType(FootprintType.k5x5),
+        (6, 5) => Footprint.FromFootprintType(FootprintType.k6x5),
+        (6, 6) => Footprint.FromFootprintType(FootprintType.k6x6),
+        (8, 5) => Footprint.FromFootprintType(FootprintType.k8x5),
+        (8, 6) => Footprint.FromFootprintType(FootprintType.k8x6),
+        (8, 8) => Footprint.FromFootprintType(FootprintType.k8x8),
+        (10, 5) => Footprint.FromFootprintType(FootprintType.k10x5),
+        (10, 6) => Footprint.FromFootprintType(FootprintType.k10x6),
+        (10, 8) => Footprint.FromFootprintType(FootprintType.k10x8),
+        (10, 10) => Footprint.FromFootprintType(FootprintType.k10x10),
+        (12, 10) => Footprint.FromFootprintType(FootprintType.k12x10),
+        (12, 12) => Footprint.FromFootprintType(FootprintType.k12x12),
+        _ => throw new ArgumentOutOfRangeException($"Unsupported block dimensions: {_header.BlockWidth}x{_header.BlockHeight}"),
+    };
 }
-
-    namespace AstcSharp.Tools
-    {
-        internal static class AstcInspector
-        {
-            // Inspect metadata for an ASTC file's bytes and return a short summary.
-            public static string Inspect(byte[] astcBytes)
-            {
-                var file = AstcFile.LoadFromMemory(astcBytes, out var err);
-                if (file == null) return $"Error: {err}";
-                var fp = file.GetFootprint();
-                string fpStr = fp.HasValue ? fp.Value.Type().ToString() : "unknown";
-                return $"W={file.GetWidth()} H={file.GetHeight()} FP={fpStr} Blocks={file.Blocks.Length}";
-            }
-        }
-    }

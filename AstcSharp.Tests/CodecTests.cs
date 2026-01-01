@@ -18,7 +18,7 @@ namespace AstcSharp.Tests
             var output = new byte[valid_width * valid_height * 4];
 
             // Invalid footprint
-            Assert.Empty(Codec.ASTCDecompressToRGBA(data, valid_width, valid_height, FootprintType.kCount).ToArray());
+            Assert.Throws<ArgumentOutOfRangeException>(() => Codec.ASTCDecompressToRGBA(data, valid_width, valid_height, FootprintType.kCount).ToArray());
 
             // Fail for 0 width or height
             Assert.Empty(Codec.ASTCDecompressToRGBA(data, 0, valid_height, FootprintType.k4x4).ToArray());
@@ -42,15 +42,13 @@ namespace AstcSharp.Tests
 
         [Theory]
         [MemberData(nameof(PublicApiParams))]
-        public void PublicAPI(string imageName, FootprintType footprint, int width, int height)
+        public void PublicAPI(string imageName, FootprintType footprintType, int width, int height)
         {
             var astc = FileBasedHelpers.LoadASTCFile(imageName);
 
-            var maybeFp = Footprint.FromFootprintType(footprint);
-            Assert.NotNull(maybeFp);
-            var fp = maybeFp.Value;
-            int block_width = fp.Width();
-            int block_height = fp.Height();
+            var footprint = Footprint.FromFootprintType(footprintType);
+            int block_width = footprint.Width();
+            int block_height = footprint.Height();
             int blocks_wide = (width + block_width - 1) / block_width;
             int blocks_high = (height + block_height - 1) / block_height;
             int expected_block_count = blocks_wide * blocks_high;
@@ -66,17 +64,17 @@ namespace AstcSharp.Tests
             {
                 var block = astc.AsSpan(i, PhysicalAstcBlock.kSizeInBytes).ToArray();
                 var physicalBlock = new PhysicalAstcBlock(new UInt128Ex(BitConverter.ToUInt64(block, 0), BitConverter.ToUInt64(block, 8)));
-                var logicalBlock = LogicalAstcBlock.UnpackLogicalBlock(fp, physicalBlock);
+                var logicalBlock = LogicalAstcBlock.UnpackLogicalBlock(footprint, physicalBlock);
                 if (logicalBlock is null)
                 {
                     var physicalBlockRetry = new PhysicalAstcBlock(new UInt128Ex(BitConverter.ToUInt64(block, 8), BitConverter.ToUInt64(block, 0)));
-                    var logicalBlockRetry = LogicalAstcBlock.UnpackLogicalBlock(fp, physicalBlockRetry);
+                    var logicalBlockRetry = LogicalAstcBlock.UnpackLogicalBlock(footprint, physicalBlockRetry);
                     Assert.True(logicalBlockRetry is not null, "Block failed to unpack in both canonical and alternate byte orders");
                 }
                 Assert.NotNull(logicalBlock);
             }
 
-            var decodedPixels = Codec.ASTCDecompressToRGBA(astc, width, height, footprint);
+            var decodedPixels = Codec.ASTCDecompressToRGBA(astc, width, height, footprintType);
             var actualImage = new ImageBuffer(decodedPixels.ToArray(), width, height, 4);
 
             ImageUtils.CompareSumOfSquaredDifferences(expectedImage, actualImage, 0.1);
@@ -93,14 +91,12 @@ namespace AstcSharp.Tests
         public void DecompressToImageTest(string image_name, FootprintType footprint, int width, int height)
         {
             var astcBytes = File.ReadAllBytes(Path.Combine("TestData", "Input", image_name + ".astc"));
-            var file = AstcFile.LoadFromMemory(astcBytes, out var err);
-            Assert.Null(err);
-            Assert.NotNull(file);
-            Assert.True(file.GetFootprint().HasValue);
-            Assert.Equal(footprint, file.GetFootprint().Value.Type());
+            var file = AstcFile.FromMemory(astcBytes);
+            
+            Assert.Equal(footprint, file.Footprint.Type());
             // Ensure the header matches the expected dimensions from the test data
-            Assert.Equal(width, file.GetWidth());
-            Assert.Equal(height, file.GetHeight());
+            Assert.Equal(width, file.Width);
+            Assert.Equal(height, file.Height);
             
             var filePath = Path.Combine("TestData", "Expected", image_name + ".bmp");
             var expectedImage = FileBasedHelpers.LoadExpectedImage(filePath);
