@@ -1,25 +1,7 @@
 namespace AstcSharp;
 
-public enum EndpointEncodingMode
-{
-    kDirectLuma,
-    kDirectLumaAlpha,
-    kBaseScaleRGB,
-    kBaseScaleRGBA,
-    kDirectRGB,
-    kDirectRGBA
-}
-
 internal static class EndpointCodec
 {
-    public static int EncodingModeValuesCount(EndpointEncodingMode mode) => mode switch
-    {
-        EndpointEncodingMode.kDirectLuma => 2,
-        EndpointEncodingMode.kDirectLumaAlpha or EndpointEncodingMode.kBaseScaleRGB => 4,
-        EndpointEncodingMode.kDirectRGB or EndpointEncodingMode.kBaseScaleRGBA => 6,
-        _ => 8
-    };
-
     private static void BitTransferSigned(ref int a, ref int b)
     {
         b >>= 1;
@@ -273,14 +255,14 @@ internal static class EndpointCodec
     {
         bool needs_weight_swap = false;
         astc_mode = ColorEndpointMode.LdrLumaDirect;
-        int numVals = EncodingModeValuesCount(encoding_mode);
+        int numVals = encoding_mode.GetValuesCount();
         for (int i = vals.Count; i < numVals; ++i) vals.Add(0);
 
         switch (encoding_mode)
         {
-            case EndpointEncodingMode.kDirectLuma:
+            case EndpointEncodingMode.DirectLuma:
                 return EncodeColorsLuma(endpoint_low_rgba, endpoint_high_rgba, maxValue, out astc_mode, vals);
-            case EndpointEncodingMode.kDirectLumaAlpha:
+            case EndpointEncodingMode.DirectLumaAlpha:
                 {
                     int avg1 = endpoint_low_rgba.Average;
                     int avg2 = endpoint_high_rgba.Average;
@@ -291,8 +273,8 @@ internal static class EndpointCodec
                     astc_mode = ColorEndpointMode.LdrLumaAlphaDirect;
                 }
                 break;
-            case EndpointEncodingMode.kBaseScaleRGB:
-            case EndpointEncodingMode.kBaseScaleRGBA:
+            case EndpointEncodingMode.BaseScaleRgb:
+            case EndpointEncodingMode.BaseScaleRgba:
                 {
                     var basec = endpoint_high_rgba;
                     var scaled = endpoint_low_rgba;
@@ -335,7 +317,7 @@ internal static class EndpointCodec
                     }
                     astc_mode = ColorEndpointMode.LdrRgbBaseScale;
 
-                    if (encoding_mode == EndpointEncodingMode.kBaseScaleRGBA)
+                    if (encoding_mode == EndpointEncodingMode.BaseScaleRgba)
                     {
                         vals[4] = Quantization.QuantizeCEValueToRange(scaled[3], maxValue);
                         vals[5] = Quantization.QuantizeCEValueToRange(basec[3], maxValue);
@@ -343,9 +325,9 @@ internal static class EndpointCodec
                     }
                 }
                 break;
-            case EndpointEncodingMode.kDirectRGB:
-            case EndpointEncodingMode.kDirectRGBA:
-                return EncodeColorsRGBA(endpoint_low_rgba, endpoint_high_rgba, maxValue, encoding_mode == EndpointEncodingMode.kDirectRGBA, out astc_mode, vals);
+            case EndpointEncodingMode.DirectRbg:
+            case EndpointEncodingMode.DirectRgba:
+                return EncodeColorsRGBA(endpoint_low_rgba, endpoint_high_rgba, maxValue, encoding_mode == EndpointEncodingMode.DirectRgba, out astc_mode, vals);
             default:
                 throw new InvalidOperationException("Unimplemented color encoding.");
         }

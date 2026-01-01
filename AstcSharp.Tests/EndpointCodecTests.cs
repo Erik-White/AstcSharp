@@ -33,12 +33,12 @@ namespace AstcSharp.Tests
         public void QuantRanges()
         {
             var modes = new[] {
-                EndpointEncodingMode.kDirectLuma,
-                EndpointEncodingMode.kDirectLumaAlpha,
-                EndpointEncodingMode.kBaseScaleRGB,
-                EndpointEncodingMode.kBaseScaleRGBA,
-                EndpointEncodingMode.kDirectRGB,
-                EndpointEncodingMode.kDirectRGBA
+                EndpointEncodingMode.DirectLuma,
+                EndpointEncodingMode.DirectLumaAlpha,
+                EndpointEncodingMode.BaseScaleRgb,
+                EndpointEncodingMode.BaseScaleRgba,
+                EndpointEncodingMode.DirectRbg,
+                EndpointEncodingMode.DirectRgba
             };
 
             var low = new RgbaColor(0,0,0,0);
@@ -51,7 +51,7 @@ namespace AstcSharp.Tests
                     var vals = new List<int>();
                     var needsSwap = EndpointCodec.EncodeColorsForMode(low, high, i, mode, out var astcMode, vals);
                     // The resulting vals length should match the encoding hint's value count
-                    Assert.Equal(EndpointCodec.EncodingModeValuesCount(mode), vals.Count);
+                    Assert.Equal(mode.GetValuesCount(), vals.Count);
 
                     foreach (var v in vals)
                     {
@@ -65,12 +65,12 @@ namespace AstcSharp.Tests
         public void ExtremeDirectEncodings()
         {
             var modes = new[] {
-                EndpointEncodingMode.kDirectLuma,
-                EndpointEncodingMode.kDirectLumaAlpha,
-                EndpointEncodingMode.kBaseScaleRGB,
-                EndpointEncodingMode.kBaseScaleRGBA,
-                EndpointEncodingMode.kDirectRGB,
-                EndpointEncodingMode.kDirectRGBA
+                EndpointEncodingMode.DirectLuma,
+                EndpointEncodingMode.DirectLumaAlpha,
+                EndpointEncodingMode.BaseScaleRgb,
+                EndpointEncodingMode.BaseScaleRgba,
+                EndpointEncodingMode.DirectRbg,
+                EndpointEncodingMode.DirectRgba
             };
 
             var white = new RgbaColor(255,255,255,255);
@@ -115,7 +115,7 @@ namespace AstcSharp.Tests
         [Fact]
         public void LumaDirect_SpecificChecks()
         {
-            var mode = EndpointEncodingMode.kDirectLuma;
+            var mode = EndpointEncodingMode.DirectLuma;
 
             // Specific cases from reference tests
             var res1 = TestColors(new RgbaColor(247,248,246,255), new RgbaColor(2,3,1,255), 255, mode);
@@ -142,7 +142,7 @@ namespace AstcSharp.Tests
         [Fact]
         public void LumaAlphaDirect_SpecificChecks()
         {
-            var mode = EndpointEncodingMode.kDirectLumaAlpha;
+            var mode = EndpointEncodingMode.DirectLumaAlpha;
 
             // grey with varying alpha should round luma correctly and preserve alpha
             var res = TestColors(new RgbaColor(64,127,192,127), new RgbaColor(0,0,0,20), 63, mode);
@@ -158,7 +158,7 @@ namespace AstcSharp.Tests
         [Fact]
         public void RGBDirect_RandomAndSpecific()
         {
-            var mode = EndpointEncodingMode.kDirectRGB;
+            var mode = EndpointEncodingMode.DirectRbg;
             var rand = new Random(unchecked((int)0xdeadbeef));
             for (int i = 0; i < 100; ++i)
             {
@@ -192,7 +192,7 @@ namespace AstcSharp.Tests
             foreach (var p in pairs)
             {
                 var vals = new List<int>();
-                var needsSwap = EndpointCodec.EncodeColorsForMode(p.Item1, p.Item2, kEndpointRange, EndpointEncodingMode.kDirectRGB, out var astcMode, vals);
+                var needsSwap = EndpointCodec.EncodeColorsForMode(p.Item1, p.Item2, kEndpointRange, EndpointEncodingMode.DirectRbg, out var astcMode, vals);
                 // ensure blue contract used
                 Assert.True(EndpointCodec.UsesBlueContract(kEndpointRange, astcMode, vals));
             }
@@ -201,7 +201,7 @@ namespace AstcSharp.Tests
         [Fact]
         public void RGBBaseScale_Tests()
         {
-            var mode = EndpointEncodingMode.kBaseScaleRGB;
+            var mode = EndpointEncodingMode.BaseScaleRgb;
             var rand = new Random(unchecked((int)0xdeadbeef));
 
             // identical colors should be encoded with approx scale 255 -> within 1
