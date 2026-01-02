@@ -424,7 +424,7 @@ public readonly struct PhysicalBlock
         const int kMaxNumWeights = 64;
         if (kMaxNumWeights < numWeights) { error = "Too many weights specified"; return null; }
 
-        int bitCount = IntegerSequenceCodec.GetBitCountForRange(numWeights, props.Range);
+        int bitCount = BoundedIntegerSequenceCodec.GetBitCountForRange(numWeights, props.Range);
         const int kWeightGridMinBitLength = 24;
         const int kWeightGridMaxBitLength = 96;
         if (bitCount < kWeightGridMinBitLength) { error = "Too few bits required for weight grid"; return null; }
@@ -474,7 +474,7 @@ public readonly struct PhysicalBlock
         int numWeights = props.Width * props.Height;
         if (DecodeDualPlaneBit(astc_bits)) numWeights *= 2;
 
-        return IntegerSequenceCodec.GetBitCountForRange(numWeights, props.Range);
+        return BoundedIntegerSequenceCodec.GetBitCountForRange(numWeights, props.Range);
     }
 
     private static int DecodeNumExtraCEMBits(UInt128Ex astc_bits)
@@ -572,7 +572,7 @@ public readonly struct PhysicalBlock
         int numColorValues = numColorValuesOpt.Value;
         for (int range = byte.MaxValue; range > byte.MinValue; --range)
         {
-            int bitCount = IntegerSequenceCodec.GetBitCountForRange(numColorValues, range);
+            int bitCount = BoundedIntegerSequenceCodec.GetBitCountForRange(numColorValues, range);
             if (bitCount <= maxColorBits)
             {
                 color_bits = bitCount;

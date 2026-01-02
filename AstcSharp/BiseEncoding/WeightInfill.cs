@@ -63,7 +63,7 @@ namespace AstcSharp.BiseEncoding
         public static int CountBitsForWeights(int weight_dim_x, int weight_dim_y, int target_weight_range)
         {
             int num_weights = weight_dim_x * weight_dim_y;
-            return IntegerSequenceCodec.GetBitCountForRange(num_weights, target_weight_range);
+            return BoundedIntegerSequenceCodec.GetBitCountForRange(num_weights, target_weight_range);
         }
 
         // Performs weight infill of a grid of weights of size |dim_x * dim_y|. The

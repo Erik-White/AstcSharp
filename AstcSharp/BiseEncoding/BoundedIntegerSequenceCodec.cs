@@ -6,7 +6,12 @@ using AstcSharp.IO;
 
 namespace AstcSharp.BiseEncoding
 {
-    internal class IntegerSequenceCodec
+    /// <summary>
+    /// The Bounded Integer Sequence Encoding (BISE) allows storage of character sequences using
+    /// arbitrary alphabets of up to 256 symbols. Each alphabet size is encoded in the most
+    /// space-efficient choice of bits, trits, and quints.
+    /// </summary>
+    internal class BoundedIntegerSequenceCodec
     {
         private const int kLog2MaxRangeForBits = 8;
         private const int kNumPossibleRanges = 3 * kLog2MaxRangeForBits - 3;
@@ -21,13 +26,13 @@ namespace AstcSharp.BiseEncoding
         protected EncodingMode encoding_;
         protected int bits_;
 
-        protected IntegerSequenceCodec(int range)
+        protected BoundedIntegerSequenceCodec(int range)
         {
             var (trits, quints, bits) = GetCountsForRange(range);
             InitializeWithCounts(trits, quints, bits);
         }
 
-        protected IntegerSequenceCodec(int trits, int quints, int bits)
+        protected BoundedIntegerSequenceCodec(int trits, int quints, int bits)
         {
             InitializeWithCounts(trits, quints, bits);
         }
@@ -242,7 +247,7 @@ namespace AstcSharp.BiseEncoding
         public static IReadOnlyList<int> ISERange() => kMaxRanges;
     }
 
-    internal class IntegerSequenceDecoder : IntegerSequenceCodec
+    internal class IntegerSequenceDecoder : BoundedIntegerSequenceCodec
     {
         public IntegerSequenceDecoder(int range) : base(range) { }
         public IntegerSequenceDecoder(int trits, int quints, int bits) : base(trits, quints, bits) { }
@@ -265,10 +270,10 @@ namespace AstcSharp.BiseEncoding
                 switch (encoding_)
                 {
                     case EncodingMode.kTritEncoding:
-                        result.AddRange(IntegerSequenceCodec.DecodeISEBlock(3, block_bits, bits_));
+                        result.AddRange(BoundedIntegerSequenceCodec.DecodeISEBlock(3, block_bits, bits_));
                         break;
                     case EncodingMode.kQuintEncoding:
-                        result.AddRange(IntegerSequenceCodec.DecodeISEBlock(5, block_bits, bits_));
+                        result.AddRange(BoundedIntegerSequenceCodec.DecodeISEBlock(5, block_bits, bits_));
                         break;
                     case EncodingMode.kBitEncoding:
                         result.Add((int)block_bits);
@@ -283,7 +288,7 @@ namespace AstcSharp.BiseEncoding
         }
     }
 
-    internal class IntegerSequenceEncoder : IntegerSequenceCodec
+    internal class IntegerSequenceEncoder : BoundedIntegerSequenceCodec
     {
         private readonly List<int> vals_ = new List<int>();
 
@@ -312,7 +317,7 @@ namespace AstcSharp.BiseEncoding
                             if (idx < vals_.Count) trit_vals.Add(vals_[idx++]);
                             else trit_vals.Add(0);
                         }
-                        IntegerSequenceCodec.EncodeISEBlock<int>(trit_vals, bits_, ref bit_sink, ref bits_written, total_num_bits);
+                        BoundedIntegerSequenceCodec.EncodeISEBlock<int>(trit_vals, bits_, ref bit_sink, ref bits_written, total_num_bits);
                         break;
                     case EncodingMode.kQuintEncoding:
                         var quint_vals = new List<int>();
@@ -321,7 +326,7 @@ namespace AstcSharp.BiseEncoding
                             if (idx < vals_.Count) quint_vals.Add(vals_[idx++]);
                             else quint_vals.Add(0);
                         }
-                        IntegerSequenceCodec.EncodeISEBlock<int>(quint_vals, bits_, ref bit_sink, ref bits_written, total_num_bits);
+                        BoundedIntegerSequenceCodec.EncodeISEBlock<int>(quint_vals, bits_, ref bit_sink, ref bits_written, total_num_bits);
                         break;
                     case EncodingMode.kBitEncoding:
                         bit_sink.PutBits((uint)vals_[idx++], EncodedBlockSize());

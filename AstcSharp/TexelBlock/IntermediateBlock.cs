@@ -178,7 +178,7 @@ internal static class IntermediateBlock
     {
         bool has_dual_channel = data.dualPlaneChannel.HasValue;
         int num_weights = data.weightGridX * data.weightGridY * (has_dual_channel ? 2 : 1);
-        int num_weight_bits = IntegerSequenceCodec.GetBitCountForRange(num_weights, data.weightRange);
+        int num_weight_bits = BoundedIntegerSequenceCodec.GetBitCountForRange(num_weights, data.weightRange);
 
         int extra_config_bits = 0;
         if (!SharedEndpointModes(data))
@@ -267,7 +267,7 @@ internal static class IntermediateBlock
 
     public static int EndpointRangeForBlock(IntermediateBlockData data)
     {
-        if (IntegerSequenceCodec.GetBitCountForRange(data.weightGridX * data.weightGridY * (data.dualPlaneChannel.HasValue ? 2 : 1), data.weightRange) > 96)
+        if (BoundedIntegerSequenceCodec.GetBitCountForRange(data.weightGridX * data.weightGridY * (data.dualPlaneChannel.HasValue ? 2 : 1), data.weightRange) > 96)
             return kEndpointRange_ReturnInvalidWeightDims;
 
         int partitionCount = data.endpoints.Count;
@@ -283,7 +283,7 @@ internal static class IntermediateBlock
         int colorValueRange = byte.MaxValue;
         for (; colorValueRange > 1; --colorValueRange)
         {
-            int bitCountForRange = IntegerSequenceCodec.GetBitCountForRange(colorValuesCount, colorValueRange);
+            int bitCountForRange = BoundedIntegerSequenceCodec.GetBitCountForRange(colorValuesCount, colorValueRange);
             if (bitCountForRange <= availableColorBitsCount) break;
         }
         return colorValueRange;
@@ -354,7 +354,7 @@ internal static class IntermediateBlock
         weightsEncoder.Encode(ref weightSink);
 
         int weightBitsCount = (int)weightSink.Bits;
-        if ((int)weightSink.Bits != IntegerSequenceCodec.GetBitCountForRange(data.weights.Count, data.weightRange))
+        if ((int)weightSink.Bits != BoundedIntegerSequenceCodec.GetBitCountForRange(data.weights.Count, data.weightRange))
             throw new InvalidOperationException($"{nameof(weightSink)}.{nameof(weightSink.Bits)} does not match expected bit count");
 
         int extra_config = 0;
