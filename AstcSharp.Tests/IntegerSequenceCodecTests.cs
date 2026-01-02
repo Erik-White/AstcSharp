@@ -1,7 +1,8 @@
 using Xunit;
-using AstcSharp;
 using System.Collections.Generic;
 using System;
+using AstcSharp.IO;
+using AstcSharp.BiseEncoding;
 
 namespace AstcSharp.Tests
 {

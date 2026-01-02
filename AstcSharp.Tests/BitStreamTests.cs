@@ -1,5 +1,6 @@
 using Xunit;
 using AstcSharp;
+using AstcSharp.IO;
 
 namespace AstcSharp.Tests
 {

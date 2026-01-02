@@ -1,8 +1,11 @@
 using System.Buffers;
+using AstcSharp.Core;
+using AstcSharp.IO;
+using AstcSharp.TexelBlock;
 
 namespace AstcSharp;
 
-public static class Codec
+public static class AstcDecoder
 {
     private static readonly ArrayPool<byte> _arrayPool = ArrayPool<byte>.Shared;
     private const int BytesPerPixelUnorm8 = 4;
@@ -35,7 +38,7 @@ public static class Codec
             return [];
 
         int expectedBlockCount = (width + blockWidth - 1) / blockWidth * ((height + blockHeight - 1) / blockHeight);
-        if (astcData.Length % PhysicalAstcBlock.kSizeInBytes != 0 || astcData.Length / PhysicalAstcBlock.kSizeInBytes != expectedBlockCount)
+        if (astcData.Length % PhysicalBlock.kSizeInBytes != 0 || astcData.Length / PhysicalBlock.kSizeInBytes != expectedBlockCount)
             return [];
 
         var decodedBlock = Array.Empty<byte>();
@@ -53,12 +56,12 @@ public static class Codec
             {
                 for (int blockX = 0; blockX < blocksWide; blockX++)
                 {
-                    int blockDataOffset = blockIndex++ * PhysicalAstcBlock.kSizeInBytes;
-                    if (blockDataOffset + PhysicalAstcBlock.kSizeInBytes > astcData.Length)
+                    int blockDataOffset = blockIndex++ * PhysicalBlock.kSizeInBytes;
+                    if (blockDataOffset + PhysicalBlock.kSizeInBytes > astcData.Length)
                         continue;
 
                     DecompressBlock(
-                        astcData.Slice(blockDataOffset, PhysicalAstcBlock.kSizeInBytes),
+                        astcData.Slice(blockDataOffset, PhysicalBlock.kSizeInBytes),
                         footprint,
                         ref decodedPixels);
 
@@ -121,9 +124,9 @@ public static class Codec
     public static void DecompressBlock(ReadOnlySpan<byte> blockData, Footprint footprint, ref Span<byte> buffer)
     {
         // Copy the 16 bytes that make up the ASTC block
-        var physicalBlock = new PhysicalAstcBlock(new UInt128Ex(BitConverter.ToUInt64(blockData.Slice(0,8).ToArray(),0), BitConverter.ToUInt64(blockData.Slice(8,8).ToArray(),0)));
+        var physicalBlock = new PhysicalBlock(new UInt128Ex(BitConverter.ToUInt64(blockData.Slice(0,8).ToArray(),0), BitConverter.ToUInt64(blockData.Slice(8,8).ToArray(),0)));
 
-        var logicalBlock = LogicalAstcBlock.UnpackLogicalBlock(footprint, physicalBlock);
+        var logicalBlock = LogicalBlock.UnpackLogicalBlock(footprint, physicalBlock);
         if (logicalBlock is null)
             return;
 

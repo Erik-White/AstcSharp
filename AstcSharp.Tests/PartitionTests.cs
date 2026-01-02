@@ -1,6 +1,7 @@
 using Xunit;
-using AstcSharp;
 using System.Collections.Generic;
+using AstcSharp.Core;
+using AstcSharp.ColorEncoding;
 
 namespace AstcSharp.Tests
 {

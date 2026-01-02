@@ -2,29 +2,32 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using AstcSharp.BiseEncoding;
+using AstcSharp.ColorEncoding;
+using AstcSharp.Core;
 
-namespace AstcSharp
+namespace AstcSharp.TexelBlock
 {
     // A PhysicalASTCBlock contains all 128 bits and the logic for decoding the
     // various internals of an ASTC block. This is a C# port of the reference
     // implementation sufficient for the unit tests.
-    public readonly struct PhysicalAstcBlock
+    public readonly struct PhysicalBlock
     {
         public const int kSizeInBytes = 16;
 
         private readonly UInt128Ex _astcBits;
 
-        public PhysicalAstcBlock(UInt128Ex bits)
+        public PhysicalBlock(UInt128Ex bits)
         {
             _astcBits = bits;
         }
 
-        public PhysicalAstcBlock(ulong low)
+        public PhysicalBlock(ulong low)
         {
             _astcBits = new UInt128Ex(low, 0UL);
         }
 
-        public PhysicalAstcBlock(ulong low, ulong high)
+        public PhysicalBlock(ulong low, ulong high)
         {
             // Store as UInt128Ex(lowBits, highBits) where the first ctor arg is
             // the low 64-bit word.

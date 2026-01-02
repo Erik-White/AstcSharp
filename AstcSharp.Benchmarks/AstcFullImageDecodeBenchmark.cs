@@ -1,3 +1,6 @@
+using AstcSharp.Core;
+using AstcSharp.IO;
+using AstcSharp.TexelBlock;
 using BenchmarkDotNet.Attributes;
 
 namespace AstcSharp.Benchmarks;
@@ -7,7 +10,6 @@ public class AstcFullImageDecodeBenchmark
 {
     private byte[]? astcData;
     private AstcFile? astcFile;
-    private Footprint? footprint;
 
     [GlobalSetup]
     public void Setup()
@@ -26,8 +28,8 @@ public class AstcFullImageDecodeBenchmark
         for (int i = 0; i < numBlocks; ++i)
         {
             blocks.Slice(i * 16, 16).CopyTo(blockBytes);
-            var block = new PhysicalAstcBlock(new UInt128Ex(BitConverter.ToUInt64(blockBytes), BitConverter.ToUInt64(blockBytes.Slice(8))));
-            var ib = IntermediateAstcBlock.UnpackIntermediateBlock(block);
+            var block = new PhysicalBlock(new UInt128Ex(BitConverter.ToUInt64(blockBytes), BitConverter.ToUInt64(blockBytes.Slice(8))));
+            var ib = IntermediateBlock.UnpackIntermediateBlock(block);
         }
     }
 }

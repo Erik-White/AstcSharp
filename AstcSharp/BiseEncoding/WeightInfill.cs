@@ -1,8 +1,9 @@
 // Port of astc-codec/src/decoder/weight_infill.{h,cc}
 using System;
 using System.Collections.Generic;
+using AstcSharp.Core;
 
-namespace AstcSharp
+namespace AstcSharp.BiseEncoding
 {
     internal static class WeightInfill
     {

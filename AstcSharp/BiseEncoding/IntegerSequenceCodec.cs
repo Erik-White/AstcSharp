@@ -2,8 +2,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using AstcSharp.IO;
 
-namespace AstcSharp
+namespace AstcSharp.BiseEncoding
 {
     internal class IntegerSequenceCodec
     {

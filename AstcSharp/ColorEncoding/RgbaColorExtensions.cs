@@ -1,4 +1,6 @@
-namespace AstcSharp;
+using AstcSharp.Core;
+
+namespace AstcSharp.ColorEncoding;
 
 public static class RgbaColorExtensions
 {

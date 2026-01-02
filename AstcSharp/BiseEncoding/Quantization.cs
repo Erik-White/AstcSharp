@@ -1,4 +1,4 @@
-namespace AstcSharp;
+namespace AstcSharp.BiseEncoding;
 
 internal static class Quantization
 {

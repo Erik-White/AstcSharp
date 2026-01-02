@@ -2,8 +2,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using AstcSharp.Core;
 
-namespace AstcSharp
+namespace AstcSharp.ColorEncoding
 {
     internal class Partition
     {

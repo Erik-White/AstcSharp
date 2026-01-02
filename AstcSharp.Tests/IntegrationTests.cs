@@ -1,3 +1,5 @@
+using AstcSharp.IO;
+
 namespace AstcSharp.Tests;
 
 public class IntegrationTests
@@ -16,7 +18,7 @@ public class IntegrationTests
             var bytes = File.ReadAllBytes(file);
             var astc = AstcFile.FromMemory(bytes);
 
-            var result = Codec.DecompressToImage(astc);
+            var result = AstcDecoder.DecompressToImage(astc);
             Assert.True(result.Length > 0, $"Decoding failed for {Path.GetFileName(file)}");
         }
     }

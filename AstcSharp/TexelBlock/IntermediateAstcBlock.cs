@@ -1,9 +1,13 @@
 using System.Diagnostics;
+using AstcSharp.BiseEncoding;
+using AstcSharp.ColorEncoding;
+using AstcSharp.Core;
+using AstcSharp.IO;
 
-namespace AstcSharp;
+namespace AstcSharp.TexelBlock;
 
 // From Table C.2.7 -- valid weight ranges
-internal static class IntermediateAstcBlock
+internal static class IntermediateBlock
 {
     public static readonly int[] kValidWeightRanges = [1, 2, 3, 4, 5, 7, 9, 11, 15, 19, 23, 31];
 
@@ -190,7 +194,7 @@ internal static class IntermediateAstcBlock
 
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, UInt128Ex> s_lastUnpacked = new System.Collections.Concurrent.ConcurrentDictionary<string, UInt128Ex>();
 
-    public static IntermediateBlockData? UnpackIntermediateBlock(PhysicalAstcBlock physicalBlock)
+    public static IntermediateBlockData? UnpackIntermediateBlock(PhysicalBlock physicalBlock)
     {
         if (physicalBlock.IsIllegalEncoding() != null) return null;
         if (physicalBlock.IsVoidExtent()) return null;
@@ -285,7 +289,7 @@ internal static class IntermediateAstcBlock
         return colorValueRange;
     }
 
-    public static VoidExtentData? UnpackVoidExtent(PhysicalAstcBlock physicalBlock)
+    public static VoidExtentData? UnpackVoidExtent(PhysicalBlock physicalBlock)
     {
         if (physicalBlock.IsIllegalEncoding() != null) return null;
         if (!physicalBlock.IsVoidExtent()) return null;
@@ -455,7 +459,7 @@ internal static class IntermediateAstcBlock
         var combined = astc_bits | UInt128Ex.ReverseBits(rev_weight_bits);
         pb = combined;
 
-        var block = new PhysicalAstcBlock(pb);
+        var block = new PhysicalBlock(pb);
         var illegal = block.IsIllegalEncoding();
 
         // debug: compare against last unpacked if present
@@ -501,7 +505,7 @@ internal static class IntermediateAstcBlock
             // using full void extent representation
         }
 
-        var block = new PhysicalAstcBlock(pb);
+        var block = new PhysicalBlock(pb);
         var illegal = block.IsIllegalEncoding();
         if (illegal is not null)
         {

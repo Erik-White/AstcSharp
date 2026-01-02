@@ -1,10 +1,13 @@
 // Port of astc-codec/src/decoder/logical_astc_block.{h,cc}
 using System;
 using System.Collections.Generic;
+using AstcSharp.BiseEncoding;
+using AstcSharp.ColorEncoding;
+using AstcSharp.Core;
 
-namespace AstcSharp
+namespace AstcSharp.TexelBlock
 {
-    internal class LogicalAstcBlock
+    internal class LogicalBlock
     {
         // TODO: Consolidate this to RgbaColor class
         private const int ChannelCount = 4; // R, G, B, A
@@ -20,7 +23,7 @@ namespace AstcSharp
             public List<int> Weights = [];
         }
 
-        public LogicalAstcBlock(Footprint footprint)
+        public LogicalBlock(Footprint footprint)
         {
             _endpoints = [(RgbaColor.Empty, RgbaColor.Empty)];
             _weights = [.. new int[footprint.PixelCount]];
@@ -32,7 +35,7 @@ namespace AstcSharp
             for (int i = 0; i < footprint.PixelCount; ++i) _partition.assignment.Add(0);
         }
 
-        public LogicalAstcBlock(Footprint footprint, IntermediateAstcBlock.IntermediateBlockData block)
+        public LogicalBlock(Footprint footprint, IntermediateBlock.IntermediateBlockData block)
         {
             _endpoints = DecodeEndpoints(block);
             _partition = ComputePartition(footprint, block);
@@ -40,7 +43,7 @@ namespace AstcSharp
             CalculateWeights(footprint, block);
         }
 
-        public LogicalAstcBlock(Footprint footprint, IntermediateAstcBlock.VoidExtentData block)
+        public LogicalBlock(Footprint footprint, IntermediateBlock.VoidExtentData block)
         {
             _endpoints = DecodeEndpoints(block);
             _partition = ComputePartition(footprint, block);
@@ -48,9 +51,9 @@ namespace AstcSharp
             CalculateWeights(footprint, block);
         }
 
-        private static List<(RgbaColor, RgbaColor)> DecodeEndpoints(IntermediateAstcBlock.IntermediateBlockData block)
+        private static List<(RgbaColor, RgbaColor)> DecodeEndpoints(IntermediateBlock.IntermediateBlockData block)
         {
-            int endpoint_range = block.endpoint_range.HasValue ? block.endpoint_range.Value : IntermediateAstcBlock.EndpointRangeForBlock(block);
+            int endpoint_range = block.endpoint_range.HasValue ? block.endpoint_range.Value : IntermediateBlock.EndpointRangeForBlock(block);
             if (endpoint_range <= 0) throw new InvalidOperationException("Invalid endpoint range");
             var eps = new List<(RgbaColor, RgbaColor)>();
             foreach (var ed in block.endpoints)
@@ -61,7 +64,7 @@ namespace AstcSharp
             return eps;
         }
 
-        private static List<(RgbaColor, RgbaColor)> DecodeEndpoints(IntermediateAstcBlock.VoidExtentData block)
+        private static List<(RgbaColor, RgbaColor)> DecodeEndpoints(IntermediateBlock.VoidExtentData block)
         {
             var pair = new RgbaColor(block.r * byte.MaxValue / ushort.MaxValue, block.g * byte.MaxValue / ushort.MaxValue, block.b * byte.MaxValue / ushort.MaxValue, block.a * byte.MaxValue / ushort.MaxValue);
             
@@ -76,15 +79,15 @@ namespace AstcSharp
             return p;
         }
 
-        private static Partition ComputePartition(Footprint footprint, IntermediateAstcBlock.IntermediateBlockData block)
+        private static Partition ComputePartition(Footprint footprint, IntermediateBlock.IntermediateBlockData block)
             => block.partitionId.HasValue
                 ? Partition.GetASTCPartition(footprint, block.endpoints.Count, block.partitionId.Value)
                 : GenerateSinglePartition(footprint);
 
-        private static Partition ComputePartition(Footprint footprint, IntermediateAstcBlock.VoidExtentData block)
+        private static Partition ComputePartition(Footprint footprint, IntermediateBlock.VoidExtentData block)
             => GenerateSinglePartition(footprint);
 
-        private void CalculateWeights(Footprint footprint, IntermediateAstcBlock.IntermediateBlockData block)
+        private void CalculateWeights(Footprint footprint, IntermediateBlock.IntermediateBlockData block)
         {
             int gridSize = block.weightGridX * block.weightGridY;
             int weightFrequency = block.dualPlaneChannel.HasValue ? 2 : 1;
@@ -110,7 +113,7 @@ namespace AstcSharp
             }
         }
 
-        private void CalculateWeights(Footprint footprint, IntermediateAstcBlock.VoidExtentData block)
+        private void CalculateWeights(Footprint footprint, IntermediateBlock.VoidExtentData block)
         {
             _weights = [.. new int[footprint.PixelCount]];
         }
@@ -226,23 +229,23 @@ namespace AstcSharp
 
         public bool IsDualPlane() => _dualPlane is not null;
 
-        public static LogicalAstcBlock? UnpackLogicalBlock(Footprint footprint, PhysicalAstcBlock physicalBlock)
+        public static LogicalBlock? UnpackLogicalBlock(Footprint footprint, PhysicalBlock physicalBlock)
         {
             if (physicalBlock.IsVoidExtent())
             {
-                var voidExtantIntermediateBlock = IntermediateAstcBlock.UnpackVoidExtent(physicalBlock);
+                var voidExtantIntermediateBlock = IntermediateBlock.UnpackVoidExtent(physicalBlock);
                 
                 return voidExtantIntermediateBlock is null
                     ? null
-                    : new LogicalAstcBlock(footprint, voidExtantIntermediateBlock.Value);
+                    : new LogicalBlock(footprint, voidExtantIntermediateBlock.Value);
             }
             else
             {
-                var intermediateBlock = IntermediateAstcBlock.UnpackIntermediateBlock(physicalBlock);
+                var intermediateBlock = IntermediateBlock.UnpackIntermediateBlock(physicalBlock);
                 
                 return intermediateBlock is null
                     ? null
-                    : new LogicalAstcBlock(footprint, intermediateBlock);
+                    : new LogicalBlock(footprint, intermediateBlock);
             }
         }
     }

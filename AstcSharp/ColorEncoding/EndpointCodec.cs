@@ -1,4 +1,7 @@
-namespace AstcSharp;
+using AstcSharp.BiseEncoding;
+using AstcSharp.Core;
+
+namespace AstcSharp.ColorEncoding;
 
 internal static class EndpointCodec
 {

@@ -1,4 +1,6 @@
-namespace AstcSharp;
+using AstcSharp.Core;
+
+namespace AstcSharp.IO;
 
 /// <summary>
 /// a very simple format consisting of a small header followed immediately

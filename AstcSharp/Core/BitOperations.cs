@@ -1,4 +1,4 @@
-namespace AstcSharp;
+namespace AstcSharp.Core;
 
 internal static class BitOperations
 {

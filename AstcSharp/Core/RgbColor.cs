@@ -1,4 +1,4 @@
-namespace AstcSharp;
+namespace AstcSharp.Core;
 
 public record RgbColor
 {

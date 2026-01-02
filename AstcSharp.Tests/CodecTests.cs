@@ -1,8 +1,6 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using Xunit;
-using AstcSharp;
+using AstcSharp.Core;
+using AstcSharp.IO;
+using AstcSharp.TexelBlock;
 
 namespace AstcSharp.Tests
 {
@@ -18,14 +16,14 @@ namespace AstcSharp.Tests
             var output = new byte[valid_width * valid_height * 4];
 
             // Fail for 0 width or height
-            Assert.Empty(Codec.ASTCDecompressToRGBA(data, 0, valid_height, FootprintType.Footprint4x4).ToArray());
-            Assert.Empty(Codec.ASTCDecompressToRGBA(data, valid_width, 0, FootprintType.Footprint4x4).ToArray());
+            Assert.Empty(AstcDecoder.ASTCDecompressToRGBA(data, 0, valid_height, FootprintType.Footprint4x4).ToArray());
+            Assert.Empty(AstcDecoder.ASTCDecompressToRGBA(data, valid_width, 0, FootprintType.Footprint4x4).ToArray());
 
             // Fail for data size that's not a multiple of block size
-            Assert.Empty(Codec.ASTCDecompressToRGBA(data.AsSpan(0, data.Length - 1).ToArray(), valid_width, valid_height, FootprintType.Footprint4x4).ToArray());
+            Assert.Empty(AstcDecoder.ASTCDecompressToRGBA(data.AsSpan(0, data.Length - 1).ToArray(), valid_width, valid_height, FootprintType.Footprint4x4).ToArray());
             
             // Fail for data size that doesn't match block count
-            Assert.Empty(Codec.ASTCDecompressToRGBA(data.AsSpan(0, data.Length - PhysicalAstcBlock.kSizeInBytes).ToArray(), valid_width, valid_height, FootprintType.Footprint4x4).ToArray());
+            Assert.Empty(AstcDecoder.ASTCDecompressToRGBA(data.AsSpan(0, data.Length - PhysicalBlock.kSizeInBytes).ToArray(), valid_width, valid_height, FootprintType.Footprint4x4).ToArray());
         }
 
         private static (string image_name, FootprintType footprint, int width, int height)[] GetTransparentImageTestParams()
@@ -50,28 +48,28 @@ namespace AstcSharp.Tests
             int blocks_high = (height + block_height - 1) / block_height;
             int expected_block_count = blocks_wide * blocks_high;
 
-            Assert.True(astc.Length % PhysicalAstcBlock.kSizeInBytes == 0, "astc byte length not multiple of block size");
-            Assert.True(astc.Length / PhysicalAstcBlock.kSizeInBytes == expected_block_count, $"ASTC block count mismatch: {astc.Length / PhysicalAstcBlock.kSizeInBytes} != {expected_block_count}");
+            Assert.True(astc.Length % PhysicalBlock.kSizeInBytes == 0, "astc byte length not multiple of block size");
+            Assert.True(astc.Length / PhysicalBlock.kSizeInBytes == expected_block_count, $"ASTC block count mismatch: {astc.Length / PhysicalBlock.kSizeInBytes} != {expected_block_count}");
 
             var filePath = Path.Combine("TestData", "Expected", imageName + ".bmp");
             var expectedImage = FileBasedHelpers.LoadExpectedImage(filePath);
 
             // Diagnostic: check per-block unpacking to find failing block
-            for (int i = 0; i < astc.Length; i += PhysicalAstcBlock.kSizeInBytes)
+            for (int i = 0; i < astc.Length; i += PhysicalBlock.kSizeInBytes)
             {
-                var block = astc.AsSpan(i, PhysicalAstcBlock.kSizeInBytes).ToArray();
-                var physicalBlock = new PhysicalAstcBlock(new UInt128Ex(BitConverter.ToUInt64(block, 0), BitConverter.ToUInt64(block, 8)));
-                var logicalBlock = LogicalAstcBlock.UnpackLogicalBlock(footprint, physicalBlock);
+                var block = astc.AsSpan(i, PhysicalBlock.kSizeInBytes).ToArray();
+                var physicalBlock = new PhysicalBlock(new UInt128Ex(BitConverter.ToUInt64(block, 0), BitConverter.ToUInt64(block, 8)));
+                var logicalBlock = LogicalBlock.UnpackLogicalBlock(footprint, physicalBlock);
                 if (logicalBlock is null)
                 {
-                    var physicalBlockRetry = new PhysicalAstcBlock(new UInt128Ex(BitConverter.ToUInt64(block, 8), BitConverter.ToUInt64(block, 0)));
-                    var logicalBlockRetry = LogicalAstcBlock.UnpackLogicalBlock(footprint, physicalBlockRetry);
+                    var physicalBlockRetry = new PhysicalBlock(new UInt128Ex(BitConverter.ToUInt64(block, 8), BitConverter.ToUInt64(block, 0)));
+                    var logicalBlockRetry = LogicalBlock.UnpackLogicalBlock(footprint, physicalBlockRetry);
                     Assert.True(logicalBlockRetry is not null, "Block failed to unpack in both canonical and alternate byte orders");
                 }
                 Assert.NotNull(logicalBlock);
             }
 
-            var decodedPixels = Codec.ASTCDecompressToRGBA(astc, width, height, footprintType);
+            var decodedPixels = AstcDecoder.ASTCDecompressToRGBA(astc, width, height, footprintType);
             var actualImage = new ImageBuffer(decodedPixels.ToArray(), width, height, 4);
 
             ImageUtils.CompareSumOfSquaredDifferences(expectedImage, actualImage, 0.1);
@@ -98,7 +96,7 @@ namespace AstcSharp.Tests
             var filePath = Path.Combine("TestData", "Expected", image_name + ".bmp");
             var expectedImage = FileBasedHelpers.LoadExpectedImage(filePath);
 
-            var decodedPixels = Codec.DecompressToImage(file);
+            var decodedPixels = AstcDecoder.DecompressToImage(file);
             var actualImage = new ImageBuffer(decodedPixels.ToArray(), width, height, 4);
 
             ImageUtils.CompareSumOfSquaredDifferences(expectedImage, actualImage, 0.1);

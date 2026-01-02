@@ -1,4 +1,4 @@
-namespace AstcSharp;
+namespace AstcSharp.ColorEncoding;
 
 /// <summary>
 /// ASTC supports 16 color endpoint encoding schemes, known as endpoint modes

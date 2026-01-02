@@ -1,3 +1,6 @@
+using AstcSharp.Core;
+using AstcSharp.TexelBlock;
+
 namespace AstcSharp.Tests;
 
 public class LogicalAstcBlockTests
@@ -5,7 +8,7 @@ public class LogicalAstcBlockTests
     [Fact]
     public void SetEndpoints_Checkerboard()
     {
-        var lb = new LogicalAstcBlock(Footprint.Get8x8());
+        var lb = new LogicalBlock(Footprint.Get8x8());
         for (int j = 0; j < 8; ++j)
         for (int i = 0; i < 8; ++i)
         {
@@ -41,7 +44,7 @@ public class LogicalAstcBlockTests
     [Fact]
     public void SetWeightVals_DualPlaneBehavior()
     {
-        var lb = new LogicalAstcBlock(Footprint.Get4x4());
+        var lb = new LogicalBlock(Footprint.Get4x4());
         Assert.Equal(Footprint.Get4x4(), lb.GetFootprint());
         Assert.False(lb.IsDualPlane());
 
@@ -99,16 +102,16 @@ public class LogicalAstcBlockTests
         int block_width = fp.Width;
         int block_height = fp.Height;
 
-        for (int i = 0; i < astc.Length; i += PhysicalAstcBlock.kSizeInBytes)
+        for (int i = 0; i < astc.Length; i += PhysicalBlock.kSizeInBytes)
         {
-            int block_index = i / PhysicalAstcBlock.kSizeInBytes;
+            int block_index = i / PhysicalBlock.kSizeInBytes;
             int blocks_wide = (width + block_width - 1) / block_width;
             int block_x = block_index % blocks_wide;
             int block_y = block_index / blocks_wide;
 
-            var blkSpan = astc.AsSpan(i, PhysicalAstcBlock.kSizeInBytes).ToArray();
-            var pb = new PhysicalAstcBlock(new UInt128Ex(BitConverter.ToUInt64(blkSpan, 0), BitConverter.ToUInt64(blkSpan, 8)));
-            LogicalAstcBlock? lb = LogicalAstcBlock.UnpackLogicalBlock(fp, pb);
+            var blkSpan = astc.AsSpan(i, PhysicalBlock.kSizeInBytes).ToArray();
+            var pb = new PhysicalBlock(new UInt128Ex(BitConverter.ToUInt64(blkSpan, 0), BitConverter.ToUInt64(blkSpan, 8)));
+            LogicalBlock? lb = LogicalBlock.UnpackLogicalBlock(fp, pb);
             Assert.NotNull(lb);
             var logical_block = lb!;
 

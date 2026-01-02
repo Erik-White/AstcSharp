@@ -1,4 +1,4 @@
-namespace AstcSharp;
+namespace AstcSharp.IO;
 
 /// <summary>
 /// The 16 byte ASTC file header

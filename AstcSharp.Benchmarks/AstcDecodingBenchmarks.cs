@@ -1,6 +1,7 @@
 using BenchmarkDotNet.Attributes;
-using AstcSharp;
-using System.IO;
+using AstcSharp.Core;
+using AstcSharp.IO;
+using AstcSharp.TexelBlock;
 
 namespace AstcSharp.Benchmarks
 {
@@ -9,7 +10,6 @@ namespace AstcSharp.Benchmarks
     {
         private byte[]? astcData;
         private AstcFile? astcFile;
-        private Footprint? footprint;
 
         [GlobalSetup]
         public void Setup()
@@ -25,7 +25,7 @@ namespace AstcSharp.Benchmarks
             var blocks = astcFile!.Blocks;
             Span<byte> blockBytes = stackalloc byte[16];
             blocks.Slice(0, 16).CopyTo(blockBytes);
-            var block = new PhysicalAstcBlock(new UInt128Ex(BitConverter.ToUInt64(blockBytes), BitConverter.ToUInt64(blockBytes.Slice(8))));
+            var block = new PhysicalBlock(new UInt128Ex(BitConverter.ToUInt64(blockBytes), BitConverter.ToUInt64(blockBytes.Slice(8))));
         }
 
         [Benchmark]
@@ -34,8 +34,8 @@ namespace AstcSharp.Benchmarks
             var blocks = astcFile!.Blocks;
             Span<byte> blockBytes = stackalloc byte[16];
             blocks.Slice(0, 16).CopyTo(blockBytes);
-            var block = new PhysicalAstcBlock(new UInt128Ex(BitConverter.ToUInt64(blockBytes), BitConverter.ToUInt64(blockBytes.Slice(8))));
-            var ib = IntermediateAstcBlock.UnpackIntermediateBlock(block);
+            var block = new PhysicalBlock(new UInt128Ex(BitConverter.ToUInt64(blockBytes), BitConverter.ToUInt64(blockBytes.Slice(8))));
+            var ib = IntermediateBlock.UnpackIntermediateBlock(block);
         }
 
         [Benchmark]
@@ -44,12 +44,11 @@ namespace AstcSharp.Benchmarks
             var blocks = astcFile!.Blocks;
             Span<byte> blockBytes = stackalloc byte[16];
             blocks.Slice(0, 16).CopyTo(blockBytes);
-            var block = new PhysicalAstcBlock(new UInt128Ex(BitConverter.ToUInt64(blockBytes), BitConverter.ToUInt64(blockBytes.Slice(8))));
-            var ib = IntermediateAstcBlock.UnpackIntermediateBlock(block);
-            if (ib != null && footprint.HasValue)
-            {
-                var logical = new LogicalAstcBlock(footprint.Value, ib);
-            }
+            var block = new PhysicalBlock(new UInt128Ex(BitConverter.ToUInt64(blockBytes), BitConverter.ToUInt64(blockBytes.Slice(8))));
+            var ib = IntermediateBlock.UnpackIntermediateBlock(block);
+            var logical = ib is not null
+                ? new LogicalBlock(Footprint.Get4x4(), ib)
+                : throw new InvalidOperationException("Failed to unpack intermediate block");
         }
     }
 

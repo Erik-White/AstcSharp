@@ -1,4 +1,4 @@
-namespace AstcSharp;
+namespace AstcSharp.ColorEncoding;
 
 public static class EndpointEncodingModeExtensions
 {
