@@ -2,57 +2,11 @@ namespace AstcSharp;
 
 internal static class EndpointCodec
 {
-    /// <summary>
-    /// The 'bit_transfer_signed' function defined in Section C.2.14 of the ASTC specification
-    /// </summary>
-    private static void BitTransferSigned(ref int a, ref int b)
-    {
-        b >>= 1;
-        b |= a & 0x80;
-        a >>= 1;
-        a &= 0x3F;
-
-        if ((a & 0x20) != 0)
-            a -= 0x40;
-    }
-
-    /// <summary>
-    /// Takes two values, |a| in the range [-32, 31], and |b| in the range [0, 255],
-    /// and returns the two values in [0, 255] that will reconstruct |a| and |b| when
-    /// passed to the <see cref="BitTransferSigned"/> function.
-    /// </summary>
-    private static void InvertBitTransferSigned(ref int a, ref int b)
-    {
-        ArgumentOutOfRangeException.ThrowIfLessThan(a, -32);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(a, 31);
-        ArgumentOutOfRangeException.ThrowIfLessThan(b, byte.MinValue);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(b, byte.MaxValue);
-
-        if (a < 0)
-            a += 0x40;
-
-        a <<= 1;
-        a |= b & 0x80;
-        b <<= 1;
-        b &= 0xff;
-    }
-
-    // Move to rgb or rgb extensions?
-    private static int SquaredError(int[] a, int[] b, int numChannels = 4)
-    {
-        int result = 0;
-        for (int i = 0; i < numChannels; ++i)
-        {
-            int diff = a[i] - b[i];
-            result += diff * diff;
-        }
-        return result;
-    }
-
+    // TODO: Move these two to RGBA color extensions?
     private static int[] QuantizeColorArray(RgbaColor c, int maxValue)
     {
-        var arr = new int[4];
-        for (int i = 0; i < 4; ++i) arr[i] = Quantization.QuantizeCEValueToRange(c[i], maxValue);
+        var arr = new int[RgbaColor.BytesPerPixel];
+        for (int i = 0; i < RgbaColor.BytesPerPixel; ++i) arr[i] = Quantization.QuantizeCEValueToRange(c[i], maxValue);
         return arr;
     }
 
@@ -63,6 +17,7 @@ internal static class EndpointCodec
         return res;
     }
 
+    // TODO: Move to a separate file
     private class QuantizedEndpointPair
     {
         private readonly RgbaColor _originalLow;
@@ -126,7 +81,7 @@ internal static class EndpointCodec
                 for (int i = 0; i < 4; ++i)
                 {
                     int a = u_high[i]; int b = u_low[i];
-                    BitTransferSigned(ref a, ref b);
+                    BitOperations.TransferPrecision(ref a, ref b);
                     u_high[i] = a; u_low[i] = b;
                 }
             }
@@ -240,9 +195,9 @@ internal static class EndpointCodec
                     var v = new int[kNumVals];
                     for (int i = 0; i < kNumVals; ++i) v[i] = i < values.Count ? values[i] : 0;
                     var uv = UnquantizeArray(v, maxValue);
-                    int a0 = uv[0], b0 = uv[1]; BitTransferSigned(ref b0, ref a0);
-                    int a1 = uv[2], b1 = uv[3]; BitTransferSigned(ref b1, ref a1);
-                    int a2 = uv[4], b2 = uv[5]; BitTransferSigned(ref b2, ref a2);
+                    int a0 = uv[0], b0 = uv[1]; BitOperations.TransferPrecision(ref b0, ref a0);
+                    int a1 = uv[2], b1 = uv[3]; BitOperations.TransferPrecision(ref b1, ref a1);
+                    int a2 = uv[4], b2 = uv[5]; BitOperations.TransferPrecision(ref b2, ref a2);
                     return (b0 + b1 + b2) < 0;
                 }
             default:
@@ -250,6 +205,7 @@ internal static class EndpointCodec
         }
     }
 
+    // TODO: Extract an interface and implement instances for each encoding mode
     public static bool EncodeColorsForMode(RgbaColor endpoint_low_rgba, RgbaColor endpoint_high_rgba, int maxValue, EndpointEncodingMode encoding_mode, out ColorEndpointMode astc_mode, List<int> vals)
     {
         bool needs_weight_swap = false;
@@ -403,7 +359,7 @@ internal static class EndpointCodec
         {
             direct_base[i] = endpoint_low_rgba[i];
             direct_offset[i] = Math.Clamp(endpoint_high_rgba[i] - endpoint_low_rgba[i], -32, 31);
-            int a = direct_offset[i], b = direct_base[i]; InvertBitTransferSigned(ref a, ref b); direct_offset[i] = a; direct_base[i] = b;
+            int a = direct_offset[i], b = direct_base[i]; BitOperations.TransferPrecisionInverse(ref a, ref b); direct_offset[i] = a; direct_base[i] = b;
         }
 
         var inv_bc_base = new int[4];
@@ -412,7 +368,7 @@ internal static class EndpointCodec
         {
             inv_bc_base[i] = inv_bc_high[i];
             inv_bc_offset[i] = Math.Clamp(inv_bc_low[i] - inv_bc_high[i], -32, 31);
-            int a = inv_bc_offset[i], b = inv_bc_base[i]; InvertBitTransferSigned(ref a, ref b); inv_bc_offset[i] = a; inv_bc_base[i] = b;
+            int a = inv_bc_offset[i], b = inv_bc_base[i]; BitOperations.TransferPrecisionInverse(ref a, ref b); inv_bc_offset[i] = a; inv_bc_base[i] = b;
         }
 
         var direct_base_swapped = new int[4];
@@ -421,7 +377,7 @@ internal static class EndpointCodec
         {
             direct_base_swapped[i] = endpoint_high_rgba[i];
             direct_offset_swapped[i] = Math.Clamp(endpoint_low_rgba[i] - endpoint_high_rgba[i], -32, 31);
-            int a = direct_offset_swapped[i], b = direct_base_swapped[i]; InvertBitTransferSigned(ref a, ref b); direct_offset_swapped[i] = a; direct_base_swapped[i] = b;
+            int a = direct_offset_swapped[i], b = direct_base_swapped[i]; BitOperations.TransferPrecisionInverse(ref a, ref b); direct_offset_swapped[i] = a; direct_base_swapped[i] = b;
         }
 
         var inv_bc_base_swapped = new int[4];
@@ -430,7 +386,7 @@ internal static class EndpointCodec
         {
             inv_bc_base_swapped[i] = inv_bc_low[i];
             inv_bc_offset_swapped[i] = Math.Clamp(inv_bc_high[i] - inv_bc_low[i], -32, 31);
-            int a = inv_bc_offset_swapped[i], b = inv_bc_base_swapped[i]; InvertBitTransferSigned(ref a, ref b); inv_bc_offset_swapped[i] = a; inv_bc_base_swapped[i] = b;
+            int a = inv_bc_offset_swapped[i], b = inv_bc_base_swapped[i]; BitOperations.TransferPrecisionInverse(ref a, ref b); inv_bc_offset_swapped[i] = a; inv_bc_base_swapped[i] = b;
         }
 
         var direct_quantized = new QuantizedEndpointPair(endpoint_low_rgba, endpoint_high_rgba, maxValue);
@@ -448,8 +404,11 @@ internal static class EndpointCodec
         {
             var rgba_low = direct_quantized.UnquantizedLow();
             var rgba_high = direct_quantized.UnquantizedHigh();
-            int sq_rgb_error = SquaredError(rgba_low, new int[] { endpoint_low_rgba[0], endpoint_low_rgba[1], endpoint_low_rgba[2], endpoint_low_rgba[3] }, num_channels)
-                + SquaredError(rgba_high, new int[] { endpoint_high_rgba[0], endpoint_high_rgba[1], endpoint_high_rgba[2], endpoint_high_rgba[3] }, num_channels);
+            var lowColor = new RgbaColor(rgba_low[0], rgba_low[1], rgba_low[2], rgba_low[3]);
+            var highColor = new RgbaColor(rgba_high[0], rgba_high[1], rgba_high[2], rgba_high[3]);
+            var sq_rgb_error = with_alpha
+                ? RgbaColor.SquaredError(lowColor, endpoint_low_rgba) + RgbaColor.SquaredError(highColor, endpoint_high_rgba)
+                : RgbColor.SquaredError(lowColor, endpoint_low_rgba) + RgbColor.SquaredError(highColor, endpoint_high_rgba);
             errors.Add(new CEEncodingOption(sq_rgb_error, direct_quantized, false, false, false));
         }
 
@@ -472,23 +431,22 @@ internal static class EndpointCodec
         {
             var baseArr = pair.UnquantizedLow();
             var offsetArr = pair.UnquantizedHigh();
-            var baseCopy = (int[])baseArr.Clone();
-            var offsetCopy = (int[])offsetArr.Clone();
-            for (int i = 0; i < num_channels; ++i)
-            {
-                int a = offsetCopy[i], b = baseCopy[i]; BitTransferSigned(ref a, ref b); offsetCopy[i] = Math.Clamp(baseCopy[i] + a, 0, 255);
-            }
+
+            var baseColor = new RgbaColor(baseArr[0], baseArr[1], baseArr[2], baseArr[3]);
+            var offsetColor = new RgbaColor(offsetArr[0], offsetArr[1], offsetArr[2], offsetArr[3]).AsOffsetFrom(baseColor);
 
             int base_offset_error = 0;
             if (swapped)
             {
-                base_offset_error = SquaredError(baseCopy, new int[] { endpoint_high_rgba[0], endpoint_high_rgba[1], endpoint_high_rgba[2], endpoint_high_rgba[3] }, num_channels)
-                    + SquaredError(offsetCopy, new int[] { endpoint_low_rgba[0], endpoint_low_rgba[1], endpoint_low_rgba[2], endpoint_low_rgba[3] }, num_channels);
+                base_offset_error = with_alpha
+                    ? RgbaColor.SquaredError(baseColor, endpoint_high_rgba) + RgbaColor.SquaredError(offsetColor, endpoint_low_rgba)
+                    : RgbColor.SquaredError(baseColor, endpoint_high_rgba) + RgbColor.SquaredError(offsetColor, endpoint_low_rgba);
             }
             else
             {
-                base_offset_error = SquaredError(baseCopy, new int[] { endpoint_low_rgba[0], endpoint_low_rgba[1], endpoint_low_rgba[2], endpoint_low_rgba[3] }, num_channels)
-                    + SquaredError(offsetCopy, new int[] { endpoint_high_rgba[0], endpoint_high_rgba[1], endpoint_high_rgba[2], endpoint_high_rgba[3] }, num_channels);
+                base_offset_error = with_alpha
+                    ? RgbaColor.SquaredError(baseColor, endpoint_low_rgba) + RgbaColor.SquaredError(offsetColor, endpoint_high_rgba)
+                    : RgbColor.SquaredError(baseColor, endpoint_low_rgba) + RgbColor.SquaredError(offsetColor, endpoint_high_rgba);
             }
 
             errors.Add(new CEEncodingOption(base_offset_error, pair, swapped, false, true));
@@ -500,31 +458,25 @@ internal static class EndpointCodec
         {
             var baseArr = pair.UnquantizedLow();
             var offsetArr = pair.UnquantizedHigh();
-            var baseCopy = (int[])baseArr.Clone();
-            var offsetCopy = (int[])offsetArr.Clone();
-            for (int i = 0; i < num_channels; ++i)
-            {
-                int a = offsetCopy[i],
-                b = baseCopy[i];
-                BitTransferSigned(ref a, ref b);
-                offsetCopy[i] = Math.Clamp(baseCopy[i] + a, 0, 255);
-            }
-            // BlueContract, see section C.2.14 of the ASTC specification
-            baseCopy[0] = (baseCopy[0] + baseCopy[2]) >> 1;
-            baseCopy[1] = (baseCopy[1] + baseCopy[2]) >> 1;
-            offsetCopy[0] = (offsetCopy[0] + offsetCopy[2]) >> 1;
-            offsetCopy[1] = (offsetCopy[1] + offsetCopy[2]) >> 1;
+
+            var baseColor = new RgbaColor(baseArr[0], baseArr[1], baseArr[2], baseArr[3]);
+            var offsetColor =  new RgbaColor(offsetArr[0], offsetArr[1], offsetArr[2], offsetArr[3]).AsOffsetFrom(baseColor);
+
+            baseColor = baseColor.WithBlueContract();
+            offsetColor = offsetColor.WithBlueContract();
 
             int sq_bc_error = 0;
             if (swapped)
             {
-                sq_bc_error = SquaredError(baseCopy, new int[] { endpoint_low_rgba[0], endpoint_low_rgba[1], endpoint_low_rgba[2], endpoint_low_rgba[3] }, num_channels)
-                    + SquaredError(offsetCopy, new int[] { endpoint_high_rgba[0], endpoint_high_rgba[1], endpoint_high_rgba[2], endpoint_high_rgba[3] }, num_channels);
+                sq_bc_error = with_alpha
+                    ? RgbaColor.SquaredError(baseColor, endpoint_low_rgba) + RgbaColor.SquaredError(offsetColor, endpoint_high_rgba)
+                    : RgbColor.SquaredError(baseColor, endpoint_low_rgba) + RgbColor.SquaredError(offsetColor, endpoint_high_rgba);
             }
             else
             {
-                sq_bc_error = SquaredError(baseCopy, new int[] { endpoint_high_rgba[0], endpoint_high_rgba[1], endpoint_high_rgba[2], endpoint_high_rgba[3] }, num_channels)
-                    + SquaredError(offsetCopy, new int[] { endpoint_low_rgba[0], endpoint_low_rgba[1], endpoint_low_rgba[2], endpoint_low_rgba[3] }, num_channels);
+                sq_bc_error = with_alpha
+                    ? RgbaColor.SquaredError(baseColor, endpoint_high_rgba) + RgbaColor.SquaredError(offsetColor, endpoint_low_rgba)
+                    : RgbColor.SquaredError(baseColor, endpoint_high_rgba) + RgbColor.SquaredError(offsetColor, endpoint_low_rgba);
             }
 
             errors.Add(new CEEncodingOption(sq_bc_error, pair, swapped, true, true));
@@ -587,8 +539,8 @@ internal static class EndpointCodec
                 {
                     var v = new int[4]; for (int i=0;i<4;i++) v[i] = i<vals.Count?vals[i]:0;
                     var uv = UnquantizeArray(v, maxValue);
-                    int a0 = uv[0], b0 = uv[1]; BitTransferSigned(ref b0, ref a0);
-                    int a2 = uv[2], b2 = uv[3]; BitTransferSigned(ref b2, ref a2);
+                    int a0 = uv[0], b0 = uv[1]; BitOperations.TransferPrecision(ref b0, ref a0);
+                    int a2 = uv[2], b2 = uv[3]; BitOperations.TransferPrecision(ref b2, ref a2);
                     endpoint_low_rgba = new RgbaColor(a0, a0, a0, a2);
                     int high_luma = a0 + b0;
                     endpoint_high_rgba = new RgbaColor(high_luma, high_luma, high_luma, a2 + b2);
@@ -641,9 +593,9 @@ internal static class EndpointCodec
                     int kNumVals = ColorEndpointMode.LdrRgbBaseOffset.GetColorValuesCount();
                     var v = new int[kNumVals]; for (int i=0;i<kNumVals;++i) v[i] = i<vals.Count?vals[i]:0;
                     var uv = UnquantizeArray(v, maxValue);
-                    int a0 = uv[0], b0 = uv[1]; BitTransferSigned(ref b0, ref a0);
-                    int a1 = uv[2], b1 = uv[3]; BitTransferSigned(ref b1, ref a1);
-                    int a2 = uv[4], b2 = uv[5]; BitTransferSigned(ref b2, ref a2);
+                    int a0 = uv[0], b0 = uv[1]; BitOperations.TransferPrecision(ref b0, ref a0);
+                    int a1 = uv[2], b1 = uv[3]; BitOperations.TransferPrecision(ref b1, ref a1);
+                    int a2 = uv[4], b2 = uv[5]; BitOperations.TransferPrecision(ref b2, ref a2);
                     
                     if (b0 + b1 + b2 < 0)
                     {
@@ -709,10 +661,10 @@ internal static class EndpointCodec
                     int kNumVals = ColorEndpointMode.LdrRgbaBaseOffset.GetColorValuesCount();
                     var v = new int[kNumVals]; for (int i=0;i<kNumVals;++i) v[i] = i<vals.Count?vals[i]:0;
                     var uv = UnquantizeArray(v, maxValue);
-                    int a0 = uv[0], b0 = uv[1]; BitTransferSigned(ref b0, ref a0);
-                    int a1 = uv[2], b1 = uv[3]; BitTransferSigned(ref b1, ref a1);
-                    int a2 = uv[4], b2 = uv[5]; BitTransferSigned(ref b2, ref a2);
-                    int a3 = uv[6], b3 = uv[7]; BitTransferSigned(ref b3, ref a3);
+                    int a0 = uv[0], b0 = uv[1]; BitOperations.TransferPrecision(ref b0, ref a0);
+                    int a1 = uv[2], b1 = uv[3]; BitOperations.TransferPrecision(ref b1, ref a1);
+                    int a2 = uv[4], b2 = uv[5]; BitOperations.TransferPrecision(ref b2, ref a2);
+                    int a3 = uv[6], b3 = uv[7]; BitOperations.TransferPrecision(ref b3, ref a3);
                     
                     if (b0 + b1 + b2 < 0)
                     {

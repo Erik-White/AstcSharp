@@ -3,8 +3,11 @@ namespace AstcSharp;
 public static class RgbaColorExtensions
 {
     /// <summary>
-    /// Applies the 'blue_contract' function defined in Section C.2.14 of the ASTC specification.
+    /// Uses the value in the blue channel to tint the red and green
     /// </summary>
+    /// <remarks>
+    /// Applies the 'blue_contract' function defined in Section C.2.14 of the ASTC specification.
+    /// </remarks>
     public static RgbaColor WithBlueContract(int red, int green, int blue, int alpha)
         => new(
             r: (red + blue) >> 1,
@@ -13,20 +16,36 @@ public static class RgbaColorExtensions
             a: alpha);
 
     /// <summary>
-    /// Applies the 'blue_contract' function defined in Section C.2.14 of the ASTC specification.
+    /// Uses the value in the blue channel to tint the red and green
     /// </summary>
+    /// <remarks>
+    /// Applies the 'blue_contract' function defined in Section C.2.14 of the ASTC specification.
+    /// </remarks>
     public static RgbaColor WithBlueContract(this RgbaColor color)
         => WithBlueContract(color.R, color.G, color.B, color.A);
 
     /// <summary>
-    /// The inverse of the 'blue_contract' function defined in Section C.2.14 of the ASTC specification.
+    /// The inverse of <see cref="WithBlueContract(RgbaColor)"/>
     /// </summary>
-    /// <param name="color"></param>
-    /// <returns></returns>
     public static RgbaColor WithInvertedBlueContract(this RgbaColor color)
         => new(
             r: 2 * color.R - color.B,
             g: 2 * color.G - color.B,
             b: color.B,
             a: color.A);
+
+    public static RgbaColor AsOffsetFrom(this RgbaColor color, RgbaColor baseColor)
+    {
+        var offset = new int[] { color.R, color.G, color.B, color.A };
+
+        for (int i = 0; i < RgbaColor.BytesPerPixel; ++i)
+        {
+            int a = offset[i];
+            int b = baseColor[i];
+            BitOperations.TransferPrecision(ref a, ref b);
+            offset[i] = Math.Clamp(baseColor[i] + a, byte.MinValue, byte.MaxValue);
+        }
+
+        return new RgbaColor(offset[0], offset[1], offset[2], offset[3]);
+    }
 }
