@@ -3,24 +3,19 @@ using System;
 
 namespace AstcSharp.Core
 {
+    // TODO; Can probably be replaced with System.UInt128
     public readonly struct UInt128Ex : IEquatable<UInt128Ex>
     {
         public readonly ulong Low;
         public readonly ulong High;
 
-        public static readonly UInt128Ex Zero = new UInt128Ex(0UL);
-
-        public UInt128Ex(ulong low)
-        {
-            Low = low;
-            High = 0UL;
-        }
-
-        public UInt128Ex(ulong low, ulong high)
+        public UInt128Ex(ulong low, ulong high = 0UL)
         {
             Low = low;
             High = high;
         }
+
+        public static readonly UInt128Ex Zero = new(0UL);
 
         public static UInt128Ex FromBytes(ReadOnlySpan<byte> bytes)
         {
@@ -80,8 +75,6 @@ namespace AstcSharp.Core
                 return new UInt128Ex(newLow, 0UL);
             }
         }
-
-        public static UInt128Ex FromUlong(ulong v) => new UInt128Ex(v);
 
         // Return mask with lowest 'n' bits set to 1.
         public static UInt128Ex OnesMask(int n)
