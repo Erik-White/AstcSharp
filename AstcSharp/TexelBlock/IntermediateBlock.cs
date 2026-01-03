@@ -217,7 +217,7 @@ internal static class IntermediateBlock
         var colorBits = (physicalBlock.GetBlockBits() >> colorStartBit.Value) & colorBitMask;
         var colorBitStream = new BitStream(colorBits, 128);
 
-        var colorDecoder = new IntegerSequenceDecoder(colorValuesRangeOpt.Value);
+        var colorDecoder = new BoundedIntegerSequenceDecoder(colorValuesRangeOpt.Value);
         int colorCountInBlock = colorValuesCount.Value;
         var colors = colorDecoder.Decode(colorCountInBlock, ref colorBitStream);
 
@@ -250,7 +250,7 @@ internal static class IntermediateBlock
         var weightBits = UInt128Ex.ReverseBits(physicalBlock.GetBlockBits()) & UInt128Ex.OnesMask(weightBitCount.Value);
         colorBitStream = new BitStream(weightBits, 128);
 
-        var weightDecoder = new IntegerSequenceDecoder(data.weightRange);
+        var weightDecoder = new BoundedIntegerSequenceDecoder(data.weightRange);
         int weightsCount = data.weightGridX * data.weightGridY;
         if (physicalBlock.IsDualPlane()) weightsCount *= 2;
         data.weights = weightDecoder.Decode(weightsCount, ref colorBitStream);
@@ -349,7 +349,7 @@ internal static class IntermediateBlock
 
         // Encode weights into weight_sink to know their bit size
         var weightSink = new BitStream(0UL, 0);
-        var weightsEncoder = new IntegerSequenceEncoder(data.weightRange);
+        var weightsEncoder = new BoundedIntegerSequenceEncoder(data.weightRange);
         foreach (var weight in data.weights) weightsEncoder.AddValue(weight);
         weightsEncoder.Encode(ref weightSink);
 
@@ -419,7 +419,7 @@ internal static class IntermediateBlock
             return "Intermediate block emits illegal color range";
         }
 
-        var colorEncoder = new IntegerSequenceEncoder(colorValueRange);
+        var colorEncoder = new BoundedIntegerSequenceEncoder(colorValueRange);
         foreach (var endpoint in data.endpoints)
         {
             foreach (var color in endpoint.colors)
