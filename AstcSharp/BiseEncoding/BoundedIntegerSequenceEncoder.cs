@@ -40,7 +40,7 @@ internal class BoundedIntegerSequenceEncoder : BoundedIntegerSequenceCodec
                     EncodeISEBlock<int>(quints, _bits, ref bitSink, ref bitsWrittenCount, totalBitCount);
                     break;
                 case EncodingMode.BitEncoding:
-                    bitSink.PutBits((uint)_values[index++], EncodedBlockSize());
+                    bitSink.PutBits((uint)_values[index++], GetEncodedBlockSize());
                     break;
             }
         }

@@ -17,7 +17,19 @@ internal class BoundedIntegerSequenceCodec
 
     private static readonly int[] MaxRanges = InitMaxRanges();
 
-    public enum EncodingMode { TritEncoding = 0, QuintEncoding, BitEncoding }
+    /// <summary>
+    /// The encoding modes supported by BISE.
+    /// </summary>
+    /// <remarks>
+    /// Note that the values correspond to the number of symbols in each alphabet.
+    /// </remarks>
+    public enum EncodingMode
+    {
+        Unknown = 0,
+        BitEncoding = 1,
+        TritEncoding = 3,
+        QuintEncoding = 5,
+    }
 
     protected EncodingMode _encoding;
     protected int _bits;
@@ -56,22 +68,18 @@ internal class BoundedIntegerSequenceCodec
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(range, 0);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(range, 1 << Log2MaxRangeForBits);
 
-        var encodingSymbolCount = new Dictionary<EncodingMode, int>
-        {
-            { EncodingMode.TritEncoding, 3 },
-            { EncodingMode.QuintEncoding, 5 },
-            { EncodingMode.BitEncoding, 1 },
-        };
-
         int index = Array.FindIndex(MaxRanges, v => v >= range);
         int maxValue = index < 0
             ? MaxRanges.Last() + 1
             : MaxRanges[index] + 1;
 
-        var (encodingMode, symbolCount) = encodingSymbolCount.FirstOrDefault(kvp => (maxValue % kvp.Value == 0) && int.IsPow2(maxValue / kvp.Value));
+        var encodingMode = Enum.GetValues<EncodingMode>()
+            .Except([EncodingMode.Unknown])
+            .OrderDescending()
+            .FirstOrDefault(em => (maxValue % (int)em == 0) && int.IsPow2(maxValue / (int)em));
         
-        return symbolCount > 0
-            ? (encodingMode, int.Log2(maxValue / symbolCount))
+        return encodingMode != EncodingMode.Unknown
+            ? (encodingMode, int.Log2(maxValue / (int)encodingMode))
             : throw new ArgumentOutOfRangeException($"Invalid range for BISE encoding: {range}");
     }
 
@@ -133,18 +141,17 @@ internal class BoundedIntegerSequenceCodec
         _bits = bits;
     }
 
-    protected int ValuesPerBlockCount()
+    protected int GetEncodedBlockSize()
     {
-        int[] ValuesCountByEncoding = [5, 3, 1];
-
-        return ValuesCountByEncoding[(int)_encoding];
-    }
-
-    protected int EncodedBlockSize()
-    {
-        int[] ExtraBlockSizeByEncoding = [8, 7, 0];
+        var (blockSize, extraBlockSize) = _encoding switch
+        {
+            EncodingMode.TritEncoding => (5, 8),
+            EncodingMode.QuintEncoding => (3, 7),
+            EncodingMode.BitEncoding => (1, 0),
+            _ => (0, 0),
+        };
         
-        return ExtraBlockSizeByEncoding[(int)_encoding] + ValuesPerBlockCount() * _bits;
+        return extraBlockSize + blockSize * _bits;
     }
 
     public static IReadOnlyList<int> ISERange() => MaxRanges;

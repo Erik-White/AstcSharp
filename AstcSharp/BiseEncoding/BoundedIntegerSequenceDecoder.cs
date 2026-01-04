@@ -11,7 +11,7 @@ internal class BoundedIntegerSequenceDecoder : BoundedIntegerSequenceCodec
         int tritsCount = (_encoding == EncodingMode.TritEncoding) ? 1 : 0;
         int quintsCount = (_encoding == EncodingMode.QuintEncoding) ? 1 : 0;
         int totalBitsCount = GetBitCount(valuesCount, tritsCount, quintsCount, _bits);
-        int bitsPerBlock = EncodedBlockSize();
+        int bitsPerBlock = GetEncodedBlockSize();
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(bitsPerBlock, 64);
 
         int bitsRemaining = totalBitsCount;
