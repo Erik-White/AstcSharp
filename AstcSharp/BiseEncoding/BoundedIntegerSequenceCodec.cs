@@ -74,7 +74,6 @@ internal class BoundedIntegerSequenceCodec
             : MaxRanges[index] + 1;
 
         var encodingMode = Enum.GetValues<EncodingMode>()
-            .Except([EncodingMode.Unknown])
             .OrderDescending()
             .FirstOrDefault(em => (maxValue % (int)em == 0) && int.IsPow2(maxValue / (int)em));
         
@@ -121,24 +120,30 @@ internal class BoundedIntegerSequenceCodec
         return trit_bit_count + quint_bit_count + base_bit_count;
     }
 
-    // Convenience wrapper used by reference tests: determine the counts for the
-    // given range and return the total number of bits needed for num_vals.
-    public static int GetBitCountForRange(int num_vals, int range)
+    /// <summary>
+    /// Returns the overall bit count for a range of values encoded
+    /// </summary>
+    public static int GetBitCount(EncodingMode encodingMode, int valuesCount, int bitCount)
     {
-        var (trits, quints, bits) = GetCountsForRange(range);
-        return GetBitCount(num_vals, trits, quints, bits);
+        var encodingBitCount = encodingMode switch
+        {
+            EncodingMode.TritEncoding => ((valuesCount * 8) + 4) / 5,
+            EncodingMode.QuintEncoding => ((valuesCount * 7) + 2) / 3,
+            EncodingMode.BitEncoding => 0,
+            _ => throw new ArgumentOutOfRangeException(nameof(encodingMode), "Invalid encoding mode"),
+        };
+        var baseBitCount = valuesCount * bitCount;
+
+        return encodingBitCount + baseBitCount;
     }
 
-    protected void InitializeWithCounts(int trits, int quints, int bits)
+    // Convenience wrapper used by reference tests: determine the counts for the
+    // given range and return the total number of bits needed for num_vals.
+    public static int GetBitCountForRange(int valuesCount, int range)
     {
-        if (trits != 0 && quints != 0) throw new InvalidOperationException();
-        if (trits > 1 || quints > 1) throw new InvalidOperationException();
+        var (mode, bitCount) = GetPackingModeBitCount(range);
 
-        if (trits > 0) _encoding = EncodingMode.TritEncoding;
-        else if (quints > 0) _encoding = EncodingMode.QuintEncoding;
-        else _encoding = EncodingMode.BitEncoding;
-
-        _bits = bits;
+        return GetBitCount(mode, valuesCount, bitCount);
     }
 
     protected int GetEncodedBlockSize()
