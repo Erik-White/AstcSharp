@@ -7,31 +7,16 @@ namespace AstcSharp.BiseEncoding;
 /// arbitrary alphabets of up to 256 symbols. Each alphabet size is encoded in the most
 /// space-efficient choice of bits, trits, and quints.
 /// </summary>
-internal class BoundedIntegerSequenceCodec
+internal partial class BoundedIntegerSequenceCodec
 {
     private const int Log2MaxRangeForBits = 8;
     private const int TotalRangeVariations = 3 * Log2MaxRangeForBits - 3;
 
     private static readonly int[] InterleavedQuintBits = [3, 2, 2];
     private static readonly int[] InterleavedTritBits = [2, 2, 1, 2, 1];
-
     private static readonly int[] MaxRanges = InitMaxRanges();
 
-    /// <summary>
-    /// The encoding modes supported by BISE.
-    /// </summary>
-    /// <remarks>
-    /// Note that the values correspond to the number of symbols in each alphabet.
-    /// </remarks>
-    public enum EncodingMode
-    {
-        Unknown = 0,
-        BitEncoding = 1,
-        TritEncoding = 3,
-        QuintEncoding = 5,
-    }
-
-    protected EncodingMode _encoding;
+    protected BiseEncodingMode _encoding;
     protected int _bits;
 
     protected BoundedIntegerSequenceCodec(int range)
@@ -63,7 +48,7 @@ internal class BoundedIntegerSequenceCodec
         return ranges.ToArray();
     }
 
-    public static (EncodingMode Mode, int BitCount) GetPackingModeBitCount(int range)
+    public static (BiseEncodingMode Mode, int BitCount) GetPackingModeBitCount(int range)
     {
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(range, 0);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(range, 1 << Log2MaxRangeForBits);
@@ -73,11 +58,11 @@ internal class BoundedIntegerSequenceCodec
             ? MaxRanges.Last() + 1
             : MaxRanges[index] + 1;
 
-        var encodingMode = Enum.GetValues<EncodingMode>()
+        var encodingMode = Enum.GetValues<BiseEncodingMode>()
             .OrderDescending()
             .FirstOrDefault(em => (maxValue % (int)em == 0) && int.IsPow2(maxValue / (int)em));
         
-        return encodingMode != EncodingMode.Unknown
+        return encodingMode != BiseEncodingMode.Unknown
             ? (encodingMode, int.Log2(maxValue / (int)encodingMode))
             : throw new ArgumentOutOfRangeException($"Invalid range for BISE encoding: {range}");
     }
@@ -85,13 +70,13 @@ internal class BoundedIntegerSequenceCodec
     /// <summary>
     /// Returns the overall bit count for a range of values encoded
     /// </summary>
-    public static int GetBitCount(EncodingMode encodingMode, int valuesCount, int bitCount)
+    public static int GetBitCount(BiseEncodingMode encodingMode, int valuesCount, int bitCount)
     {
         var encodingBitCount = encodingMode switch
         {
-            EncodingMode.TritEncoding => ((valuesCount * 8) + 4) / 5,
-            EncodingMode.QuintEncoding => ((valuesCount * 7) + 2) / 3,
-            EncodingMode.BitEncoding => 0,
+            BiseEncodingMode.TritEncoding => ((valuesCount * 8) + 4) / 5,
+            BiseEncodingMode.QuintEncoding => ((valuesCount * 7) + 2) / 3,
+            BiseEncodingMode.BitEncoding => 0,
             _ => throw new ArgumentOutOfRangeException(nameof(encodingMode), "Invalid encoding mode"),
         };
         var baseBitCount = valuesCount * bitCount;
@@ -112,9 +97,9 @@ internal class BoundedIntegerSequenceCodec
     {
         var (blockSize, extraBlockSize) = _encoding switch
         {
-            EncodingMode.TritEncoding => (5, 8),
-            EncodingMode.QuintEncoding => (3, 7),
-            EncodingMode.BitEncoding => (1, 0),
+            BiseEncodingMode.TritEncoding => (5, 8),
+            BiseEncodingMode.QuintEncoding => (3, 7),
+            BiseEncodingMode.BitEncoding => (1, 0),
             _ => (0, 0),
         };
         

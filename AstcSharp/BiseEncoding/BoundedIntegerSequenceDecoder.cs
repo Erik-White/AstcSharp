@@ -22,13 +22,13 @@ internal class BoundedIntegerSequenceDecoder : BoundedIntegerSequenceCodec
             if (!ok) throw new InvalidOperationException();
             switch (_encoding)
             {
-                case EncodingMode.TritEncoding:
+                case BiseEncodingMode.TritEncoding:
                     result.AddRange(DecodeISEBlock(3, blockBits, _bits));
                     break;
-                case EncodingMode.QuintEncoding:
+                case BiseEncodingMode.QuintEncoding:
                     result.AddRange(DecodeISEBlock(5, blockBits, _bits));
                     break;
-                case EncodingMode.BitEncoding:
+                case BiseEncodingMode.BitEncoding:
                     result.Add((int)blockBits);
                     break;
             }

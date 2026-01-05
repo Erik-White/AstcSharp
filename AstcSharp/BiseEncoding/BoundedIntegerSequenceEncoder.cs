@@ -19,7 +19,7 @@ internal class BoundedIntegerSequenceEncoder : BoundedIntegerSequenceCodec
         {
             switch (_encoding)
             {
-                case EncodingMode.TritEncoding:
+                case BiseEncodingMode.TritEncoding:
                     var trits = new List<int>();
                     for (int i = 0; i < 5; ++i)
                     {
@@ -28,7 +28,7 @@ internal class BoundedIntegerSequenceEncoder : BoundedIntegerSequenceCodec
                     }
                     EncodeISEBlock<int>(trits, _bits, ref bitSink, ref bitsWrittenCount, totalBitCount);
                     break;
-                case EncodingMode.QuintEncoding:
+                case BiseEncodingMode.QuintEncoding:
                     var quints = new List<int>();
                     for (int i = 0; i < 3; ++i)
                     {
@@ -37,7 +37,7 @@ internal class BoundedIntegerSequenceEncoder : BoundedIntegerSequenceCodec
                     }
                     EncodeISEBlock<int>(quints, _bits, ref bitSink, ref bitsWrittenCount, totalBitCount);
                     break;
-                case EncodingMode.BitEncoding:
+                case BiseEncodingMode.BitEncoding:
                     bitSink.PutBits((uint)_values[index++], GetEncodedBlockSize());
                     break;
             }
