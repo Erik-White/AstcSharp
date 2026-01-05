@@ -8,7 +8,7 @@ internal class BoundedIntegerSequenceDecoder : BoundedIntegerSequenceCodec
 
     public List<int> Decode(int valuesCount, ref BitStream bitSource)
     {
-        int totalBitsCount = GetBitCount(_encoding, valuesCount, _bits);
+        int totalBitsCount = GetBitCount(_encoding, valuesCount, _bitCount);
         int bitsPerBlock = GetEncodedBlockSize();
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(bitsPerBlock, 64);
 
@@ -23,10 +23,10 @@ internal class BoundedIntegerSequenceDecoder : BoundedIntegerSequenceCodec
             switch (_encoding)
             {
                 case BiseEncodingMode.TritEncoding:
-                    result.AddRange(DecodeISEBlock(3, blockBits, _bits));
+                    result.AddRange(DecodeISEBlock(3, blockBits, _bitCount));
                     break;
                 case BiseEncodingMode.QuintEncoding:
-                    result.AddRange(DecodeISEBlock(5, blockBits, _bits));
+                    result.AddRange(DecodeISEBlock(5, blockBits, _bitCount));
                     break;
                 case BiseEncodingMode.BitEncoding:
                     result.Add((int)blockBits);

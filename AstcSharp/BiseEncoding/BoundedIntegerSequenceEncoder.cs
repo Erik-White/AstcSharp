@@ -11,7 +11,7 @@ internal class BoundedIntegerSequenceEncoder : BoundedIntegerSequenceCodec
 
     public void Encode(ref BitStream bitSink)
     {
-        int totalBitCount = GetBitCount(_encoding, _values.Count, _bits);
+        int totalBitCount = GetBitCount(_encoding, _values.Count, _bitCount);
 
         int index = 0;
         int bitsWrittenCount = 0;
@@ -26,7 +26,7 @@ internal class BoundedIntegerSequenceEncoder : BoundedIntegerSequenceCodec
                         if (index < _values.Count) trits.Add(_values[index++]);
                         else trits.Add(0);
                     }
-                    EncodeISEBlock<int>(trits, _bits, ref bitSink, ref bitsWrittenCount, totalBitCount);
+                    EncodeISEBlock<int>(trits, _bitCount, ref bitSink, ref bitsWrittenCount, totalBitCount);
                     break;
                 case BiseEncodingMode.QuintEncoding:
                     var quints = new List<int>();
@@ -35,7 +35,7 @@ internal class BoundedIntegerSequenceEncoder : BoundedIntegerSequenceCodec
                         var value = index < _values.Count ? _values[index++] : 0;
                         quints.Add(value);
                     }
-                    EncodeISEBlock<int>(quints, _bits, ref bitSink, ref bitsWrittenCount, totalBitCount);
+                    EncodeISEBlock<int>(quints, _bitCount, ref bitSink, ref bitsWrittenCount, totalBitCount);
                     break;
                 case BiseEncodingMode.BitEncoding:
                     bitSink.PutBits((uint)_values[index++], GetEncodedBlockSize());

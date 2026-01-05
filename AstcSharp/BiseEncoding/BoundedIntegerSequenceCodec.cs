@@ -17,13 +17,13 @@ internal partial class BoundedIntegerSequenceCodec
     private static readonly int[] MaxRanges = InitMaxRanges();
 
     protected BiseEncodingMode _encoding;
-    protected int _bits;
+    protected int _bitCount;
 
     protected BoundedIntegerSequenceCodec(int range)
     {
-        var (encodingMode, bits) = GetPackingModeBitCount(range);
+        var (encodingMode, bitCount) = GetPackingModeBitCount(range);
         _encoding = encodingMode;
-        _bits = bits;
+        _bitCount = bitCount;
     }
 
 // A cached table containing the max ranges for values encoded using ASTC's
@@ -103,7 +103,7 @@ internal partial class BoundedIntegerSequenceCodec
             _ => (0, 0),
         };
         
-        return extraBlockSize + blockSize * _bits;
+        return extraBlockSize + blockSize * _bitCount;
     }
 
     public static IReadOnlyList<int> ISERange() => MaxRanges;
