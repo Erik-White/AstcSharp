@@ -25,7 +25,7 @@ namespace AstcSharp.Tests
         [Fact]
         public void ReversibilityBasic()
         {
-            var ranges = BoundedIntegerSequenceCodec.ISERange().ToArray();
+            var ranges = BoundedIntegerSequenceCodec.MaxRanges;
             foreach (var range in ranges)
             {
                 if (range <= Quantization.kWeightRangeMaxValue)
@@ -51,7 +51,7 @@ namespace AstcSharp.Tests
         [Fact]
         public void QuantizationRange()
         {
-            var ranges = BoundedIntegerSequenceCodec.ISERange().ToArray();
+            var ranges = BoundedIntegerSequenceCodec.MaxRanges;
             foreach (var range in ranges)
             {
                 if (range >= Quantization.kEndpointRangeMinValue)
@@ -95,7 +95,7 @@ namespace AstcSharp.Tests
         [Fact]
         public void UpperBoundRanges()
         {
-            var ranges = BoundedIntegerSequenceCodec.ISERange().ToArray();
+            var ranges = BoundedIntegerSequenceCodec.MaxRanges;
             int idx = 0;
             for (int desired_range = 1; desired_range < 256; ++desired_range)
             {
