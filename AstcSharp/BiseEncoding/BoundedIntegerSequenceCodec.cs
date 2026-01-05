@@ -63,7 +63,7 @@ internal class BoundedIntegerSequenceCodec
         return ranges.ToArray();
     }
 
-    public static (EncodingMode Mode, int BitsCount) GetPackingModeBitCount(int range)
+    public static (EncodingMode Mode, int BitCount) GetPackingModeBitCount(int range)
     {
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(range, 0);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(range, 1 << Log2MaxRangeForBits);
@@ -80,44 +80,6 @@ internal class BoundedIntegerSequenceCodec
         return encodingMode != EncodingMode.Unknown
             ? (encodingMode, int.Log2(maxValue / (int)encodingMode))
             : throw new ArgumentOutOfRangeException($"Invalid range for BISE encoding: {range}");
-    }
-
-    [Obsolete("Use GetPackingModeBitCount instead.")]
-    public static (int trits, int quints, int bits) GetCountsForRange(int range)
-    {
-        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(range, 0);
-        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(range, 1 << Log2MaxRangeForBits);
-
-        int trits = 0;
-        int quints = 0;
-        int bits = 0;
-        int index = Array.FindIndex(MaxRanges, v => v >= range);
-        if (index < 0) index = MaxRanges.Length - 1;
-        int max_vals_for_range = MaxRanges[index] + 1;
-
-        if ((max_vals_for_range % 3 == 0) && int.IsPow2(max_vals_for_range / 3))
-        {
-            bits = int.Log2(max_vals_for_range / 3);
-            trits = 1;
-        }
-        else if ((max_vals_for_range % 5 == 0) && int.IsPow2(max_vals_for_range / 5))
-        {
-            bits = int.Log2(max_vals_for_range / 5);
-            quints = 1;
-        }
-        else if (int.IsPow2(max_vals_for_range))
-        {
-            bits = int.Log2(max_vals_for_range);
-        }
-        return (trits, quints, bits);
-    }
-
-    public static int GetBitCount(int num_vals, int trits, int quints, int bits)
-    {
-        int trit_bit_count = ((num_vals * 8 * trits) + 4) / 5;
-        int quint_bit_count = ((num_vals * 7 * quints) + 2) / 3;
-        int base_bit_count = num_vals * bits;
-        return trit_bit_count + quint_bit_count + base_bit_count;
     }
 
     /// <summary>

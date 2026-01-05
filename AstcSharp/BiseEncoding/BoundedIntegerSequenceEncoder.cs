@@ -11,9 +11,7 @@ internal class BoundedIntegerSequenceEncoder : BoundedIntegerSequenceCodec
 
     public void Encode(ref BitStream bitSink)
     {
-        int tritsCount = (_encoding == EncodingMode.TritEncoding) ? 1 : 0;
-        int quintsCount = (_encoding == EncodingMode.QuintEncoding) ? 1 : 0;
-        int totalBitCount = GetBitCount(_values.Count, tritsCount, quintsCount, _bits);
+        int totalBitCount = GetBitCount(_encoding, _values.Count, _bits);
 
         int index = 0;
         int bitsWrittenCount = 0;

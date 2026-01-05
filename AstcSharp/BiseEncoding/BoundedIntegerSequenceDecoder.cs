@@ -8,9 +8,7 @@ internal class BoundedIntegerSequenceDecoder : BoundedIntegerSequenceCodec
 
     public List<int> Decode(int valuesCount, ref BitStream bitSource)
     {
-        int tritsCount = (_encoding == EncodingMode.TritEncoding) ? 1 : 0;
-        int quintsCount = (_encoding == EncodingMode.QuintEncoding) ? 1 : 0;
-        int totalBitsCount = GetBitCount(valuesCount, tritsCount, quintsCount, _bits);
+        int totalBitsCount = GetBitCount(_encoding, valuesCount, _bits);
         int bitsPerBlock = GetEncodedBlockSize();
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(bitsPerBlock, 64);
 

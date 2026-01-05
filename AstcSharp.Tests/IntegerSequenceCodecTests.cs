@@ -14,40 +14,62 @@ namespace AstcSharp.Tests
             // Check a few known ranges like the C++ test suite does for 1..31
             for (int i = 1; i < 32; ++i)
                 {
-                    var (t, q, b) = BoundedIntegerSequenceCodec.GetCountsForRange(i);
-                    Assert.True(t >= 0);
+                    var (mode, bitCount) = BoundedIntegerSequenceCodec.GetPackingModeBitCount(i);
+                    Assert.True(mode != BoundedIntegerSequenceCodec.EncodingMode.Unknown, $"Range {i} yielded Unknown encoding mode");
                 }
         }
 
         [Fact]
         public void GetCountsForRange_Exact()
         {
-            int[][] expected = new int[31][] {
-                new int[]{0,0,1}, new int[]{1,0,0}, new int[]{0,0,2}, new int[]{0,1,0}, new int[]{1,0,1},
-                new int[]{0,0,3}, new int[]{0,0,3}, new int[]{0,1,1}, new int[]{0,1,1}, new int[]{1,0,2},
-                new int[]{1,0,2}, new int[]{0,0,4}, new int[]{0,0,4}, new int[]{0,0,4}, new int[]{0,0,4},
-                new int[]{0,1,2}, new int[]{0,1,2}, new int[]{0,1,2}, new int[]{0,1,2}, new int[]{1,0,3},
-                new int[]{1,0,3}, new int[]{1,0,3}, new int[]{1,0,3}, new int[]{0,0,5}, new int[]{0,0,5},
-                new int[]{0,0,5}, new int[]{0,0,5}, new int[]{0,0,5}, new int[]{0,0,5}, new int[]{0,0,5},
-                new int[]{0,0,5}
+            (BoundedIntegerSequenceCodec.EncodingMode, int)[] expected = new (BoundedIntegerSequenceCodec.EncodingMode, int)[31] {
+                (BoundedIntegerSequenceCodec.EncodingMode.BitEncoding, 1),
+                (BoundedIntegerSequenceCodec.EncodingMode.TritEncoding, 0),
+                (BoundedIntegerSequenceCodec.EncodingMode.BitEncoding, 2),
+                (BoundedIntegerSequenceCodec.EncodingMode.QuintEncoding, 0),
+                (BoundedIntegerSequenceCodec.EncodingMode.TritEncoding, 1),
+                (BoundedIntegerSequenceCodec.EncodingMode.BitEncoding, 3),
+                (BoundedIntegerSequenceCodec.EncodingMode.BitEncoding, 3),
+                (BoundedIntegerSequenceCodec.EncodingMode.QuintEncoding, 1),
+                (BoundedIntegerSequenceCodec.EncodingMode.QuintEncoding, 1),
+                (BoundedIntegerSequenceCodec.EncodingMode.TritEncoding, 2),
+                (BoundedIntegerSequenceCodec.EncodingMode.TritEncoding, 2),
+                (BoundedIntegerSequenceCodec.EncodingMode.BitEncoding, 4),
+                (BoundedIntegerSequenceCodec.EncodingMode.BitEncoding, 4),
+                (BoundedIntegerSequenceCodec.EncodingMode.BitEncoding, 4),
+                (BoundedIntegerSequenceCodec.EncodingMode.BitEncoding, 4),
+                (BoundedIntegerSequenceCodec.EncodingMode.QuintEncoding, 2),
+                (BoundedIntegerSequenceCodec.EncodingMode.QuintEncoding, 2),
+                (BoundedIntegerSequenceCodec.EncodingMode.QuintEncoding, 2),
+                (BoundedIntegerSequenceCodec.EncodingMode.QuintEncoding, 2),
+                (BoundedIntegerSequenceCodec.EncodingMode.TritEncoding, 3),
+                (BoundedIntegerSequenceCodec.EncodingMode.TritEncoding, 3),
+                (BoundedIntegerSequenceCodec.EncodingMode.TritEncoding, 3),
+                (BoundedIntegerSequenceCodec.EncodingMode.TritEncoding, 3),
+                (BoundedIntegerSequenceCodec.EncodingMode.BitEncoding, 5),
+                (BoundedIntegerSequenceCodec.EncodingMode.BitEncoding, 5),
+                (BoundedIntegerSequenceCodec.EncodingMode.BitEncoding, 5),
+                (BoundedIntegerSequenceCodec.EncodingMode.BitEncoding, 5),
+                (BoundedIntegerSequenceCodec.EncodingMode.BitEncoding, 5),
+                (BoundedIntegerSequenceCodec.EncodingMode.BitEncoding, 5),
+                (BoundedIntegerSequenceCodec.EncodingMode.BitEncoding, 5),
+                (BoundedIntegerSequenceCodec.EncodingMode.BitEncoding, 5)
             };
 
             for (int i = 1; i < 32; ++i)
-                {
-                    var (t, q, b) = BoundedIntegerSequenceCodec.GetCountsForRange(i);
-                    var exp = expected[i - 1];
-                    Assert.Equal(exp[0], t);
-                    Assert.Equal(exp[1], q);
-                    Assert.Equal(exp[2], b);
-                }
+            {
+                var (mode, bitCount) = BoundedIntegerSequenceCodec.GetPackingModeBitCount(i);
+                var (expectedMode, expectedBitCount) = expected[i - 1];
+                Assert.Equal(expectedMode, mode);
+                Assert.Equal(expectedBitCount, bitCount);
+            }
 
-                Assert.Throws<ArgumentOutOfRangeException>(() => BoundedIntegerSequenceCodec.GetCountsForRange(0));
-                Assert.Throws<ArgumentOutOfRangeException>(() => BoundedIntegerSequenceCodec.GetCountsForRange(256));
+            Assert.Throws<ArgumentOutOfRangeException>(() => BoundedIntegerSequenceCodec.GetPackingModeBitCount(byte.MinValue));
+            Assert.Throws<ArgumentOutOfRangeException>(() => BoundedIntegerSequenceCodec.GetPackingModeBitCount(byte.MaxValue + 1));
 
-                var (t1, q1, b1) = BoundedIntegerSequenceCodec.GetCountsForRange(1);
-                Assert.Equal(0, t1);
-                Assert.Equal(0, q1);
-                Assert.Equal(1, b1);
+            var (modeOne, bitCountOne) = BoundedIntegerSequenceCodec.GetPackingModeBitCount(1);
+            Assert.Equal(BoundedIntegerSequenceCodec.EncodingMode.BitEncoding, modeOne);
+            Assert.Equal(1, bitCountOne);
         }
 
         [Fact]
@@ -55,34 +77,34 @@ namespace AstcSharp.Tests
         {
             // bits = 1
             int trits = 0, quints = 0, bits = 1;
-            for (int i = 0; i < 64; ++i)
+            for (int i = 1; i < 64; i++)
             {
-                Assert.Equal(i, BoundedIntegerSequenceCodec.GetBitCount(i, trits, quints, bits));
+                Assert.Equal(i, BoundedIntegerSequenceCodec.GetBitCount(BoundedIntegerSequenceCodec.EncodingMode.BitEncoding, i, bits));
                 Assert.Equal(i, BoundedIntegerSequenceCodec.GetBitCountForRange(i, 1));
             }
 
             // bits = 2
             trits = 0; quints = 0; bits = 2;
-            for (int i = 0; i < 64; ++i)
+            for (int i = 0; i < 64; i++)
             {
-                Assert.Equal(2 * i, BoundedIntegerSequenceCodec.GetBitCount(i, trits, quints, bits));
-                Assert.Equal(2 * i, BoundedIntegerSequenceCodec.GetBitCountForRange(i, 3));
+                Assert.Equal(i * 2, BoundedIntegerSequenceCodec.GetBitCount(BoundedIntegerSequenceCodec.EncodingMode.BitEncoding, i, bits));
+                Assert.Equal(i * 2, BoundedIntegerSequenceCodec.GetBitCountForRange(i, 3));
             }
 
             // trits case: 15 values, trits=1, bits=3
             trits = 1; quints = 0; bits = 3;
-            Assert.Equal(8 * 3 + 15 * 3, BoundedIntegerSequenceCodec.GetBitCount(15, trits, quints, bits));
-            Assert.Equal(BoundedIntegerSequenceCodec.GetBitCountForRange(15, 23), BoundedIntegerSequenceCodec.GetBitCount(15, trits, quints, bits));
+            Assert.Equal(8 * 3 + 15 * 3, BoundedIntegerSequenceCodec.GetBitCount(BoundedIntegerSequenceCodec.EncodingMode.TritEncoding, 15, bits));
+            Assert.Equal(BoundedIntegerSequenceCodec.GetBitCountForRange(15, 23), BoundedIntegerSequenceCodec.GetBitCount(BoundedIntegerSequenceCodec.EncodingMode.TritEncoding, 15, bits));
 
             // trits case: 13 values, trits=1, bits=2 -> expected 47
             trits = 1; quints = 0; bits = 2;
-            Assert.Equal(47, BoundedIntegerSequenceCodec.GetBitCount(13, trits, quints, bits));
-            Assert.Equal(BoundedIntegerSequenceCodec.GetBitCountForRange(13, 11), BoundedIntegerSequenceCodec.GetBitCount(13, trits, quints, bits));
+            Assert.Equal(47, BoundedIntegerSequenceCodec.GetBitCount(BoundedIntegerSequenceCodec.EncodingMode.TritEncoding, 13, bits));
+            Assert.Equal(BoundedIntegerSequenceCodec.GetBitCountForRange(13, 11), BoundedIntegerSequenceCodec.GetBitCount(BoundedIntegerSequenceCodec.EncodingMode.TritEncoding, 13, bits));
 
             // quints case: 6 values, quints=1, bits=4
             trits = 0; quints = 1; bits = 4;
-            Assert.Equal(7 * 2 + 6 * 4, BoundedIntegerSequenceCodec.GetBitCount(6, trits, quints, bits));
-            Assert.Equal(BoundedIntegerSequenceCodec.GetBitCountForRange(6, 79), BoundedIntegerSequenceCodec.GetBitCount(6, trits, quints, bits));
+            Assert.Equal(7 * 2 + 6 * 4, BoundedIntegerSequenceCodec.GetBitCount(BoundedIntegerSequenceCodec.EncodingMode.QuintEncoding, 6, bits));
+            Assert.Equal(BoundedIntegerSequenceCodec.GetBitCountForRange(6, 79), BoundedIntegerSequenceCodec.GetBitCount(BoundedIntegerSequenceCodec.EncodingMode.QuintEncoding, 6, bits));
 
             // quints case: 7 values, quints=1, bits=3
             trits = 0; quints = 1; bits = 3;
@@ -90,7 +112,7 @@ namespace AstcSharp.Tests
                          /* first two blocks of bits */ 6 * 3 +
                          /* last quint block without the high order four bits */ 3 +
                          /* last block with one set of three bits */ 3,
-                         BoundedIntegerSequenceCodec.GetBitCount(7, trits, quints, bits));
+                         BoundedIntegerSequenceCodec.GetBitCount(BoundedIntegerSequenceCodec.EncodingMode.QuintEncoding, 7, bits));
         }
 
         [Fact]
