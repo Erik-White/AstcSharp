@@ -14,37 +14,40 @@ internal class BoundedIntegerSequenceDecoder : BoundedIntegerSequenceCodec
     /// <param name="valuesCount">The number of values to decode.</param>
     /// <param name="bitSource">The source of values to decode from.</param>
     /// <returns>The decoded values. The collection always contains exactly <paramref name="valuesCount"/> elements.</returns>
+    /// <exception cref="ArgumentOutOfRangeException"></exception>
     /// <exception cref="InvalidOperationException"></exception>
     public List<int> Decode(int valuesCount, ref BitStream bitSource)
     {
-        int totalBitsCount = GetBitCount(_encoding, valuesCount, _bitCount);
+        int totalBitCount = GetBitCount(_encoding, valuesCount, _bitCount);
         int bitsPerBlock = GetEncodedBlockSize();
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(bitsPerBlock, 64);
 
-        int bitsRemaining = totalBitsCount;
+        int bitsRemaining = totalBitCount;
         var result = new List<int>();
 
         while (bitsRemaining > 0)
         {
-            int toRead = Math.Min(bitsRemaining, bitsPerBlock);
-            bool ok = bitSource.GetBits<ulong>(toRead, out var blockBits);
-            if (!ok) throw new InvalidOperationException();
-            switch (_encoding)
+            int bitsToRead = Math.Min(bitsRemaining, bitsPerBlock);
+            if (!bitSource.GetBits<ulong>(bitsToRead, out var blockBits))
+                 throw new InvalidOperationException("Not enough bits in BitStream to decode BISE block");
+
+            var decodedValues = _encoding switch
             {
-                case BiseEncodingMode.TritEncoding:
-                    result.AddRange(DecodeISEBlock(3, blockBits, _bitCount));
-                    break;
-                case BiseEncodingMode.QuintEncoding:
-                    result.AddRange(DecodeISEBlock(5, blockBits, _bitCount));
-                    break;
-                case BiseEncodingMode.BitEncoding:
-                    result.Add((int)blockBits);
-                    break;
-            }
+                BiseEncodingMode.TritEncoding or BiseEncodingMode.QuintEncoding
+                    => DecodeISEBlock(_encoding, blockBits, _bitCount),
+                BiseEncodingMode.BitEncoding
+                    => [(int)blockBits],
+                _ => throw new NotSupportedException("Unsupported BISE encoding mode")
+            };
+
+            result.AddRange(decodedValues);
             bitsRemaining -= bitsPerBlock;
         }
 
-        if (result.Count < valuesCount) throw new InvalidOperationException();
+        // Sanity check - did we get the expected number of values?
+        if (result.Count < valuesCount)
+            throw new InvalidOperationException("Decoded fewer values than expected from BISE block");
+
         result.RemoveRange(valuesCount, result.Count - valuesCount);
         
         return result;
@@ -54,42 +57,50 @@ internal class BoundedIntegerSequenceDecoder : BoundedIntegerSequenceCodec
     /// Decode a trit/quint block
     /// </summary>
     /// <param name="valRange">The range of values, either 3 for trits or 5 for quints.</param>
-    /// <param name="blockBits">The bits representing the encoded block.</param>
-    /// <param name="numBits">The number of bits used for each value.</param>
+    /// <param name="encodedBlock">The bits representing the encoded block.</param>
+    /// <param name="encodedBitCount">The number of bits used for each value.</param>
     /// <returns>An array of decoded integer values.</returns>
     /// <exception cref="ArgumentException"></exception>
     /// <exception cref="InvalidOperationException"></exception>
-    public static int[] DecodeISEBlock(int valRange, ulong blockBits, int numBits)
+    public static int[] DecodeISEBlock(BiseEncodingMode mode, ulong encodedBlock, int encodedBitCount)
     {
-        if (!(valRange == 3 || valRange == 5))
-            throw new ArgumentException("valRange must be 3 or 5", nameof(valRange));
-
-        int kNumVals = (valRange == 5) ? 3 : 5;
-        int[] kInterleavedBits = (valRange == 5) ? InterleavedQuintBits : InterleavedTritBits;
-
-        var blockBitSrc = new BitStream(blockBits, 64);
-
-        var m = new int[kNumVals];
-        ulong encoded = 0;
-        int encoded_bits_read = 0;
-        for (int i = 0; i < kNumVals; ++i)
+        int[] interleavedBits = mode switch
         {
-            bool res = blockBitSrc.GetBits<ulong>(numBits, out var bits);
-            if (!res) throw new InvalidOperationException();
+            BiseEncodingMode.TritEncoding => InterleavedTritBits,
+            BiseEncodingMode.QuintEncoding => InterleavedQuintBits,
+            _ => throw new ArgumentOutOfRangeException(nameof(mode), mode, $"ASTC blocks only support trit and quint encoding")
+        };
+
+        var valuesCount = mode == BiseEncodingMode.TritEncoding ? 5 : 3;
+        var bitSource = new BitStream(encodedBlock, dataSize: sizeof(ulong) * 8);
+        var result = new int[valuesCount];
+        var m = new int[valuesCount];
+        ulong encodedBits = 0;
+        int encodedBitsRead = 0;
+
+        for (int i = 0; i < valuesCount; i++)
+        {
+            if (!bitSource.GetBits<ulong>(encodedBitCount, out var bits))
+                throw new InvalidOperationException();
+
             m[i] = (int)bits;
 
-            res = blockBitSrc.GetBits<ulong>(kInterleavedBits[i], out var encoded_bits);
-            if (!res) throw new InvalidOperationException();
-            encoded |= encoded_bits << encoded_bits_read;
-            encoded_bits_read += kInterleavedBits[i];
+            if (!bitSource.GetBits<ulong>(interleavedBits[i], out var encoded_bits))
+                throw new InvalidOperationException();
+
+            encodedBits |= encoded_bits << encodedBitsRead;
+            encodedBitsRead += interleavedBits[i];
         }
 
-        int[] encodings = (valRange == 5) ? QuintEncodings[encoded] : TritEncodings[encoded];
-        var result = new int[kNumVals];
-        for (int i = 0; i < kNumVals; ++i)
+        int[] encodings = mode == BiseEncodingMode.TritEncoding
+            ? TritEncodings[encodedBits]
+            : QuintEncodings[encodedBits];
+
+        for (int i = 0; i < valuesCount; ++i)
         {
-            result[i] = (encodings[i] << numBits) | m[i];
+            result[i] = (encodings[i] << encodedBitCount) | m[i];
         }
+
         return result;
     }
 }
