@@ -183,7 +183,7 @@ namespace AstcSharp.Tests
 
             bool ok = bitSink.GetBits<ulong>(35, out var encoded);
             Assert.True(ok);
-            Assert.Equal<ulong>(kValEncoding, encoded);
+            Assert.Equal(kValEncoding, encoded);
         }
 
         [Fact]
@@ -206,7 +206,7 @@ namespace AstcSharp.Tests
 
             bool ok = bitSink.GetBits<ulong>(58, out var encoded);
             Assert.True(ok);
-            Assert.Equal<ulong>(kValEncoding, encoded);
+            Assert.Equal(kValEncoding, encoded);
         }
 
         [Fact]

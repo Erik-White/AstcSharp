@@ -160,7 +160,7 @@ internal static class IntermediateBlock
             // bit_sink should be empty
             if (bit_sink.Bits != 0)
                 throw new InvalidOperationException($"{nameof(bit_sink)}.{nameof(bit_sink.Bits)} must be 0");
-            bit_sink.PutBits<uint>(encoded_mode, 11);
+            bit_sink.PutBits(encoded_mode, 11);
             return null;
         }
 
@@ -192,7 +192,7 @@ internal static class IntermediateBlock
         return 128 - num_weight_bits - extra_config_bits;
     }
 
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, UInt128Ex> s_lastUnpacked = new System.Collections.Concurrent.ConcurrentDictionary<string, UInt128Ex>();
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, UInt128> s_lastUnpacked = new System.Collections.Concurrent.ConcurrentDictionary<string, UInt128>();
 
     public static IntermediateBlockData? UnpackIntermediateBlock(PhysicalBlock physicalBlock)
     {
@@ -213,7 +213,7 @@ internal static class IntermediateBlock
         if (!colorBitCount.HasValue || !colorStartBit.HasValue || !colorValuesRangeOpt.HasValue || !colorValuesCount.HasValue || !weightGridDimensions.HasValue || !weightRange.HasValue || !partitionCount.HasValue || !weightBitCount.HasValue)
             return null;
 
-        var colorBitMask = UInt128Ex.OnesMask(colorBitCount.Value);
+        var colorBitMask = UInt128Extensions.OnesMask(colorBitCount.Value);
         var colorBits = (physicalBlock.GetBlockBits() >> colorStartBit.Value) & colorBitMask;
         var colorBitStream = new BitStream(colorBits, 128);
 
@@ -247,7 +247,7 @@ internal static class IntermediateBlock
 
         data.endpoint_range = colorValuesRangeOpt.Value;
 
-        var weightBits = UInt128Ex.ReverseBits(physicalBlock.GetBlockBits()) & UInt128Ex.OnesMask(weightBitCount.Value);
+        var weightBits = UInt128Extensions.ReverseBits(physicalBlock.GetBlockBits()) & UInt128Extensions.OnesMask(weightBitCount.Value);
         colorBitStream = new BitStream(weightBits, 128);
 
         var weightDecoder = new BoundedIntegerSequenceDecoder(data.weightRange);
@@ -294,9 +294,9 @@ internal static class IntermediateBlock
         if (physicalBlock.IsIllegalEncoding() != null) return null;
         if (!physicalBlock.IsVoidExtent()) return null;
 
-        var colorBits = (physicalBlock.GetBlockBits() >> physicalBlock.ColorStartBit().Value) & UInt128Ex.OnesMask(physicalBlock.ColorBitCount().Value);
+        var colorBits = (physicalBlock.GetBlockBits() >> physicalBlock.ColorStartBit().Value) & UInt128Extensions.OnesMask(physicalBlock.ColorBitCount().Value);
         // We expect low 64 bits contain the 4x16-bit channels
-        var low = colorBits.Low;
+        var low = colorBits.Low();
 
         var data = new VoidExtentData();
         data.r = (ushort)((low >> 0) & 0xFFFF);
@@ -322,9 +322,9 @@ internal static class IntermediateBlock
         return data;
     }
 
-    public static string? Pack(IntermediateBlockData data, out UInt128Ex pb)
+    public static string? Pack(IntermediateBlockData data, out UInt128 pb)
     {
-        pb = UInt128Ex.Zero;
+        pb = 0;
         if (data.weights.Count != data.weightGridX * data.weightGridY * (data.dualPlaneChannel.HasValue ? 2 : 1))
         {
             return "Incorrect number of weights!";
@@ -338,7 +338,7 @@ internal static class IntermediateBlock
 
         // number of partitions minus one
         int partitionCount = data.endpoints.Count;
-        bitSink.PutBits<uint>((uint)(partitionCount - 1), 2);
+        bitSink.PutBits((uint)(partitionCount - 1), 2);
 
         if (partitionCount > 1)
         {
@@ -363,7 +363,7 @@ internal static class IntermediateBlock
         if (shared_endpoint_mode)
         {
             if (partitionCount > 1) bitSink.PutBits(0u, 2);
-            bitSink.PutBits<uint>((uint)data.endpoints[0].mode, 4);
+            bitSink.PutBits((uint)data.endpoints[0].mode, 4);
         }
         else
         {
@@ -379,7 +379,7 @@ internal static class IntermediateBlock
             if (maxClass - minClass > 1) return "Endpoint modes are invalid";
 
             var cemEncoder = new BitStream(0UL, 0);
-            cemEncoder.PutBits<uint>((uint)(minClass + 1), 2);
+            cemEncoder.PutBits((uint)(minClass + 1), 2);
 
             foreach (var endpoint in data.endpoints)
             {
@@ -453,10 +453,10 @@ internal static class IntermediateBlock
         ArgumentOutOfRangeException.ThrowIfNotEqual(bitSink.Bits, (uint)128 - weightBitsCount);
 
         // Flush out the bit writer
-        if (!bitSink.GetBits<UInt128Ex>(128 - weightBitsCount, out var astc_bits)) throw new InvalidOperationException();
-        if (!weightSink.GetBits<UInt128Ex>(weightBitsCount, out var rev_weight_bits)) throw new InvalidOperationException();
+        if (!bitSink.GetBits<UInt128>(128 - weightBitsCount, out var astc_bits)) throw new InvalidOperationException();
+        if (!weightSink.GetBits<UInt128>(weightBitsCount, out var rev_weight_bits)) throw new InvalidOperationException();
 
-        var combined = astc_bits | UInt128Ex.ReverseBits(rev_weight_bits);
+        var combined = astc_bits | UInt128Extensions.ReverseBits(rev_weight_bits);
         pb = combined;
 
         var block = new PhysicalBlock(pb);
@@ -476,7 +476,7 @@ internal static class IntermediateBlock
         return illegal;
     }
 
-    public static string? Pack(VoidExtentData data, out UInt128Ex pb)
+    public static string? Pack(VoidExtentData data, out UInt128 pb)
     {
         // Pack void extent
         // Assemble the 128-bit value explicitly: low 64 bits = RGBA (4x16)
@@ -496,12 +496,12 @@ internal static class IntermediateBlock
         // low word holds RGBA and the high word holds header+coords.
         if (high64 == 0UL)
         {
-            pb = new UInt128Ex(low64, 0UL);
+            pb = (UInt128)low64;
             // using compact void extent representation
         }
         else
         {
-            pb = new UInt128Ex(low64, high64);
+            pb = new UInt128(high64, low64);
             // using full void extent representation
         }
 

@@ -25,7 +25,9 @@ namespace AstcSharp.Benchmarks
             var blocks = astcFile!.Blocks;
             Span<byte> blockBytes = stackalloc byte[16];
             blocks.Slice(0, 16).CopyTo(blockBytes);
-            var block = new PhysicalBlock(new UInt128Ex(BitConverter.ToUInt64(blockBytes), BitConverter.ToUInt64(blockBytes.Slice(8))));
+            var low = BitConverter.ToUInt64(blockBytes);
+            var high = BitConverter.ToUInt64(blockBytes.Slice(8));
+            var block = new PhysicalBlock(((UInt128)low | ((UInt128)high << 64)));
         }
 
         [Benchmark]
@@ -34,7 +36,9 @@ namespace AstcSharp.Benchmarks
             var blocks = astcFile!.Blocks;
             Span<byte> blockBytes = stackalloc byte[16];
             blocks.Slice(0, 16).CopyTo(blockBytes);
-            var block = new PhysicalBlock(new UInt128Ex(BitConverter.ToUInt64(blockBytes), BitConverter.ToUInt64(blockBytes.Slice(8))));
+            var low = BitConverter.ToUInt64(blockBytes);
+            var high = BitConverter.ToUInt64(blockBytes.Slice(8));
+            var block = new PhysicalBlock(((UInt128)low | ((UInt128)high << 64)));
             var ib = IntermediateBlock.UnpackIntermediateBlock(block);
         }
 
@@ -44,7 +48,9 @@ namespace AstcSharp.Benchmarks
             var blocks = astcFile!.Blocks;
             Span<byte> blockBytes = stackalloc byte[16];
             blocks.Slice(0, 16).CopyTo(blockBytes);
-            var block = new PhysicalBlock(new UInt128Ex(BitConverter.ToUInt64(blockBytes), BitConverter.ToUInt64(blockBytes.Slice(8))));
+            var low = BitConverter.ToUInt64(blockBytes);
+            var high = BitConverter.ToUInt64(blockBytes.Slice(8));
+            var block = new PhysicalBlock(((UInt128)low | ((UInt128)high << 64)));
             var ib = IntermediateBlock.UnpackIntermediateBlock(block);
             var logical = ib is not null
                 ? new LogicalBlock(Footprint.Get4x4(), ib)

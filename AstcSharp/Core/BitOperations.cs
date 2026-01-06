@@ -3,24 +3,13 @@ namespace AstcSharp.Core;
 internal static class BitOperations
 {
     /// <summary>
-    /// Return the specified range as a <see cref="UInt128Ex"/> (low bits in <see cref="UInt128Ex.Low"/> field)
+    /// Return the specified range as a <see cref="UInt128"/> (low bits in lower 64 bits)
     /// </summary>
-    public static UInt128Ex GetBits(UInt128Ex value, int start, int length)
+    public static UInt128 GetBits(UInt128 value, int start, int length)
     {
-        // const int UInt128BitCount = 128;
-        
-        // if (length <= 0)
-        //     return UInt128Ex.Zero;
-
-        // var mask = length == UInt128BitCount
-        //     ? UInt128Ex.Zero
-        //     : UInt128Ex.Zero >> (UInt128BitCount - length);
-
-        //return (value >> start) & mask;
-
         if (length <= 0)
-            return UInt128Ex.Zero;
-            
+            return UInt128.Zero;
+
         var shifted = value >> start;
         if (length >= 128)
             return shifted;
@@ -31,13 +20,13 @@ internal static class BitOperations
             int highBits = length - 64;
             ulong highMask = (highBits == 64) ? ~0UL : ((1UL << highBits) - 1UL);
 
-            return new UInt128Ex(shifted.Low & lowMask, shifted.High & highMask);
+            return new UInt128(shifted.High() & highMask, shifted.Low() & lowMask);
         }
         else
         {
             ulong mask = (length == 64) ? ~0UL : ((1UL << length) - 1UL);
 
-            return new UInt128Ex(shifted.Low & mask, 0UL);
+            return new UInt128(0, shifted.Low() & mask);
         }
     }
 

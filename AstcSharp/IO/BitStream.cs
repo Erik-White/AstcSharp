@@ -19,10 +19,10 @@ internal class BitStream
     }
 
     // New overload: initialize BitStream with a 128-bit value
-    public BitStream(UInt128Ex data, uint dataSize)
+    public BitStream(UInt128 data, uint dataSize)
     {
-        _low = data.Low;
-        _high = data.High;
+        _low = data.Low();
+        _high = data.High();
         _dataSize = dataSize;
     }
 
@@ -71,33 +71,33 @@ internal class BitStream
 
     public bool GetBits<T>(int count, out T result) where T : unmanaged
     {
-        // Special-case returning a UInt128Ex (the C# 128-bit helper struct)
-        if (typeof(T) == typeof(UInt128Ex))
+        // Special-case returning a System.UInt128 (the C# 128-bit helper struct)
+        if (typeof(T) == typeof(UInt128))
         {
             if (count <= _dataSize)
             {
-                UInt128Ex ures;
+                UInt128 ures;
                 if (count == 0)
                 {
-                    ures = UInt128Ex.Zero;
+                    ures = 0;
                 }
                 else if (count <= 64)
                 {
                     ulong lowPart = _low & MaskFor(count);
                     // Keep lowPart in Low for small counts
-                    ures = new UInt128Ex(lowPart, 0UL);
+                    ures = (UInt128)lowPart;
                 }
                 else if (count == 128)
                 {
                     // Return natural ordering Low=_low, High=_high
-                    ures = new UInt128Ex(_low, _high);
+                    ures = new UInt128(_high, _low);
                 }
                 else
                 {
                     int highBits = count - 64;
                     ulong lowPart = _low;
                     ulong highPart = (highBits == 64) ? _high : (_high & MaskFor(highBits));
-                    ures = new UInt128Ex(lowPart, highPart);
+                    ures = new UInt128(highPart, lowPart);
                 }
 
                 // shift the buffer right by `count` bits

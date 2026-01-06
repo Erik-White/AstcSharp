@@ -124,7 +124,8 @@ public static class AstcDecoder
     public static void DecompressBlock(ReadOnlySpan<byte> blockData, Footprint footprint, ref Span<byte> buffer)
     {
         // Copy the 16 bytes that make up the ASTC block
-        var physicalBlock = new PhysicalBlock(new UInt128Ex(BitConverter.ToUInt64(blockData.Slice(0,8).ToArray(),0), BitConverter.ToUInt64(blockData.Slice(8,8).ToArray(),0)));
+        var blockBits = (UInt128)BitConverter.ToUInt64(blockData.Slice(0,8).ToArray(),0) | ((UInt128)BitConverter.ToUInt64(blockData.Slice(8,8).ToArray(),0) << 64);
+        var physicalBlock = new PhysicalBlock(blockBits);
 
         var logicalBlock = LogicalBlock.UnpackLogicalBlock(footprint, physicalBlock);
         if (logicalBlock is null)

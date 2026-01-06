@@ -9,7 +9,7 @@ public class PhysicalAstcBlockTests
     [Fact]
     public void GetBlockBits_RoundTrip()
     {
-        var orig = new UInt128Ex(0x12345678ABCDEF00UL, 0xCAFEBABEDEADBEEFUL);
+        var orig = (UInt128)0x12345678ABCDEF00UL | ((UInt128)0xCAFEBABEDEADBEEFUL << 64);
         var blk = new PhysicalBlock(orig);
         var bits = blk.GetBlockBits();
         Assert.Equal(orig, bits);
@@ -18,22 +18,17 @@ public class PhysicalAstcBlockTests
     [Fact]
     public void IsVoidExtent_DetectsKnownPattern()
     {
-        var blk = new PhysicalBlock(new UInt128Ex(0xFFFFFFFFFFFFFDFCUL, 0UL));
+        var blk = new PhysicalBlock((UInt128)0xFFFFFFFFFFFFFDFCUL);
         Assert.True(blk.IsVoidExtent());
     }
 
     [Fact]
     public void TestConstructors()
     {
-        ulong low = 0x0000000001FE000173UL;
+        const ulong low = 0x0000000001FE000173UL;
+        
         var blk1 = new PhysicalBlock(low);
-
-        // Construct from bytes (little-endian) to mimic the string constructor
-        var bytes = new byte[16];
-        BitConverter.GetBytes(low).CopyTo(bytes, 0);
-        BitConverter.GetBytes(0UL).CopyTo(bytes, 8);
-        var u = UInt128Ex.FromBytes(bytes);
-        var blk2 = new PhysicalBlock(u);
+        var blk2 = new PhysicalBlock((UInt128)low);
 
         Assert.Equal(blk1.GetBlockBits(), blk2.GetBlockBits());
     }
@@ -54,7 +49,7 @@ public class PhysicalAstcBlockTests
         Assert.NotNull(wr2);
         Assert.Equal(1, wr2.Value);
 
-        var kErrorBlock = new PhysicalBlock(new UInt128Ex(0UL, 0UL));
+        var kErrorBlock = new PhysicalBlock((UInt128)0UL);
         Assert.Null(kErrorBlock.WeightRange());
     }
 
@@ -80,7 +75,7 @@ public class PhysicalAstcBlockTests
         Assert.Equal(3, dims3.Value.Item1);
         Assert.Equal(5, dims3.Value.Item2);
 
-        var kErrorBlock = new PhysicalBlock(new UInt128Ex(0UL, 0UL));
+        var kErrorBlock = new PhysicalBlock((UInt128)0UL);
         Assert.Null(kErrorBlock.WeightGridDimensions());
 
         var non_shared_cem = new PhysicalBlock(0x4000000000800D44UL);
@@ -96,7 +91,7 @@ public class PhysicalAstcBlockTests
         var blk1 = new PhysicalBlock(0x0000000001FE000173UL);
         Assert.False(blk1.IsDualPlane());
 
-        var kErrorBlock = new PhysicalBlock(new UInt128Ex(0UL, 0UL));
+        var kErrorBlock = new PhysicalBlock((UInt128)0UL);
         Assert.False(kErrorBlock.IsDualPlane());
 
         var blk2 = new PhysicalBlock(0x0000000001FE000573UL);
@@ -120,7 +115,7 @@ public class PhysicalAstcBlockTests
         var blk1 = new PhysicalBlock(0x0000000001FE000173UL);
         Assert.Equal(90, blk1.WeightBitCount());
 
-        var kErrorBlock = new PhysicalBlock(new UInt128Ex(0UL, 0UL));
+        var kErrorBlock = new PhysicalBlock((UInt128)0UL);
         Assert.Null(kErrorBlock.WeightBitCount());
 
         var void_extent = new PhysicalBlock(0xFFF8003FFE000DFCUL);
@@ -139,7 +134,7 @@ public class PhysicalAstcBlockTests
         var b = new PhysicalBlock(0x4000000000800D44UL);
         Assert.Equal(64, b.WeightStartBit());
 
-        var kErrorBlock = new PhysicalBlock(new UInt128Ex(0UL, 0UL));
+        var kErrorBlock = new PhysicalBlock((UInt128)0UL);
         Assert.Null(kErrorBlock.WeightStartBit());
 
         var void_extent = new PhysicalBlock(0xFFF8003FFE000DFCUL);
@@ -154,7 +149,7 @@ public class PhysicalAstcBlockTests
         Assert.Null(new PhysicalBlock(0x0000000001FE0005FFUL).IsIllegalEncoding());
         Assert.Null(new PhysicalBlock(0x0000000001FE000108UL).IsIllegalEncoding());
 
-        var kErrorBlock = new PhysicalBlock(new UInt128Ex(0UL, 0UL));
+            var kErrorBlock = new PhysicalBlock(UInt128.Zero);
         var err = kErrorBlock.IsIllegalEncoding();
         Assert.NotNull(err);
         Assert.Contains("Reserved block mode", err);
@@ -191,7 +186,7 @@ public class PhysicalAstcBlockTests
         Assert.False(non_void1.IsVoidExtent());
 
         // Error block is not a void extent block
-        var kErrorBlock = new PhysicalBlock(new UInt128Ex(0UL, 0UL));
+        var kErrorBlock = new PhysicalBlock(UInt128.Zero);
         Assert.False(kErrorBlock.IsVoidExtent());
 
         // A valid void extent block
@@ -266,7 +261,7 @@ public class PhysicalAstcBlockTests
         Assert.Equal(0x3FF, new PhysicalBlock(0x4000000000FFED44UL).PartitionId());
         Assert.Equal(0x155, new PhysicalBlock(0x4000000000AAAD44UL).PartitionId());
 
-        var kErrorBlock = new PhysicalBlock(new UInt128Ex(0UL, 0UL));
+        var kErrorBlock = new PhysicalBlock(UInt128.Zero);
         Assert.Null(kErrorBlock.PartitionId());
         Assert.Null(new PhysicalBlock(0xFFF8003FFE000DFCUL).PartitionId());
 

@@ -11,26 +11,24 @@ public readonly struct PhysicalBlock
 {
     public const int kSizeInBytes = 16;
 
-    private readonly UInt128Ex _astcBits;
+    private readonly UInt128 _astcBits;
 
-    public PhysicalBlock(UInt128Ex bits)
+    public PhysicalBlock(UInt128 bits)
     {
         _astcBits = bits;
     }
 
     public PhysicalBlock(ulong low)
     {
-        _astcBits = new UInt128Ex(low, 0UL);
+        _astcBits = (UInt128)low;
     }
 
     public PhysicalBlock(ulong low, ulong high)
     {
-        // Store as UInt128Ex(lowBits, highBits) where the first ctor arg is
-        // the low 64-bit word.
-        _astcBits = new UInt128Ex(low, high);
+        _astcBits = new UInt128(high, low);
     }
 
-    public UInt128Ex GetBlockBits() => _astcBits;
+    public UInt128 GetBlockBits() => _astcBits;
 
     // Public API
     public (int, int)? WeightGridDimensions()
@@ -63,7 +61,7 @@ public readonly struct PhysicalBlock
         // If void extent coords are all 1's then these are not valid void extent coords
         ulong veMask = 0xFFFFFFFFFFFFFDFFUL;
         ulong constBlockMode = 0xFFFFFFFFFFFFFDFCUL;
-        if ((veMask & _astcBits.Low) == constBlockMode)
+        if ((veMask & _astcBits.Low()) == constBlockMode)
         {
             return null;
         }
@@ -82,7 +80,7 @@ public readonly struct PhysicalBlock
         if (!IsDualPlane()) return null;
         int dualPlaneStartPos = DecodeDualPlaneBitStartPos(_astcBits);
         var planeBits = BitOperations.GetBits(_astcBits, dualPlaneStartPos, 2);
-        return (int)planeBits.Low;
+        return (int)planeBits.Low();
     }
 
     public string? IsIllegalEncoding()
@@ -104,7 +102,7 @@ public readonly struct PhysicalBlock
         if (blockMode == BlockMode.kVoidExtent)
         {
             // Check reserved bits at the full 128-bit level like the C++ reference.
-            if (BitOperations.GetBits(_astcBits, 10, 2).Low != 0x3UL)
+            if (BitOperations.GetBits(_astcBits, 10, 2).Low() != 0x3UL)
             {
                 return "Reserved bits set for void extent block";
             }
@@ -163,7 +161,7 @@ public readonly struct PhysicalBlock
     {
         var numPartitions = PartitionsCount();
         if (!numPartitions.HasValue || numPartitions.Value == 1) return null;
-        ulong lowBits = _astcBits.Low;
+        ulong lowBits = _astcBits.Low();
         return (int)BitOperations.GetBits(lowBits, 13, 10);
     }
 
@@ -224,14 +222,14 @@ public readonly struct PhysicalBlock
 
     public struct WeightGridProperties { public int Width; public int Height; public int Range; }
 
-    private static BlockMode? DecodeBlockMode(UInt128Ex astc_bits)
+    private static BlockMode? DecodeBlockMode(UInt128 astc_bits)
     {
         const int kVoidExtentMaskBits = 9;
         const uint kVoidExtentMask = 0x1FC;
 
         // The void-extent header is found in the low 64-bit word of the
         // canonical representation.
-        if (BitOperations.GetBits(astc_bits.Low, 0, kVoidExtentMaskBits) == kVoidExtentMask)
+        if (BitOperations.GetBits(astc_bits.Low(), 0, kVoidExtentMaskBits) == kVoidExtentMask)
         {
             return BlockMode.kVoidExtent;
         }
@@ -239,7 +237,7 @@ public readonly struct PhysicalBlock
         // For decoding block mode fields the relevant bits live in the low
         // 64-bit word of the canonical representation. Use the stored low
         // word for the remaining logic.
-        ulong low_bits = astc_bits.Low;
+        ulong low_bits = astc_bits.Low();
         if (BitOperations.GetBits(low_bits, 0, 2) != 0)
         {
             var mode_bits = BitOperations.GetBits(low_bits, 2, 2);
@@ -269,7 +267,7 @@ public readonly struct PhysicalBlock
         return null;
     }
 
-    private static WeightGridProperties? DecodeWeightProps(UInt128Ex astc_bits, out string? error)
+    private static WeightGridProperties? DecodeWeightProps(UInt128 astc_bits, out string? error)
     {
         error = null;
         var block_mode = DecodeBlockMode(astc_bits);
@@ -280,7 +278,7 @@ public readonly struct PhysicalBlock
         }
 
         var props = new WeightGridProperties();
-        uint low32 = (uint)(astc_bits.Low & 0xFFFFFFFFUL);
+            uint low32 = (uint)(astc_bits.Low() & 0xFFFFFFFFUL);
 
         switch (block_mode.Value)
         {
@@ -379,7 +377,7 @@ public readonly struct PhysicalBlock
         {
             // reserved range detected in weight props
             // Try alternative interpretation using high 32 bits
-            uint altLow32 = (uint)((astc_bits.High) & 0xFFFFFFFFUL);
+            uint altLow32 = (uint)(astc_bits.High() & 0xFFFFFFFFUL);
             // attempting alternate low32 interpretation
             uint alt_r = (uint)BitOperations.GetBits(altLow32, 4, 1);
             switch (block_mode.Value)
@@ -433,9 +431,9 @@ public readonly struct PhysicalBlock
         return props;
     }
 
-    private static int[] DecodeVoidExtentCoords(UInt128Ex astc_bits)
+    private static int[] DecodeVoidExtentCoords(UInt128 astc_bits)
     {
-        ulong low_bits = astc_bits.Low;
+        ulong low_bits = astc_bits.Low();
         var coords = new int[4];
         for (int i = 0; i < 4; ++i)
         {
@@ -444,20 +442,20 @@ public readonly struct PhysicalBlock
         return coords;
     }
 
-    private static bool DecodeDualPlaneBit(UInt128Ex astc_bits)
+    private static bool DecodeDualPlaneBit(UInt128 astc_bits)
     {
         var block_mode = DecodeBlockMode(astc_bits);
         if (block_mode == BlockMode.kVoidExtent) return false;
         if (block_mode == BlockMode.kA6_B6) return false;
         const int kDualPlaneBitPosition = 10;
-        return BitOperations.GetBits(astc_bits, kDualPlaneBitPosition, 1).Low != 0UL;
+        return BitOperations.GetBits(astc_bits, kDualPlaneBitPosition, 1).Low() != 0UL;
     }
 
-    private static int DecodeNumPartitions(UInt128Ex astc_bits)
+    private static int DecodeNumPartitions(UInt128 astc_bits)
     {
         const int kNumPartitionsBitPosition = 11;
         const int kNumPartitionsBitLength = 2;
-        ulong low_bits = astc_bits.Low;
+        ulong low_bits = astc_bits.Low();
         int num_partitions = 1 + (int)BitOperations.GetBits(low_bits, kNumPartitionsBitPosition, kNumPartitionsBitLength);
         
         ArgumentOutOfRangeException.ThrowIfLessThan(num_partitions, 1);
@@ -466,7 +464,7 @@ public readonly struct PhysicalBlock
         return num_partitions;
     }
 
-    private static int DecodeNumWeightBits(UInt128Ex astc_bits)
+    private static int DecodeNumWeightBits(UInt128 astc_bits)
     {
         var maybe = DecodeWeightProps(astc_bits, out var _);
         if (maybe == null) return 0;
@@ -477,19 +475,19 @@ public readonly struct PhysicalBlock
         return BoundedIntegerSequenceCodec.GetBitCountForRange(numWeights, props.Range);
     }
 
-    private static int DecodeNumExtraCEMBits(UInt128Ex astc_bits)
+    private static int DecodeNumExtraCEMBits(UInt128 astc_bits)
     {
         int num_partitions = DecodeNumPartitions(astc_bits);
         if (num_partitions == 1) return 0;
         const int kSharedCEMBitPosition = 23;
         const int kSharedCEMBitLength = 2;
         var shared_cem = BitOperations.GetBits(astc_bits, kSharedCEMBitPosition, kSharedCEMBitLength);
-        if (shared_cem.Low == 0UL) return 0;
+            if (shared_cem.Low() == 0UL) return 0;
         int[] extra_cem_bits_for_partition = new int[] { 0, 2, 5, 8 };
         return extra_cem_bits_for_partition[num_partitions - 1];
     }
 
-    private static int DecodeDualPlaneBitStartPos(UInt128Ex astc_bits)
+    private static int DecodeDualPlaneBitStartPos(UInt128 astc_bits)
     {
         int start_pos = 128 - DecodeNumWeightBits(astc_bits) - DecodeNumExtraCEMBits(astc_bits);
         if (DecodeDualPlaneBit(astc_bits)) return start_pos - 2;
@@ -497,10 +495,10 @@ public readonly struct PhysicalBlock
         return start_pos;
     }
 
-    private static ColorEndpointMode DecodeEndpointMode(UInt128Ex astc_bits, int partition)
+    private static ColorEndpointMode DecodeEndpointMode(UInt128 astc_bits, int partition)
     {
         int num_partitions = DecodeNumPartitions(astc_bits);
-        ulong low_bits = astc_bits.Low;
+        ulong low_bits = astc_bits.Low();
         ArgumentOutOfRangeException.ThrowIfLessThan(partition, 0);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(partition, num_partitions);
         
@@ -523,7 +521,7 @@ public readonly struct PhysicalBlock
         int num_extra_cem_bits = DecodeNumExtraCEMBits(astc_bits);
         int extra_cem_start_pos = 128 - num_extra_cem_bits - DecodeNumWeightBits(astc_bits);
         var extra_cem = BitOperations.GetBits(astc_bits, extra_cem_start_pos, num_extra_cem_bits);
-        ulong combined = cemval | (extra_cem.Low << 4);
+            ulong combined = cemval | (extra_cem.Low() << 4);
         ulong cembits = combined;
 
         int c = -1, m = -1;
@@ -546,7 +544,7 @@ public readonly struct PhysicalBlock
         return (ColorEndpointMode)mode;
     }
 
-    private static int DecodeNumColorValues(UInt128Ex astc_bits)
+    private static int DecodeNumColorValues(UInt128 astc_bits)
     {
         int num_color_values = 0;
         int num_partitions = DecodeNumPartitions(astc_bits);

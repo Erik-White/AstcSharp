@@ -110,7 +110,7 @@ public class LogicalAstcBlockTests
             int block_y = block_index / blocks_wide;
 
             var blkSpan = astc.AsSpan(i, PhysicalBlock.kSizeInBytes).ToArray();
-            var pb = new PhysicalBlock(new UInt128Ex(BitConverter.ToUInt64(blkSpan, 0), BitConverter.ToUInt64(blkSpan, 8)));
+            var pb = new PhysicalBlock(new UInt128(BitConverter.ToUInt64(blkSpan, 8), BitConverter.ToUInt64(blkSpan, 0)));
             LogicalBlock? lb = LogicalBlock.UnpackLogicalBlock(fp, pb);
             Assert.NotNull(lb);
             var logical_block = lb!;

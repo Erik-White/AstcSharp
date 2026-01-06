@@ -28,7 +28,9 @@ public class AstcFullImageDecodeBenchmark
         for (int i = 0; i < numBlocks; ++i)
         {
             blocks.Slice(i * 16, 16).CopyTo(blockBytes);
-            var block = new PhysicalBlock(new UInt128Ex(BitConverter.ToUInt64(blockBytes), BitConverter.ToUInt64(blockBytes.Slice(8))));
+            var low = BitConverter.ToUInt64(blockBytes);
+            var high = BitConverter.ToUInt64(blockBytes.Slice(8));
+            var block = new PhysicalBlock(((UInt128)low | ((UInt128)high << 64)));
             var ib = IntermediateBlock.UnpackIntermediateBlock(block);
         }
     }
