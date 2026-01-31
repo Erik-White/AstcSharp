@@ -23,7 +23,7 @@ namespace AstcSharp.Tests
             Assert.Empty(AstcDecoder.ASTCDecompressToRGBA(data.AsSpan(0, data.Length - 1).ToArray(), valid_width, valid_height, FootprintType.Footprint4x4).ToArray());
             
             // Fail for data size that doesn't match block count
-            Assert.Empty(AstcDecoder.ASTCDecompressToRGBA(data.AsSpan(0, data.Length - PhysicalBlock.kSizeInBytes).ToArray(), valid_width, valid_height, FootprintType.Footprint4x4).ToArray());
+            Assert.Empty(AstcDecoder.ASTCDecompressToRGBA(data.AsSpan(0, data.Length - PhysicalBlock.SizeInBytes).ToArray(), valid_width, valid_height, FootprintType.Footprint4x4).ToArray());
         }
 
         private static (string image_name, FootprintType footprint, int width, int height)[] GetTransparentImageTestParams()
@@ -48,16 +48,16 @@ namespace AstcSharp.Tests
             int blocks_high = (height + block_height - 1) / block_height;
             int expected_block_count = blocks_wide * blocks_high;
 
-            Assert.True(astc.Length % PhysicalBlock.kSizeInBytes == 0, "astc byte length not multiple of block size");
-            Assert.True(astc.Length / PhysicalBlock.kSizeInBytes == expected_block_count, $"ASTC block count mismatch: {astc.Length / PhysicalBlock.kSizeInBytes} != {expected_block_count}");
+            Assert.True(astc.Length % PhysicalBlock.SizeInBytes == 0, "astc byte length not multiple of block size");
+            Assert.True(astc.Length / PhysicalBlock.SizeInBytes == expected_block_count, $"ASTC block count mismatch: {astc.Length / PhysicalBlock.SizeInBytes} != {expected_block_count}");
 
             var filePath = Path.Combine("TestData", "Expected", imageName + ".bmp");
             var expectedImage = FileBasedHelpers.LoadExpectedImage(filePath);
 
             // Diagnostic: check per-block unpacking to find failing block
-            for (int i = 0; i < astc.Length; i += PhysicalBlock.kSizeInBytes)
+            for (int i = 0; i < astc.Length; i += PhysicalBlock.SizeInBytes)
             {
-                var block = astc.AsSpan(i, PhysicalBlock.kSizeInBytes).ToArray();
+                var block = astc.AsSpan(i, PhysicalBlock.SizeInBytes).ToArray();
                 var physicalBlock = new PhysicalBlock(BitConverter.ToUInt64(block, 0), BitConverter.ToUInt64(block, 8));
                 var logicalBlock = LogicalBlock.UnpackLogicalBlock(footprint, physicalBlock);
                 if (logicalBlock is null)

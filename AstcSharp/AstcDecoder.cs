@@ -38,7 +38,7 @@ public static class AstcDecoder
             return [];
 
         int expectedBlockCount = (width + blockWidth - 1) / blockWidth * ((height + blockHeight - 1) / blockHeight);
-        if (astcData.Length % PhysicalBlock.kSizeInBytes != 0 || astcData.Length / PhysicalBlock.kSizeInBytes != expectedBlockCount)
+        if (astcData.Length % PhysicalBlock.SizeInBytes != 0 || astcData.Length / PhysicalBlock.SizeInBytes != expectedBlockCount)
             return [];
 
         var decodedBlock = Array.Empty<byte>();
@@ -56,12 +56,12 @@ public static class AstcDecoder
             {
                 for (int blockX = 0; blockX < blocksWide; blockX++)
                 {
-                    int blockDataOffset = blockIndex++ * PhysicalBlock.kSizeInBytes;
-                    if (blockDataOffset + PhysicalBlock.kSizeInBytes > astcData.Length)
+                    int blockDataOffset = blockIndex++ * PhysicalBlock.SizeInBytes;
+                    if (blockDataOffset + PhysicalBlock.SizeInBytes > astcData.Length)
                         continue;
 
                     DecompressBlock(
-                        astcData.Slice(blockDataOffset, PhysicalBlock.kSizeInBytes),
+                        astcData.Slice(blockDataOffset, PhysicalBlock.SizeInBytes),
                         footprint,
                         ref decodedPixels);
 

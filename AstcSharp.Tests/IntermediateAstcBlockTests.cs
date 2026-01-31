@@ -219,8 +219,8 @@ public class IntermediateAstcBlockTests
     public void TestEndpointRange()
     {
         var blk = new PhysicalBlock((UInt128)0x0000000001FE000173UL);
-        Assert.NotNull(blk.ColorValuesRange());
-        Assert.Equal(255, blk.ColorValuesRange().Value);
+        Assert.NotNull(blk.GetColorValuesRange());
+        Assert.Equal(255, blk.GetColorValuesRange().Value);
 
         var b = IntermediateBlock.UnpackIntermediateBlock(blk);
         Assert.NotNull(b);
@@ -250,14 +250,14 @@ public class IntermediateAstcBlockTests
         int img_dim = checkered_dim * astc_dim;
         var astc = LoadASTCFile(image_name);
         int numBlocks = (img_dim / astc_dim) * (img_dim / astc_dim);
-        Assert.Equal(0, astc.Length % PhysicalBlock.kSizeInBytes);
+        Assert.Equal(0, astc.Length % PhysicalBlock.SizeInBytes);
         for (int i = 0; i < numBlocks; ++i)
         {
-            var slice = new ReadOnlySpan<byte>(astc, i * PhysicalBlock.kSizeInBytes, PhysicalBlock.kSizeInBytes);
+            var slice = new ReadOnlySpan<byte>(astc, i * PhysicalBlock.SizeInBytes, PhysicalBlock.SizeInBytes);
             var block_bits = new UInt128(BitConverter.ToUInt64(slice.Slice(8, 8)), BitConverter.ToUInt64(slice.Slice(0, 8)));
             var block = new PhysicalBlock(block_bits);
             UInt128 repacked;
-            if (block.IsVoidExtent())
+            if (block.IsVoidExtent)
             {
                 var vb = IntermediateBlock.UnpackVoidExtent(block);
                 Assert.NotNull(vb);
@@ -271,7 +271,7 @@ public class IntermediateAstcBlockTests
                 var block_data = ib!;
 
                 // make sure endpoint_range was set to ColorValuesRange
-                Assert.Equal(block.ColorValuesRange(), block_data.endpoint_range);
+                Assert.Equal(block.GetColorValuesRange(), block_data.endpoint_range);
 
                 block_data.endpoint_range = null;
                 var err = IntermediateBlock.Pack(block_data, out repacked);
@@ -279,37 +279,37 @@ public class IntermediateAstcBlockTests
             }
 
             var pb = new PhysicalBlock(repacked);
-            Assert.Null(pb.IsIllegalEncoding());
+            Assert.False(pb.IsIllegalEncoding);
 
-            var pb_num_color_bits = pb.ColorBitCount().Value;
+            var pb_num_color_bits = pb.GetColorBitCount().Value;
             var pb_color_mask = UInt128Extensions.OnesMask(pb_num_color_bits);
-            var pb_color_bits = (pb.GetBlockBits() >> pb.ColorStartBit().Value) & pb_color_mask;
+            var pb_color_bits = (pb.BlockBits >> pb.GetColorStartBit().Value) & pb_color_mask;
 
-            var b_num_color_bits = block.ColorBitCount().Value;
+            var b_num_color_bits = block.GetColorBitCount().Value;
             var b_color_mask = UInt128Extensions.OnesMask(b_num_color_bits);
-            var b_color_bits = (block.GetBlockBits() >> block.ColorStartBit().Value) & b_color_mask;
+            var b_color_bits = (block.BlockBits >> block.GetColorStartBit().Value) & b_color_mask;
 
             Assert.Equal(pb_color_mask, b_color_mask);
             Assert.Equal(pb_color_bits, b_color_bits);
 
-            Assert.Equal(pb.IsVoidExtent(), block.IsVoidExtent());
-            Assert.Equal(pb.VoidExtentCoords(), block.VoidExtentCoords());
+            Assert.Equal(pb.IsVoidExtent, block.IsVoidExtent);
+            Assert.Equal(pb.GetVoidExtentCoordinates(), block.GetVoidExtentCoordinates());
 
-            Assert.Equal(pb.WeightGridDimensions(), block.WeightGridDimensions());
-            Assert.Equal(pb.WeightRange(), block.WeightRange());
-            Assert.Equal(pb.WeightBitCount(), block.WeightBitCount());
-            Assert.Equal(pb.WeightStartBit(), block.WeightStartBit());
+            Assert.Equal(pb.GetWeightGridDimensions(), block.GetWeightGridDimensions());
+            Assert.Equal(pb.GetWeightRange(), block.GetWeightRange());
+            Assert.Equal(pb.GetWeightBitCount(), block.GetWeightBitCount());
+            Assert.Equal(pb.GetWeightStartBit(), block.GetWeightStartBit());
 
-            Assert.Equal(pb.IsDualPlane(), block.IsDualPlane());
-            Assert.Equal(pb.DualPlaneChannel(), block.DualPlaneChannel());
+            Assert.Equal(pb.IsDualPlane, block.IsDualPlane);
+            Assert.Equal(pb.GetDualPlaneChannel(), block.GetDualPlaneChannel());
 
-            Assert.Equal(pb.PartitionsCount(), block.PartitionsCount());
-            Assert.Equal(pb.PartitionId(), block.PartitionId());
+            Assert.Equal(pb.GetPartitionsCount(), block.GetPartitionsCount());
+            Assert.Equal(pb.GetPartitionId(), block.GetPartitionId());
 
-            Assert.Equal(pb.ColorValuesCount(), block.ColorValuesCount());
-            Assert.Equal(pb.ColorValuesRange(), block.ColorValuesRange());
+            Assert.Equal(pb.GetColorValuesCount(), block.GetColorValuesCount());
+            Assert.Equal(pb.GetColorValuesRange(), block.GetColorValuesRange());
 
-            var numParts = pb.PartitionsCount().GetValueOrDefault(0);
+            var numParts = pb.GetPartitionsCount().GetValueOrDefault(0);
             for (int j = 0; j < numParts; ++j)
             {
                 Assert.Equal(pb.GetEndpointMode(j), block.GetEndpointMode(j));

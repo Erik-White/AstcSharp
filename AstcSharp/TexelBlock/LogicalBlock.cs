@@ -231,7 +231,7 @@ namespace AstcSharp.TexelBlock
 
         public static LogicalBlock? UnpackLogicalBlock(Footprint footprint, PhysicalBlock physicalBlock)
         {
-            if (physicalBlock.IsVoidExtent())
+            if (physicalBlock.IsVoidExtent)
             {
                 var voidExtantIntermediateBlock = IntermediateBlock.UnpackVoidExtent(physicalBlock);
                 

@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using AstcSharp.BiseEncoding;
 using AstcSharp.ColorEncoding;
 using AstcSharp.Core;
@@ -167,12 +166,11 @@ internal static class IntermediateBlock
         return "Could not find viable block mode";
     }
 
-    // Helper: return true if all endpoint modes equal
+    /// <summary>
+    /// Determines if all endpoint modes in the intermediate block data are the same
+    /// </summary>
     private static bool SharedEndpointModes(IntermediateBlockData data)
-    {
-        if (data.endpoints.Count == 0) return true;
-        return data.endpoints.All(ep => ep.mode == data.endpoints[0].mode);
-    }
+        => data.endpoints.Count == 0 || data.endpoints.All(ep => ep.mode == data.endpoints[0].mode);
 
     private static int ExtraConfigBitPosition(IntermediateBlockData data)
     {
@@ -196,25 +194,25 @@ internal static class IntermediateBlock
 
     public static IntermediateBlockData? UnpackIntermediateBlock(PhysicalBlock physicalBlock)
     {
-        if (physicalBlock.IsIllegalEncoding() != null) return null;
-        if (physicalBlock.IsVoidExtent()) return null;
+        if (physicalBlock.IsIllegalEncoding) return null;
+        if (physicalBlock.IsVoidExtent) return null;
 
         var data = new IntermediateBlockData();
 
-        var colorBitCount = physicalBlock.ColorBitCount();
-        var colorStartBit = physicalBlock.ColorStartBit();
-        var colorValuesRangeOpt = physicalBlock.ColorValuesRange();
-        var colorValuesCount = physicalBlock.ColorValuesCount();
-        var weightGridDimensions = physicalBlock.WeightGridDimensions();
-        var weightRange = physicalBlock.WeightRange();
-        var partitionCount = physicalBlock.PartitionsCount();
-        var weightBitCount = physicalBlock.WeightBitCount();
+        var colorBitCount = physicalBlock.GetColorBitCount();
+        var colorStartBit = physicalBlock.GetColorStartBit();
+        var colorValuesRangeOpt = physicalBlock.GetColorValuesRange();
+        var colorValuesCount = physicalBlock.GetColorValuesCount();
+        var weightGridDimensions = physicalBlock.GetWeightGridDimensions();
+        var weightRange = physicalBlock.GetWeightRange();
+        var partitionCount = physicalBlock.GetPartitionsCount();
+        var weightBitCount = physicalBlock.GetWeightBitCount();
 
         if (!colorBitCount.HasValue || !colorStartBit.HasValue || !colorValuesRangeOpt.HasValue || !colorValuesCount.HasValue || !weightGridDimensions.HasValue || !weightRange.HasValue || !partitionCount.HasValue || !weightBitCount.HasValue)
             return null;
 
         var colorBitMask = UInt128Extensions.OnesMask(colorBitCount.Value);
-        var colorBits = (physicalBlock.GetBlockBits() >> colorStartBit.Value) & colorBitMask;
+        var colorBits = (physicalBlock.BlockBits >> colorStartBit.Value) & colorBitMask;
         var colorBitStream = new BitStream(colorBits, 128);
 
         var colorDecoder = new BoundedIntegerSequenceDecoder(colorValuesRangeOpt.Value);
@@ -226,8 +224,8 @@ internal static class IntermediateBlock
         data.weightGridY = weight_dims.Item2;
         data.weightRange = weightRange.Value;
 
-        data.partitionId = physicalBlock.PartitionId();
-        data.dualPlaneChannel = physicalBlock.DualPlaneChannel();
+        data.partitionId = physicalBlock.GetPartitionId();
+        data.dualPlaneChannel = physicalBlock.GetDualPlaneChannel();
 
         int colorIndex = 0;
         for (int i = 0; i < partitionCount.Value; ++i)
@@ -247,20 +245,20 @@ internal static class IntermediateBlock
 
         data.endpoint_range = colorValuesRangeOpt.Value;
 
-        var weightBits = UInt128Extensions.ReverseBits(physicalBlock.GetBlockBits()) & UInt128Extensions.OnesMask(weightBitCount.Value);
+        var weightBits = UInt128Extensions.ReverseBits(physicalBlock.BlockBits) & UInt128Extensions.OnesMask(weightBitCount.Value);
         colorBitStream = new BitStream(weightBits, 128);
 
         var weightDecoder = new BoundedIntegerSequenceDecoder(data.weightRange);
         int weightsCount = data.weightGridX * data.weightGridY;
-        if (physicalBlock.IsDualPlane()) weightsCount *= 2;
+        if (physicalBlock.IsDualPlane) weightsCount *= 2;
         data.weights = weightDecoder.Decode(weightsCount, ref colorBitStream);
 
         // store debug mapping from data signature to original pb for later pack-debugging
         var key = $"{data.weightGridX}x{data.weightGridY}:{data.weightRange}:{data.weights.Count}:{data.endpoints.Count}:{data.partitionId}:{data.dualPlaneChannel}:{data.endpoint_range}";
-        s_lastUnpacked[key] = physicalBlock.GetBlockBits();
+        s_lastUnpacked[key] = physicalBlock.BlockBits;
         // also store a variant with endpoint_range set to null so Pack can round-trip when endpoint_range is cleared
         var keyWithNullEndpoint = $"{data.weightGridX}x{data.weightGridY}:{data.weightRange}:{data.weights.Count}:{data.endpoints.Count}:{data.partitionId}:{data.dualPlaneChannel}:null";
-        s_lastUnpacked[keyWithNullEndpoint] = physicalBlock.GetBlockBits();
+        s_lastUnpacked[keyWithNullEndpoint] = physicalBlock.BlockBits;
 
         return data;
     }
@@ -291,10 +289,10 @@ internal static class IntermediateBlock
 
     public static VoidExtentData? UnpackVoidExtent(PhysicalBlock physicalBlock)
     {
-        if (physicalBlock.IsIllegalEncoding() != null) return null;
-        if (!physicalBlock.IsVoidExtent()) return null;
+        if (physicalBlock.IsIllegalEncoding) return null;
+        if (!physicalBlock.IsVoidExtent) return null;
 
-        var colorBits = (physicalBlock.GetBlockBits() >> physicalBlock.ColorStartBit().Value) & UInt128Extensions.OnesMask(physicalBlock.ColorBitCount().Value);
+        var colorBits = (physicalBlock.BlockBits >> physicalBlock.GetColorStartBit().Value) & UInt128Extensions.OnesMask(physicalBlock.GetColorBitCount().Value);
         // We expect low 64 bits contain the 4x16-bit channels
         var low = colorBits.Low();
 
@@ -304,7 +302,7 @@ internal static class IntermediateBlock
         data.b = (ushort)((low >> 32) & 0xFFFF);
         data.a = (ushort)((low >> 48) & 0xFFFF);
 
-        var coords = physicalBlock.VoidExtentCoords();
+        var coords = physicalBlock.GetVoidExtentCoordinates();
         data.coords = new ushort[4];
         if (coords != null)
         {
@@ -460,7 +458,7 @@ internal static class IntermediateBlock
         pb = combined;
 
         var block = new PhysicalBlock(pb);
-        var illegal = block.IsIllegalEncoding();
+        var illegal = block.IdentifyInvalidEncodingIssues();
 
         // debug: compare against last unpacked if present
         var key = $"{data.weightGridX}x{data.weightGridY}:{data.weightRange}:{data.weights.Count}:{data.endpoints.Count}:{data.partitionId}:{data.dualPlaneChannel}:{data.endpoint_range}";
@@ -506,7 +504,7 @@ internal static class IntermediateBlock
         }
 
         var block = new PhysicalBlock(pb);
-        var illegal = block.IsIllegalEncoding();
+        var illegal = block.IdentifyInvalidEncodingIssues();
         if (illegal is not null)
         {
             throw new InvalidOperationException($"{nameof(Pack)}(void extent) produced illegal encoding");
