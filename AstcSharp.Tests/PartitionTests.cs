@@ -102,7 +102,7 @@ namespace AstcSharp.Tests
                 1,1,1,1,1,1
             };
             var astc = Partition.FindClosestASTCPartition(partition);
-            Assert.Equal(partition.num_parts, astc.num_parts);
+            Assert.Equal(partition.numParts, astc.numParts);
         }
 
         [Fact]

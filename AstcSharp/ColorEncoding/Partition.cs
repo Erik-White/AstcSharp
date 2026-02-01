@@ -9,13 +9,13 @@ namespace AstcSharp.ColorEncoding
     internal class Partition
     {
         public Footprint footprint;
-        public int num_parts;
-        public int? partition_id;
+        public int numParts;
+        public int? partitionId;
         public List<int> assignment;
 
         public Partition(Footprint f, int numParts, int? id = null)
         {
-            footprint = f; num_parts = numParts; partition_id = id; assignment = new List<int>();
+            footprint = f; this.numParts = numParts; partitionId = id; assignment = new List<int>();
         }
 
         public override bool Equals(object? obj)
@@ -24,7 +24,7 @@ namespace AstcSharp.ColorEncoding
             return PartitionMetric(this, p) == 0;
         }
 
-        public override int GetHashCode() => HashCode.Combine(footprint, num_parts, partition_id);
+        public override int GetHashCode() => HashCode.Combine(footprint, numParts, partitionId);
 
         // PartitionMetric implementation based on C++ reference.
         public static int PartitionMetric(Partition a, Partition b)
@@ -35,50 +35,50 @@ namespace AstcSharp.ColorEncoding
             int w = a.footprint.Width;
             int h = a.footprint.Height;
 
-            var pair_counts = new List<(int a, int b, int count)>();
-            for (int y = 0; y < 4; ++y) for (int x = 0; x < 4; ++x) pair_counts.Add((x, y, 0));
+            var pairCounts = new List<(int a, int b, int count)>();
+            for (int y = 0; y < 4; ++y) for (int x = 0; x < 4; ++x) pairCounts.Add((x, y, 0));
 
             for (int y = 0; y < h; ++y)
             {
                 for (int x = 0; x < w; ++x)
                 {
                     int idx = y * w + x;
-                    int a_val = a.assignment[idx];
-                    int b_val = b.assignment[idx];
-                    pair_counts[b_val * 4 + a_val] = (a_val, b_val, pair_counts[b_val * 4 + a_val].count + 1);
+                    int aVal = a.assignment[idx];
+                    int bVal = b.assignment[idx];
+                    pairCounts[bVal * 4 + aVal] = (aVal, bVal, pairCounts[bVal * 4 + aVal].count + 1);
                 }
             }
 
-            var sorted = pair_counts.OrderByDescending(p => p.count).ToList();
+            var sorted = pairCounts.OrderByDescending(p => p.count).ToList();
             var assigned = new bool[kMaxNumSubsets, kMaxNumSubsets];
-            int pixels_matched = 0;
+            int pixelsMatched = 0;
             foreach (var pc in sorted)
             {
-                bool is_assigned = false;
+                bool isAssigned = false;
                 for (int i = 0; i < kMaxNumSubsets; ++i)
                 {
-                    if (assigned[pc.a, i] || assigned[i, pc.b]) { is_assigned = true; break; }
+                    if (assigned[pc.a, i] || assigned[i, pc.b]) { isAssigned = true; break; }
                 }
-                if (!is_assigned)
+                if (!isAssigned)
                 {
                     assigned[pc.a, pc.b] = true;
-                    pixels_matched += pc.count;
+                    pixelsMatched += pc.count;
                 }
             }
 
-            return w * h - pixels_matched;
+            return w * h - pixelsMatched;
         }
 
         // Basic GetASTCPartition implementation using selection function from C++
-        public static Partition GetASTCPartition(Footprint footprint, int num_parts, int partition_id)
+        public static Partition GetASTCPartition(Footprint footprint, int numParts, int partitionId)
         {
-            var part = new Partition(footprint, num_parts, partition_id);
+            var part = new Partition(footprint, numParts, partitionId);
             int w = footprint.Width;
             int h = footprint.Height;
             part.assignment = new List<int>(w * h);
             for (int y = 0; y < h; ++y)
                 for (int x = 0; x < w; ++x)
-                    part.assignment.Add(SelectASTCPartition(partition_id, x, y, 0, num_parts, footprint.PixelCount));
+                    part.assignment.Add(SelectASTCPartition(partitionId, x, y, 0, numParts, footprint.PixelCount));
             return part;
         }
 
@@ -147,7 +147,7 @@ namespace AstcSharp.ColorEncoding
         public static Partition FindClosestASTCPartition(Partition candidate)
         {
             // Search a few partitions and pick the one with minimal PartitionMetric
-            var best = GetASTCPartition(candidate.footprint, Math.Max(1, candidate.num_parts), 0);
+            var best = GetASTCPartition(candidate.footprint, Math.Max(1, candidate.numParts), 0);
             int bestDist = PartitionMetric(best, candidate);
             return best;
         }

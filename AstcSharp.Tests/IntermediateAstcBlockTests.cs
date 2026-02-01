@@ -18,7 +18,7 @@ public class IntermediateAstcBlockTests
     [Fact]
     public void TestUnpackError()
     {
-        var kErrorBlock = new PhysicalBlock((UInt128)0UL);
+        var kErrorBlock = PhysicalBlock.Create((UInt128)0UL);
         Assert.Null(IntermediateBlock.UnpackVoidExtent(kErrorBlock));
         Assert.Null(IntermediateBlock.UnpackIntermediateBlock(kErrorBlock));
     }
@@ -32,7 +32,7 @@ public class IntermediateAstcBlockTests
         data.weightGridY = 6;
         Assert.Equal(-1, IntermediateBlock.EndpointRangeForBlock(data));
 
-        var err = IntermediateBlock.Pack(data, out var dummy);
+        var (err, dummy) = IntermediateBlock.Pack(data);
         Assert.NotNull(err);
         Assert.Contains("Incorrect number of weights", err);
     }
@@ -53,8 +53,8 @@ public class IntermediateAstcBlockTests
         Assert.Equal(-2, IntermediateBlock.EndpointRangeForBlock(data));
 
         // Resize weights to match grid
-        data.weights = Enumerable.Repeat(0, 64).ToList();
-        var err = IntermediateBlock.Pack(data, out var dummy);
+        data.weights = new int[64];
+        var (err, dummy) = IntermediateBlock.Pack(data);
         Assert.NotNull(err);
         Assert.Contains("illegal color range", err);
     }
@@ -90,7 +90,7 @@ public class IntermediateAstcBlockTests
     [Fact]
     public void TestUnpackNonVoidExtentBlock()
     {
-        var blk = new PhysicalBlock((UInt128)0x0000000001FE000173UL);
+        var blk = PhysicalBlock.Create((UInt128)0x0000000001FE000173UL);
         var b = IntermediateBlock.UnpackIntermediateBlock(blk);
         Assert.NotNull(b);
         var data = b!;
@@ -99,7 +99,7 @@ public class IntermediateAstcBlockTests
         Assert.Equal(7, data.weightRange);
         Assert.Null(data.partitionId);
         Assert.Null(data.dualPlaneChannel);
-        Assert.Equal(30, data.weights.Count);
+        Assert.Equal(30, data.weights.Length);
         foreach (var w in data.weights) Assert.Equal(0, w);
         Assert.Single(data.endpoints);
         var ep = data.endpoints[0];
@@ -118,12 +118,12 @@ public class IntermediateAstcBlockTests
         data.weightRange = 7;
         data.partitionId = null;
         data.dualPlaneChannel = null;
-        data.weights = Enumerable.Repeat(0, 30).ToList();
+        data.weights = new int[30];
         var ep = new IntermediateBlock.IntermediateEndpointData { mode = ColorEndpointMode.LdrLumaDirect };
         ep.colors.Add(0); ep.colors.Add(255);
         data.endpoints.Add(ep);
 
-            var err = IntermediateBlock.Pack(data, out UInt128 packed);
+        var (err, packed) = IntermediateBlock.Pack(data);
         Assert.Null(err);
         Assert.Equal((UInt128)0x0000000001FE000173UL, packed);
     }
@@ -131,7 +131,7 @@ public class IntermediateAstcBlockTests
     [Fact]
     public void TestUnpackVoidExtentBlock()
     {
-        var void_blk = new PhysicalBlock((UInt128)0xFFFFFFFFFFFFFDFCUL);
+        var void_blk = PhysicalBlock.Create((UInt128)0xFFFFFFFFFFFFFDFCUL);
         var b = IntermediateBlock.UnpackVoidExtent(void_blk);
         Assert.NotNull(b);
         var data = b.Value;
@@ -142,7 +142,7 @@ public class IntermediateAstcBlockTests
         foreach (var c in data.coords) Assert.Equal((1 << 13) - 1, c);
 
         var more_interesting = new UInt128(0xdeadbeefdeadbeefUL, 0xFFF8003FFE000DFCUL);
-        b = IntermediateBlock.UnpackVoidExtent(new PhysicalBlock(more_interesting));
+        b = IntermediateBlock.UnpackVoidExtent(PhysicalBlock.Create(more_interesting));
         Assert.NotNull(b);
         var other = b.Value;
         Assert.Equal((ushort)0xbeef, other.r);
@@ -163,13 +163,13 @@ public class IntermediateAstcBlockTests
         data.coords = new ushort[4];
         for (int i = 0; i < 4; ++i) data.coords[i] = (ushort)((1 << 13) - 1);
 
-        var err = IntermediateBlock.Pack(data, out var packed);
+        var (err, packed) = IntermediateBlock.Pack(data);
         Assert.Null(err);
         Assert.Equal((UInt128)0xFFFFFFFFFFFFFDFCUL, packed);
 
         data.r = 0xbeef; data.g = 0xdead; data.b = 0xbeef; data.a = 0xdead;
         data.coords = new ushort[4] { 0, 8191, 0, 8191 };
-        err = IntermediateBlock.Pack(data, out packed);
+        (err, packed) = IntermediateBlock.Pack(data);
         Assert.Null(err);
         Assert.Equal(new UInt128(0xdeadbeefdeadbeefUL, 0xFFF8003FFE000DFCUL), packed);
     }
@@ -178,16 +178,16 @@ public class IntermediateAstcBlockTests
     public void TestPackUnpackWithSameCEM()
     {
         var orig = new UInt128(0xe8e8eaea20000980UL, 0x20000200cb73f045UL);
-        var b = IntermediateBlock.UnpackIntermediateBlock(new PhysicalBlock(orig));
+        var b = IntermediateBlock.UnpackIntermediateBlock(PhysicalBlock.Create(orig));
         Assert.NotNull(b);
-        var err = IntermediateBlock.Pack(b!, out var repacked);
+        var (err, repacked) = IntermediateBlock.Pack(b!);
         Assert.Null(err);
         Assert.Equal(orig, repacked);
 
         orig = new UInt128(0x3300c30700cb01c5UL, 0x0573907b8c0f6879UL);
-        b = IntermediateBlock.UnpackIntermediateBlock(new PhysicalBlock(orig));
+        b = IntermediateBlock.UnpackIntermediateBlock(PhysicalBlock.Create(orig));
         Assert.NotNull(b);
-        err = IntermediateBlock.Pack(b!, out repacked);
+        (err, repacked) = IntermediateBlock.Pack(b!);
         Assert.Null(err);
         Assert.Equal(orig, repacked);
     }
@@ -196,7 +196,7 @@ public class IntermediateAstcBlockTests
     public void TestPackingWithLargeGap()
     {
         var orig = new UInt128(0xBEDEAD0000000000UL, 0x0000000001FE032EUL);
-        var b = IntermediateBlock.UnpackIntermediateBlock(new PhysicalBlock(orig));
+        var b = IntermediateBlock.UnpackIntermediateBlock(PhysicalBlock.Create(orig));
         Assert.NotNull(b);
         var data = b!;
         Assert.Equal(2, data.weightGridX);
@@ -210,7 +210,7 @@ public class IntermediateAstcBlockTests
         Assert.Equal(255, data.endpoints[0].colors[0]);
         Assert.Equal(0, data.endpoints[0].colors[1]);
 
-        var err = IntermediateBlock.Pack(data, out var repacked);
+        var (err, repacked) = IntermediateBlock.Pack(data);
         Assert.Null(err);
         Assert.Equal(orig, repacked);
     }
@@ -218,7 +218,7 @@ public class IntermediateAstcBlockTests
     [Fact]
     public void TestEndpointRange()
     {
-        var blk = new PhysicalBlock((UInt128)0x0000000001FE000173UL);
+        var blk = PhysicalBlock.Create((UInt128)0x0000000001FE000173UL);
         Assert.NotNull(blk.GetColorValuesRange());
         Assert.Equal(255, blk.GetColorValuesRange().Value);
 
@@ -228,8 +228,8 @@ public class IntermediateAstcBlockTests
         Assert.Single(data.endpoints);
         Assert.Equal(ColorEndpointMode.LdrLumaDirect, data.endpoints[0].mode);
         Assert.Equal(new List<int> { 0, 255 }, data.endpoints[0].colors);
-        Assert.NotNull(data.endpoint_range);
-        Assert.Equal(255, data.endpoint_range.Value);
+        Assert.NotNull(data.endpointRange);
+        Assert.Equal(255, data.endpointRange.Value);
     }
     // The comprehensive pack/unpack test that iterates over ASTC testdata.
     // This test port mirrors the reference C++ test and may be slower; it is
@@ -255,13 +255,14 @@ public class IntermediateAstcBlockTests
         {
             var slice = new ReadOnlySpan<byte>(astc, i * PhysicalBlock.SizeInBytes, PhysicalBlock.SizeInBytes);
             var block_bits = new UInt128(BitConverter.ToUInt64(slice.Slice(8, 8)), BitConverter.ToUInt64(slice.Slice(0, 8)));
-            var block = new PhysicalBlock(block_bits);
+            var block = PhysicalBlock.Create(block_bits);
             UInt128 repacked;
+            string? err;
             if (block.IsVoidExtent)
             {
                 var vb = IntermediateBlock.UnpackVoidExtent(block);
                 Assert.NotNull(vb);
-                var err = IntermediateBlock.Pack(vb!.Value, out repacked);
+                (err, repacked) = IntermediateBlock.Pack(vb!.Value);
                 Assert.Null(err);
             }
             else
@@ -270,15 +271,15 @@ public class IntermediateAstcBlockTests
                 Assert.NotNull(ib);
                 var block_data = ib!;
 
-                // make sure endpoint_range was set to ColorValuesRange
-                Assert.Equal(block.GetColorValuesRange(), block_data.endpoint_range);
+                // make sure endpointRange was set to ColorValuesRange
+                Assert.Equal(block.GetColorValuesRange(), block_data.endpointRange);
 
-                block_data.endpoint_range = null;
-                var err = IntermediateBlock.Pack(block_data, out repacked);
+                block_data.endpointRange = null;
+                (err, repacked) = IntermediateBlock.Pack(block_data);
                 Assert.Null(err);
             }
 
-            var pb = new PhysicalBlock(repacked);
+            var pb = PhysicalBlock.Create(repacked);
             Assert.False(pb.IsIllegalEncoding);
 
             var pb_num_color_bits = pb.GetColorBitCount().Value;

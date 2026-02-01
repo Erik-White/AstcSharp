@@ -16,7 +16,7 @@ internal class BoundedIntegerSequenceDecoder : BoundedIntegerSequenceCodec
     /// <returns>The decoded values. The collection always contains exactly <paramref name="valuesCount"/> elements.</returns>
     /// <exception cref="ArgumentOutOfRangeException"></exception>
     /// <exception cref="InvalidOperationException"></exception>
-    public List<int> Decode(int valuesCount, ref BitStream bitSource)
+    public int[] Decode(int valuesCount, ref BitStream bitSource)
     {
         int totalBitCount = GetBitCount(_encoding, valuesCount, _bitCount);
         int bitsPerBlock = GetEncodedBlockSize();
@@ -28,8 +28,8 @@ internal class BoundedIntegerSequenceDecoder : BoundedIntegerSequenceCodec
         while (bitsRemaining > 0)
         {
             int bitsToRead = Math.Min(bitsRemaining, bitsPerBlock);
-            if (!bitSource.GetBits<ulong>(bitsToRead, out var blockBits))
-                 throw new InvalidOperationException("Not enough bits in BitStream to decode BISE block");
+            if (!bitSource.TryGetBits<ulong>(bitsToRead, out var blockBits))
+                throw new InvalidOperationException("Not enough bits in BitStream to decode BISE block");
 
             var decodedValues = _encoding switch
             {
@@ -48,9 +48,10 @@ internal class BoundedIntegerSequenceDecoder : BoundedIntegerSequenceCodec
         if (result.Count < valuesCount)
             throw new InvalidOperationException("Decoded fewer values than expected from BISE block");
 
-        result.RemoveRange(valuesCount, result.Count - valuesCount);
-        
-        return result;
+        if (result.Count > valuesCount)
+            result.RemoveRange(valuesCount, result.Count - valuesCount);
+
+        return result.ToArray();
     }
 
     /// <summary>
@@ -80,12 +81,12 @@ internal class BoundedIntegerSequenceDecoder : BoundedIntegerSequenceCodec
 
         for (int i = 0; i < valuesCount; i++)
         {
-            if (!bitSource.GetBits<ulong>(encodedBitCount, out var bits))
+            if (!bitSource.TryGetBits<ulong>(encodedBitCount, out var bits))
                 throw new InvalidOperationException();
 
             m[i] = (int)bits;
 
-            if (!bitSource.GetBits<ulong>(interleavedBits[i], out var encoded_bits))
+            if (!bitSource.TryGetBits<ulong>(interleavedBits[i], out var encoded_bits))
                 throw new InvalidOperationException();
 
             encodedBits |= encoded_bits << encodedBitsRead;

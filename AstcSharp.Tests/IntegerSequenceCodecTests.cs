@@ -128,7 +128,7 @@ namespace AstcSharp.Tests
 
             Assert.Equal<uint>(19, bitSink.Bits);
 
-            bool ok = bitSink.GetBits<ulong>(19, out var encoded);
+            bool ok = bitSink.TryGetBits<ulong>(19, out var encoded);
             Assert.True(ok);
             Assert.Equal<ulong>(0x4A7D3, encoded);
 
@@ -153,7 +153,7 @@ namespace AstcSharp.Tests
             enc.Encode(ref bitSink);
             Assert.Equal<uint>(18, bitSink.Bits);
 
-            bool ok = bitSink.GetBits<ulong>(18, out var encoded);
+            bool ok = bitSink.TryGetBits<ulong>(18, out var encoded);
             Assert.True(ok);
             Assert.Equal<ulong>(0x37357, encoded);
 
@@ -172,7 +172,7 @@ namespace AstcSharp.Tests
             var bitSrc = new BitStream(kValEncoding, 64);
             var dec = new BoundedIntegerSequenceDecoder(19);
             var decoded = dec.Decode(8, ref bitSrc);
-            Assert.Equal(vals.Count, decoded.Count);
+            Assert.Equal(vals.Count, decoded.Length);
             for (int i = 0; i < vals.Count; ++i) Assert.Equal(vals[i], decoded[i]);
 
             var bitSink = new BitStream();
@@ -181,7 +181,7 @@ namespace AstcSharp.Tests
             enc.Encode(ref bitSink);
             Assert.Equal<uint>(35, bitSink.Bits);
 
-            bool ok = bitSink.GetBits<ulong>(35, out var encoded);
+            bool ok = bitSink.TryGetBits<ulong>(35, out var encoded);
             Assert.True(ok);
             Assert.Equal(kValEncoding, encoded);
         }
@@ -195,7 +195,7 @@ namespace AstcSharp.Tests
             var bitSrc = new BitStream(kValEncoding, 64);
             var dec = new BoundedIntegerSequenceDecoder(11);
             var decoded = dec.Decode(vals.Count, ref bitSrc);
-            Assert.Equal(vals.Count, decoded.Count);
+            Assert.Equal(vals.Count, decoded.Length);
             for (int i = 0; i < vals.Count; ++i) Assert.Equal(vals[i], decoded[i]);
 
             var bitSink = new BitStream();
@@ -204,7 +204,7 @@ namespace AstcSharp.Tests
             enc.Encode(ref bitSink);
             Assert.Equal<uint>(58, bitSink.Bits);
 
-            bool ok = bitSink.GetBits<ulong>(58, out var encoded);
+            bool ok = bitSink.TryGetBits<ulong>(58, out var encoded);
             Assert.True(ok);
             Assert.Equal(kValEncoding, encoded);
         }
@@ -229,13 +229,14 @@ namespace AstcSharp.Tests
                 foreach (var v in generated) enc.AddValue(v);
                 enc.Encode(ref bitSink);
 
-                Assert.True(bitSink.GetBits<ulong>((int)bitSink.Bits, out var encoded));
+                bool ok = bitSink.TryGetBits<ulong>((int)bitSink.Bits, out var encoded);
+                Assert.True(ok);
 
                 var bitSrc = new BitStream(encoded, 64);
                 var dec = new BoundedIntegerSequenceDecoder(range);
                 var decoded = dec.Decode(num_vals, ref bitSrc);
 
-                Assert.Equal(generated.Count, decoded.Count);
+                Assert.Equal(generated.Count, decoded.Length);
                 for (int i = 0; i < generated.Count; ++i) Assert.Equal(generated[i], decoded[i]);
             }
         }

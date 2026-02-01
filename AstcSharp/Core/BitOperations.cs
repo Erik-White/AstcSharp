@@ -52,7 +52,7 @@ internal static class BitOperations
     /// <remarks>
     /// The 'bit_transfer_signed' function defined in Section C.2.14 of the ASTC specification
     /// </remarks>
-    public static void TransferPrecision(ref int a, ref int b)
+    public static (int a, int b) TransferPrecision(int a, int b)
     {
         b >>= 1;
         b |= a & 0x80;
@@ -61,6 +61,8 @@ internal static class BitOperations
 
         if ((a & 0x20) != 0)
             a -= 0x40;
+
+        return (a, b);
     }
 
     /// <summary>
@@ -68,7 +70,7 @@ internal static class BitOperations
     /// and returns the two values in [0, 255] that will reconstruct |a| and |b| when
     /// passed to the <see cref="TransferPrecision"/> function.
     /// </summary>
-    public static void TransferPrecisionInverse(ref int a, ref int b)
+    public static (int a, int b) TransferPrecisionInverse(int a, int b)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(a, -32);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(a, 31);
@@ -82,5 +84,7 @@ internal static class BitOperations
         a |= b & 0x80;
         b <<= 1;
         b &= 0xff;
+
+        return (a, b);
     }
 }
