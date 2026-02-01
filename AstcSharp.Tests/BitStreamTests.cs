@@ -12,33 +12,33 @@ namespace AstcSharp.Tests
             // Equivalent tests from the C++ reference for decoding
             {
                 var stream = new BitStream(0UL, 1);
-                bool ok = stream.GetBits<uint>(1, out var bits);
-                Assert.True(ok);
-                Assert.Equal<uint>(0, bits);
-                ok = stream.GetBits(1, out bits);
-                Assert.False(ok);
+                var bits = stream.GetBits<uint>(1);
+                Assert.NotNull(bits);
+                Assert.Equal<uint>(0, bits.Value);
+                bits = stream.GetBits<uint>(1);
+                Assert.Null(bits);
             }
 
             {
                 var stream = new BitStream(0b1010101010101010UL, 32);
                 Assert.Equal<uint>(32, stream.Bits);
-                bool ok = stream.GetBits<uint>(1, out var bits);
-                Assert.True(ok);
-                Assert.Equal<uint>(0, bits);
+                var bits = stream.GetBits<uint>(1);
+                Assert.NotNull(bits);
+                Assert.Equal<uint>(0, bits.Value);
 
-                ok = stream.GetBits(3, out bits);
-                Assert.True(ok);
-                Assert.Equal<uint>(0b101, bits);
+                bits = stream.GetBits<uint>(3);
+                Assert.NotNull(bits);
+                Assert.Equal<uint>(0b101, bits.Value);
 
-                ok = stream.GetBits(8, out bits);
-                Assert.True(ok);
-                Assert.Equal<uint>(0b10101010, bits);
+                bits = stream.GetBits<uint>(8);
+                Assert.NotNull(bits);
+                Assert.Equal<uint>(0b10101010, bits.Value);
 
                 Assert.Equal<uint>(20, stream.Bits);
 
-                ok = stream.GetBits(20, out bits);
-                Assert.True(ok);
-                Assert.Equal<uint>(0b1010, bits);
+                bits = stream.GetBits<uint>(20);
+                Assert.NotNull(bits);
+                Assert.Equal<uint>(0b1010, bits.Value);
                 Assert.Equal<uint>(0, stream.Bits);
             }
 
@@ -46,9 +46,9 @@ namespace AstcSharp.Tests
                 const ulong kAllBits = 0xFFFFFFFFFFFFFFFFUL;
                 var stream = new BitStream(kAllBits, 64);
                 Assert.Equal<uint>(64, stream.Bits);
-                bool ok = stream.GetBits<ulong>(64, out var bits);
-                Assert.True(ok);
-                Assert.Equal(kAllBits, bits);
+                var bits = stream.GetBits<ulong>(64);
+                Assert.NotNull(bits);
+                Assert.Equal(kAllBits, bits.Value);
                 Assert.Equal<uint>(0, stream.Bits);
             }
 
@@ -57,9 +57,9 @@ namespace AstcSharp.Tests
                 const ulong k40Bits = 0x000000FFFFFFFFFFUL;
                 var stream = new BitStream(kAllBits, 64);
                 Assert.Equal<uint>(64, stream.Bits);
-                bool ok = stream.GetBits<ulong>(40, out var bits);
-                Assert.True(ok);
-                Assert.Equal(k40Bits, bits);
+                var bits = stream.GetBits<ulong>(40);
+                Assert.NotNull(bits);
+                Assert.Equal(k40Bits, bits.Value);
                 Assert.Equal<uint>(24, stream.Bits);
             }
 
@@ -67,15 +67,15 @@ namespace AstcSharp.Tests
                 const ulong kAllBits = 0xFFFFFFFFFFFFFFFFUL;
                 const ulong k40Bits = 0x000000FFFFFFFFFFUL;
                 var stream = new BitStream(kAllBits, 32);
-                bool ok = stream.GetBits<ulong>(0, out var bits);
-                Assert.True(ok);
-                Assert.Equal<ulong>(0, bits);
-                ok = stream.GetBits(32, out bits);
-                Assert.True(ok);
-                Assert.Equal(k40Bits & 0xFFFFFFFFUL, bits);
-                ok = stream.GetBits(0, out bits);
-                Assert.True(ok);
-                Assert.Equal<ulong>(0, bits);
+                var bits = stream.GetBits<ulong>(0);
+                Assert.NotNull(bits);
+                Assert.Equal<ulong>(0, bits.Value);
+                bits = stream.GetBits<ulong>(32);
+                Assert.NotNull(bits);
+                Assert.Equal(k40Bits & 0xFFFFFFFFUL, bits.Value);
+                bits = stream.GetBits<ulong>(0);
+                Assert.NotNull(bits);
+                Assert.Equal<ulong>(0, bits.Value);
                 Assert.Equal<uint>(0, stream.Bits);
             }
         }
@@ -89,9 +89,9 @@ namespace AstcSharp.Tests
                 stream.PutBits(0b11U, 2);
                 Assert.Equal<uint>(3, stream.Bits);
 
-                bool ok = stream.GetBits<uint>(3, out var bits);
-                Assert.True(ok);
-                Assert.Equal<uint>(0b110, bits);
+                var bits = stream.GetBits<uint>(3);
+                Assert.NotNull(bits);
+                Assert.Equal<uint>(0b110, bits.Value);
             }
 
             {
@@ -99,9 +99,9 @@ namespace AstcSharp.Tests
                 var stream = new BitStream();
                 stream.PutBits(kAllBits, 64);
                 Assert.Equal<uint>(64, stream.Bits);
-                bool ok = stream.GetBits<ulong>(64, out var bits);
-                Assert.True(ok);
-                Assert.Equal(kAllBits, bits);
+                var bits = stream.GetBits<ulong>(64);
+                Assert.NotNull(bits);
+                Assert.Equal(kAllBits, bits.Value);
                 Assert.Equal<uint>(0, stream.Bits);
             }
 
@@ -110,9 +110,9 @@ namespace AstcSharp.Tests
                 const ulong k40Bits = 0x000000FFFFFFFFFFUL;
                 var stream = new BitStream();
                 stream.PutBits(kAllBits, 40);
-                bool ok = stream.GetBits<ulong>(40, out var bits);
-                Assert.True(ok);
-                Assert.Equal(k40Bits, bits);
+                var bits = stream.GetBits<ulong>(40);
+                Assert.NotNull(bits);
+                Assert.Equal(k40Bits, bits.Value);
                 Assert.Equal<uint>(0, stream.Bits);
             }
 
@@ -124,9 +124,9 @@ namespace AstcSharp.Tests
                 stream.PutBits((uint)(kAllBits & 0xFFFFFFFFUL), 32);
                 stream.PutBits(0U, 0);
 
-                bool ok = stream.GetBits<ulong>(32, out var bits);
-                Assert.True(ok);
-                Assert.Equal(k40Bits & 0xFFFFFFFFUL, bits);
+                var bits = stream.GetBits<ulong>(32);
+                Assert.NotNull(bits);
+                Assert.Equal(k40Bits & 0xFFFFFFFFUL, bits.Value);
                 Assert.Equal<uint>(0, stream.Bits);
             }
         }

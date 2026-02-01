@@ -69,112 +69,66 @@ internal class BitStream
         _dataSize += (uint)size;
     }
 
-    public bool GetBits<T>(int count, out T result) where T : unmanaged
+    private UInt128? GetBitsUInt128(int count)
     {
-        // Special-case returning a System.UInt128 (the C# 128-bit helper struct)
+        if (count > _dataSize)
+            return null;
+
+        UInt128 result = count switch
+        {
+            0 => UInt128.Zero,
+            <= 64 => (UInt128)(_low & MaskFor(count)),
+            128 => new UInt128(_high, _low),
+            _ => new UInt128(
+                (count - 64 == 64) ? _high : (_high & MaskFor(count - 64)),
+                _low)
+        };
+
+        ShiftBuffer(count);
+        return result;
+    }
+
+    public T? GetBits<T>(int count) where T : unmanaged
+    {
         if (typeof(T) == typeof(UInt128))
         {
-            if (count <= _dataSize)
-            {
-                UInt128 ures;
-                if (count == 0)
-                {
-                    ures = 0;
-                }
-                else if (count <= 64)
-                {
-                    ulong lowPart = _low & MaskFor(count);
-                    // Keep lowPart in Low for small counts
-                    ures = (UInt128)lowPart;
-                }
-                else if (count == 128)
-                {
-                    // Return natural ordering Low=_low, High=_high
-                    ures = new UInt128(_high, _low);
-                }
-                else
-                {
-                    int highBits = count - 64;
-                    ulong lowPart = _low;
-                    ulong highPart = (highBits == 64) ? _high : (_high & MaskFor(highBits));
-                    ures = new UInt128(highPart, lowPart);
-                }
-
-                // shift the buffer right by `count` bits
-                if (count < 64)
-                {
-                    _low = (_low >> count) | (_high << (64 - count));
-                    _high = _high >> count;
-                }
-                else if (count == 64)
-                {
-                    _low = _high;
-                    _high = 0;
-                }
-                else // count > 64
-                {
-                    int c = count - 64;
-                    _low = _high >> c;
-                    _high = 0;
-                }
-
-                _dataSize -= (uint)count;
-                result = (T)(object)ures;
-                return true;
-            }
-
-            result = default;
-            return false;
+            var result = GetBitsUInt128(count);
+            return result.HasValue ? (T)(object)result.Value : null;
         }
 
-        if (count <= _dataSize)
+        if (count > _dataSize)
+            return null;
+
+        ulong value = count switch
         {
-            // extract the lowest `count` bits from the 128-bit buffer
-            ulong value;
-            if (count == 0)
-            {
-                value = 0;
-            }
-            else if (count <= 64)
-            {
-                value = _low & MaskFor(count);
-            }
-            else
-            {
-                int highBits = count - 64;
-                ulong lowPart = _low;
-                ulong highPart = _high & MaskFor(highBits);
-                // When count > 64 we cannot represent the full range in a
-                // single ulong. We still return the low 64 bits in this
-                // implementation because callers only request up to 64 bits.
-                value = lowPart | (highPart << 0); // highPart contribution ignored beyond 64 bits
-            }
+            0 => 0,
+            <= 64 => _low & MaskFor(count),
+            _ => _low
+        };
 
-            // shift the buffer right by `count` bits
-            if (count < 64)
-            {
-                _low = (_low >> count) | (_high << (64 - count));
-                _high = _high >> count;
-            }
-            else if (count == 64)
-            {
-                _low = _high;
-                _high = 0;
-            }
-            else // count > 64
-            {
-                int c = count - 64;
-                _low = _high >> c;
-                _high = 0;
-            }
+        ShiftBuffer(count);
+        object boxed = Convert.ChangeType(value, typeof(T));
+        return (T)boxed;
+    }
 
-            _dataSize -= (uint)count;
-            object boxed = Convert.ChangeType(value, typeof(T));
-            result = (T)boxed;
-            return true;
+    private void ShiftBuffer(int count)
+    {
+        if (count < 64)
+        {
+            _low = (_low >> count) | (_high << (64 - count));
+            _high = _high >> count;
+        }
+        else if (count == 64)
+        {
+            _low = _high;
+            _high = 0;
+        }
+        else
+        {
+            _low = _high >> (count - 64);
+            _high = 0;
         }
 
-        result = default;
-        return false;
+        _dataSize -= (uint)count;
     }
 }
