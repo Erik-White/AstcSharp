@@ -34,18 +34,18 @@ internal class BitStream
 
     public void PutBits<T>(T x, int size) where T : unmanaged
     {
-        // Convert to ulong via bit-cast using generic constraints.
-        ulong value = 0;
-        if (typeof(T) == typeof(uint)) value = (uint)(object)x;
-        else if (typeof(T) == typeof(ulong)) value = (ulong)(object)x;
-        else if (typeof(T) == typeof(ushort)) value = (ushort)(object)x;
-        else if (typeof(T) == typeof(byte)) value = (byte)(object)x;
-        else value = Convert.ToUInt64(x);
+        ulong value = x switch
+        {
+            uint ui => ui,
+            ulong ul => ul,
+            ushort us => us,
+            byte b => b,
+            _ => Convert.ToUInt64(x)
+        };
 
         if (_dataSize + (uint)size > 128)
             throw new InvalidOperationException("Not enough space in BitStream");
 
-        // If all new bits fit into the low part
         if (_dataSize < 64)
         {
             int lowFree = (int)(64 - _dataSize);
@@ -55,14 +55,12 @@ internal class BitStream
             }
             else
             {
-                // split between low and high
                 _low |= (value & MaskFor(lowFree)) << (int)_dataSize;
                 _high |= (value >> lowFree) & MaskFor(size - lowFree);
             }
         }
         else
         {
-            // all goes into high part
             int shift = (int)(_dataSize - 64);
             _high |= (value & MaskFor(size)) << shift;
         }
