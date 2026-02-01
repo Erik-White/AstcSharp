@@ -170,6 +170,80 @@ internal static class IntermediateBlock
     private static bool SharedEndpointModes(IntermediateBlockData data)
         => data.endpoints.Count == 0 || data.endpoints.All(ep => ep.mode == data.endpoints[0].mode);
 
+    private static (BitStream weightSink, int weightBitsCount) EncodeWeights(IntermediateBlockData data)
+    {
+        var weightSink = new BitStream(0UL, 0);
+        var weightsEncoder = new BoundedIntegerSequenceEncoder(data.weightRange);
+        foreach (var weight in data.weights) weightsEncoder.AddValue(weight);
+        weightsEncoder.Encode(ref weightSink);
+
+        int weightBitsCount = (int)weightSink.Bits;
+        if ((int)weightSink.Bits != BoundedIntegerSequenceCodec.GetBitCountForRange(data.weights.Length, data.weightRange))
+            throw new InvalidOperationException($"{nameof(weightSink)}.{nameof(weightSink.Bits)} does not match expected bit count");
+
+        return (weightSink, weightBitsCount);
+    }
+
+    private static (string? error, int extraConfig) EncodeColorEndpointModes(IntermediateBlockData data, int partitionCount, BitStream bitSink)
+    {
+        int extraConfig = 0;
+        bool sharedEndpointMode = SharedEndpointModes(data);
+
+        if (sharedEndpointMode)
+        {
+            if (partitionCount > 1) bitSink.PutBits(0u, 2);
+            bitSink.PutBits((uint)data.endpoints[0].mode, 4);
+        }
+        else
+        {
+            // compute min_class, max_class
+            int minClass = 2; int maxClass = 0;
+            foreach (var ep in data.endpoints)
+            {
+                int endpointModeClass = ((int)ep.mode) >> 2;
+                minClass = Math.Min(minClass, endpointModeClass);
+                maxClass = Math.Max(maxClass, endpointModeClass);
+            }
+
+            if (maxClass - minClass > 1) return ("Endpoint modes are invalid", 0);
+
+            var cemEncoder = new BitStream(0UL, 0);
+            cemEncoder.PutBits((uint)(minClass + 1), 2);
+
+            foreach (var endpoint in data.endpoints)
+            {
+                int endpointModeClass = ((int)endpoint.mode) >> 2;
+                int classSelectorBit = endpointModeClass - minClass;
+                cemEncoder.PutBits(classSelectorBit, 1);
+            }
+
+            foreach (var ep in data.endpoints)
+            {
+                int epMode = ((int)ep.mode) & 3;
+                cemEncoder.PutBits(epMode, 2);
+            }
+
+            int cemBits = 2 + partitionCount * 3;
+            if (!cemEncoder.TryGetBits<uint>(cemBits, out var encodedCem))
+                throw new InvalidOperationException();
+
+            extraConfig = (int)(encodedCem >> 6);
+
+            bitSink.PutBits(encodedCem, Math.Min(6, cemBits));
+        }
+
+        // dual plane channel
+        if (data.dualPlaneChannel.HasValue)
+        {
+            int channel = data.dualPlaneChannel.Value;
+            ArgumentOutOfRangeException.ThrowIfLessThan(channel, 0);
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(channel, 3);
+            extraConfig = (extraConfig << 2) | channel;
+        }
+
+        return (null, extraConfig);
+    }
+
     private static int ExtraConfigBitPosition(IntermediateBlockData data)
     {
         bool has_dual_channel = data.dualPlaneChannel.HasValue;
@@ -343,70 +417,10 @@ internal static class IntermediateBlock
             bitSink.PutBits((uint)id, 10);
         }
 
-        // Encode weights into weight_sink to know their bit size
-        var weightSink = new BitStream(0UL, 0);
-        var weightsEncoder = new BoundedIntegerSequenceEncoder(data.weightRange);
-        foreach (var weight in data.weights) weightsEncoder.AddValue(weight);
-        weightsEncoder.Encode(ref weightSink);
+        var (weightSink, weightBitsCount) = EncodeWeights(data);
 
-        int weightBitsCount = (int)weightSink.Bits;
-        if ((int)weightSink.Bits != BoundedIntegerSequenceCodec.GetBitCountForRange(data.weights.Length, data.weightRange))
-            throw new InvalidOperationException($"{nameof(weightSink)}.{nameof(weightSink.Bits)} does not match expected bit count");
-
-        int extra_config = 0;
-        bool shared_endpoint_mode = SharedEndpointModes(data);
-
-        if (shared_endpoint_mode)
-        {
-            if (partitionCount > 1) bitSink.PutBits(0u, 2);
-            bitSink.PutBits((uint)data.endpoints[0].mode, 4);
-        }
-        else
-        {
-            // compute min_class, max_class
-            int minClass = 2; int maxClass = 0;
-            foreach (var ep in data.endpoints)
-            {
-                int endpointModeClass = ((int)ep.mode) >> 2;
-                minClass = Math.Min(minClass, endpointModeClass);
-                maxClass = Math.Max(maxClass, endpointModeClass);
-            }
-
-            if (maxClass - minClass > 1) return ("Endpoint modes are invalid", 0);
-
-            var cemEncoder = new BitStream(0UL, 0);
-            cemEncoder.PutBits((uint)(minClass + 1), 2);
-
-            foreach (var endpoint in data.endpoints)
-            {
-                int endpointModeClass = ((int)endpoint.mode) >> 2;
-                int class_selector_bit = endpointModeClass - minClass;
-                cemEncoder.PutBits(class_selector_bit, 1);
-            }
-
-            foreach (var ep in data.endpoints)
-            {
-                int ep_mode = ((int)ep.mode) & 3;
-                cemEncoder.PutBits(ep_mode, 2);
-            }
-
-            int cem_bits = 2 + partitionCount * 3;
-            if (!cemEncoder.TryGetBits<uint>(cem_bits, out var encodedCem))
-                throw new InvalidOperationException();
-
-            extra_config = (int)(encodedCem >> 6);
-
-            bitSink.PutBits(encodedCem, Math.Min(6, cem_bits));
-        }
-
-        // dual plane channel
-        if (data.dualPlaneChannel.HasValue)
-        {
-            int channel = data.dualPlaneChannel.Value;
-            ArgumentOutOfRangeException.ThrowIfLessThan(channel, 0);
-            ArgumentOutOfRangeException.ThrowIfGreaterThan(channel, 3);
-            extra_config = (extra_config << 2) | channel;
-        }
+        var (error, extraConfig) = EncodeColorEndpointModes(data, partitionCount, bitSink);
+        if (error != null) return (error, 0);
 
         int colorValueRange = data.endpointRange.HasValue ? data.endpointRange.Value : EndpointRangeForBlock(data);
         if (colorValueRange == kEndpointRange_ReturnInvalidWeightDims)
@@ -431,7 +445,7 @@ internal static class IntermediateBlock
         int extraConfigBits = 128 - weightBitsCount - extraConfigBitPosition;
 
         ArgumentOutOfRangeException.ThrowIfNegative(extraConfigBits);
-        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(extra_config, 1 << extraConfigBits);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(extraConfig, 1 << extraConfigBits);
 
         int bitsToSkip = extraConfigBitPosition - (int)bitSink.Bits;
         ArgumentOutOfRangeException.ThrowIfNegative(bitsToSkip);
@@ -444,18 +458,18 @@ internal static class IntermediateBlock
 
         if (extraConfigBits > 0)
         {
-            bitSink.PutBits((uint)extra_config, extraConfigBits);
+            bitSink.PutBits((uint)extraConfig, extraConfigBits);
         }
 
         ArgumentOutOfRangeException.ThrowIfNotEqual(bitSink.Bits, (uint)128 - weightBitsCount);
 
         // Flush out the bit writer
-        if (!bitSink.TryGetBits<UInt128>(128 - weightBitsCount, out var astc_bits))
+        if (!bitSink.TryGetBits<UInt128>(128 - weightBitsCount, out var astcBits))
             throw new InvalidOperationException();
-        if (!weightSink.TryGetBits<UInt128>(weightBitsCount, out var rev_weight_bits))
+        if (!weightSink.TryGetBits<UInt128>(weightBitsCount, out var revWeightBits))
             throw new InvalidOperationException();
 
-        var combined = astc_bits | UInt128Extensions.ReverseBits(rev_weight_bits);
+        var combined = astcBits | UInt128Extensions.ReverseBits(revWeightBits);
         pb = combined;
 
         var block = PhysicalBlock.Create(pb);

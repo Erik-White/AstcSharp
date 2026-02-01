@@ -168,28 +168,9 @@ namespace AstcSharp.TexelBlock
             for (int channel = 0; channel < ChannelCount; ++channel)
             {
                 int weight = (_dualPlane != null && _dualPlane.Channel == channel) ? _dualPlane.Weights[index] : _weights[index];
-                int p0 = channel switch { 0 => firstColor.R, 1 => firstColor.G, 2 => firstColor.B, _ => firstColor.A };
-                int p1 = channel switch { 0 => secondColor.R, 1 => secondColor.G, 2 => secondColor.B, _ => secondColor.A };
-
-                ArgumentOutOfRangeException.ThrowIfLessThan(p0, byte.MinValue);
-                ArgumentOutOfRangeException.ThrowIfLessThan(p1, byte.MinValue);
-                ArgumentOutOfRangeException.ThrowIfGreaterThan(p0, byte.MaxValue);
-                ArgumentOutOfRangeException.ThrowIfGreaterThan(p1, byte.MaxValue);
-
-                int c0 = (p0 << 8) | p0;
-                int c1 = (p1 << 8) | p1;
-                int c = (c0 * (64 - weight) + c1 * weight + 32) / 64;
-                int quantized = ((c * byte.MaxValue) + short.MaxValue) / (ushort.MaxValue + 1);
-                quantized = Math.Clamp(quantized, 0, byte.MaxValue);
-                switch (channel)
-                {
-                    case 0: result[0] = quantized; break;
-                    case 1: result[1] = quantized; break;
-                    case 2: result[2] = quantized; break;
-                    case 3: result[3] = quantized; break;
-                }
+                result[channel] = InterpolateChannel(firstColor, secondColor, channel, weight);
             }
-            
+
             return new RgbaColor(
                 r: result[0],
                 g: result[1],
@@ -197,19 +178,36 @@ namespace AstcSharp.TexelBlock
                 a: result[3]);
         }
 
+        private static int InterpolateChannel(RgbaColor first, RgbaColor second, int channel, int weight)
+        {
+            int p0 = channel switch { 0 => first.R, 1 => first.G, 2 => first.B, _ => first.A };
+            int p1 = channel switch { 0 => second.R, 1 => second.G, 2 => second.B, _ => second.A };
+
+            ArgumentOutOfRangeException.ThrowIfLessThan(p0, byte.MinValue);
+            ArgumentOutOfRangeException.ThrowIfLessThan(p1, byte.MinValue);
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(p0, byte.MaxValue);
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(p1, byte.MaxValue);
+
+            int c0 = (p0 << 8) | p0;
+            int c1 = (p1 << 8) | p1;
+            int c = (c0 * (64 - weight) + c1 * weight + 32) / 64;
+            int quantized = ((c * byte.MaxValue) + short.MaxValue) / (ushort.MaxValue + 1);
+            return Math.Clamp(quantized, 0, byte.MaxValue);
+        }
+
         public void SetPartition(Partition p)
         {
             if (!p.footprint.Equals(_partition.footprint))
                 throw new InvalidOperationException("New partitions may not be for a different footprint");
             _partition = p;
-            while (_endpoints.Count < p.num_parts) _endpoints.Add((RgbaColor.Empty, RgbaColor.Empty));
-            if (_endpoints.Count > p.num_parts) _endpoints.RemoveRange(p.num_parts, _endpoints.Count - p.num_parts);
+            while (_endpoints.Count < p.numParts) _endpoints.Add((RgbaColor.Empty, RgbaColor.Empty));
+            if (_endpoints.Count > p.numParts) _endpoints.RemoveRange(p.numParts, _endpoints.Count - p.numParts);
         }
 
         public void SetEndpoints((RgbaColor first, RgbaColor second) eps, int subset)
         {
             ArgumentOutOfRangeException.ThrowIfNegative(subset);
-            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(subset, _partition.num_parts);
+            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(subset, _partition.numParts);
             
             _endpoints[subset] = eps;
         }
