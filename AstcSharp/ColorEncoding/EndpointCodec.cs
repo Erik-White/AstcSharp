@@ -83,9 +83,7 @@ internal static class EndpointCodec
             {
                 for (int i = 0; i < 4; ++i)
                 {
-                    int a = u_high[i]; int b = u_low[i];
-                    BitOperations.TransferPrecision(ref a, ref b);
-                    u_high[i] = a; u_low[i] = b;
+                    (u_high[i], u_low[i]) = BitOperations.TransferPrecision(u_high[i], u_low[i]);
                 }
             }
 
@@ -198,9 +196,9 @@ internal static class EndpointCodec
                     var v = new int[kNumVals];
                     for (int i = 0; i < kNumVals; ++i) v[i] = i < values.Count ? values[i] : 0;
                     var uv = UnquantizeArray(v, maxValue);
-                    int a0 = uv[0], b0 = uv[1]; BitOperations.TransferPrecision(ref b0, ref a0);
-                    int a1 = uv[2], b1 = uv[3]; BitOperations.TransferPrecision(ref b1, ref a1);
-                    int a2 = uv[4], b2 = uv[5]; BitOperations.TransferPrecision(ref b2, ref a2);
+                    var (b0, a0) = BitOperations.TransferPrecision(uv[1], uv[0]);
+                    var (b1, a1) = BitOperations.TransferPrecision(uv[3], uv[2]);
+                    var (b2, a2) = BitOperations.TransferPrecision(uv[5], uv[4]);
                     return (b0 + b1 + b2) < 0;
                 }
             default:
@@ -362,7 +360,7 @@ internal static class EndpointCodec
         {
             direct_base[i] = endpoint_low_rgba[i];
             direct_offset[i] = Math.Clamp(endpoint_high_rgba[i] - endpoint_low_rgba[i], -32, 31);
-            int a = direct_offset[i], b = direct_base[i]; BitOperations.TransferPrecisionInverse(ref a, ref b); direct_offset[i] = a; direct_base[i] = b;
+            (direct_offset[i], direct_base[i]) = BitOperations.TransferPrecisionInverse(direct_offset[i], direct_base[i]);
         }
 
         var inv_bc_base = new int[4];
@@ -371,7 +369,7 @@ internal static class EndpointCodec
         {
             inv_bc_base[i] = inv_bc_high[i];
             inv_bc_offset[i] = Math.Clamp(inv_bc_low[i] - inv_bc_high[i], -32, 31);
-            int a = inv_bc_offset[i], b = inv_bc_base[i]; BitOperations.TransferPrecisionInverse(ref a, ref b); inv_bc_offset[i] = a; inv_bc_base[i] = b;
+            (inv_bc_offset[i], inv_bc_base[i]) = BitOperations.TransferPrecisionInverse(inv_bc_offset[i], inv_bc_base[i]);
         }
 
         var direct_base_swapped = new int[4];
@@ -380,7 +378,7 @@ internal static class EndpointCodec
         {
             direct_base_swapped[i] = endpoint_high_rgba[i];
             direct_offset_swapped[i] = Math.Clamp(endpoint_low_rgba[i] - endpoint_high_rgba[i], -32, 31);
-            int a = direct_offset_swapped[i], b = direct_base_swapped[i]; BitOperations.TransferPrecisionInverse(ref a, ref b); direct_offset_swapped[i] = a; direct_base_swapped[i] = b;
+            (direct_offset_swapped[i], direct_base_swapped[i]) = BitOperations.TransferPrecisionInverse(direct_offset_swapped[i], direct_base_swapped[i]);
         }
 
         var inv_bc_base_swapped = new int[4];
@@ -389,7 +387,7 @@ internal static class EndpointCodec
         {
             inv_bc_base_swapped[i] = inv_bc_low[i];
             inv_bc_offset_swapped[i] = Math.Clamp(inv_bc_high[i] - inv_bc_low[i], -32, 31);
-            int a = inv_bc_offset_swapped[i], b = inv_bc_base_swapped[i]; BitOperations.TransferPrecisionInverse(ref a, ref b); inv_bc_offset_swapped[i] = a; inv_bc_base_swapped[i] = b;
+            (inv_bc_offset_swapped[i], inv_bc_base_swapped[i]) = BitOperations.TransferPrecisionInverse(inv_bc_offset_swapped[i], inv_bc_base_swapped[i]);
         }
 
         var direct_quantized = new QuantizedEndpointPair(endpoint_low_rgba, endpoint_high_rgba, maxValue);
@@ -542,8 +540,8 @@ internal static class EndpointCodec
                 {
                     var v = new int[4]; for (int i=0;i<4;i++) v[i] = i<vals.Count?vals[i]:0;
                     var uv = UnquantizeArray(v, maxValue);
-                    int a0 = uv[0], b0 = uv[1]; BitOperations.TransferPrecision(ref b0, ref a0);
-                    int a2 = uv[2], b2 = uv[3]; BitOperations.TransferPrecision(ref b2, ref a2);
+                    var (b0, a0) = BitOperations.TransferPrecision(uv[1], uv[0]);
+                    var (b2, a2) = BitOperations.TransferPrecision(uv[3], uv[2]);
                     endpoint_low_rgba = new RgbaColor(a0, a0, a0, a2);
                     int high_luma = a0 + b0;
                     endpoint_high_rgba = new RgbaColor(high_luma, high_luma, high_luma, a2 + b2);
@@ -596,9 +594,9 @@ internal static class EndpointCodec
                     int kNumVals = ColorEndpointMode.LdrRgbBaseOffset.GetColorValuesCount();
                     var v = new int[kNumVals]; for (int i=0;i<kNumVals;++i) v[i] = i<vals.Count?vals[i]:0;
                     var uv = UnquantizeArray(v, maxValue);
-                    int a0 = uv[0], b0 = uv[1]; BitOperations.TransferPrecision(ref b0, ref a0);
-                    int a1 = uv[2], b1 = uv[3]; BitOperations.TransferPrecision(ref b1, ref a1);
-                    int a2 = uv[4], b2 = uv[5]; BitOperations.TransferPrecision(ref b2, ref a2);
+                    var (b0, a0) = BitOperations.TransferPrecision(uv[1], uv[0]);
+                    var (b1, a1) = BitOperations.TransferPrecision(uv[3], uv[2]);
+                    var (b2, a2) = BitOperations.TransferPrecision(uv[5], uv[4]);
                     
                     if (b0 + b1 + b2 < 0)
                     {
@@ -664,10 +662,10 @@ internal static class EndpointCodec
                     int kNumVals = ColorEndpointMode.LdrRgbaBaseOffset.GetColorValuesCount();
                     var v = new int[kNumVals]; for (int i=0;i<kNumVals;++i) v[i] = i<vals.Count?vals[i]:0;
                     var uv = UnquantizeArray(v, maxValue);
-                    int a0 = uv[0], b0 = uv[1]; BitOperations.TransferPrecision(ref b0, ref a0);
-                    int a1 = uv[2], b1 = uv[3]; BitOperations.TransferPrecision(ref b1, ref a1);
-                    int a2 = uv[4], b2 = uv[5]; BitOperations.TransferPrecision(ref b2, ref a2);
-                    int a3 = uv[6], b3 = uv[7]; BitOperations.TransferPrecision(ref b3, ref a3);
+                    var (b0, a0) = BitOperations.TransferPrecision(uv[1], uv[0]);
+                    var (b1, a1) = BitOperations.TransferPrecision(uv[3], uv[2]);
+                    var (b2, a2) = BitOperations.TransferPrecision(uv[5], uv[4]);
+                    var (b3, a3) = BitOperations.TransferPrecision(uv[7], uv[6]);
                     
                     if (b0 + b1 + b2 < 0)
                     {

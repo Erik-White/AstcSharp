@@ -42,9 +42,7 @@ public static class RgbaColorExtensions
 
         for (int i = 0; i < RgbaColor.BytesPerPixel; ++i)
         {
-            int a = offset[i];
-            int b = baseColor[i];
-            BitOperations.TransferPrecision(ref a, ref b);
+            var (a, b) = BitOperations.TransferPrecision(offset[i], baseColor[i]);
             offset[i] = Math.Clamp(baseColor[i] + a, byte.MinValue, byte.MaxValue);
         }
 
