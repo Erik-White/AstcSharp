@@ -1,6 +1,3 @@
-// Port of astc-codec/src/decoder/logical_astc_block.{h,cc}
-using System;
-using System.Collections.Generic;
 using AstcSharp.BiseEncoding;
 using AstcSharp.ColorEncoding;
 using AstcSharp.Core;
@@ -53,12 +50,12 @@ namespace AstcSharp.TexelBlock
 
         private static List<(RgbaColor, RgbaColor)> DecodeEndpoints(IntermediateBlock.IntermediateBlockData block)
         {
-            int endpoint_range = block.endpoint_range.HasValue ? block.endpoint_range.Value : IntermediateBlock.EndpointRangeForBlock(block);
-            if (endpoint_range <= 0) throw new InvalidOperationException("Invalid endpoint range");
+            int endpointRange = block.endpointRange.HasValue ? block.endpointRange.Value : IntermediateBlock.EndpointRangeForBlock(block);
+            if (endpointRange <= 0) throw new InvalidOperationException("Invalid endpoint range");
             var eps = new List<(RgbaColor, RgbaColor)>();
             foreach (var ed in block.endpoints)
             {
-                var (d0, d1) = EndpointCodec.DecodeColorsForMode(ed.colors, endpoint_range, ed.mode);
+                var (d0, d1) = EndpointCodec.DecodeColorsForMode(ed.colors, endpointRange, ed.mode);
                 eps.Add((d0, d1));
             }
             return eps;

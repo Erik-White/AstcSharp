@@ -63,7 +63,7 @@ public static class AstcDecoder
                     DecompressBlock(
                         astcData.Slice(blockDataOffset, PhysicalBlock.SizeInBytes),
                         footprint,
-                        ref decodedPixels);
+                        decodedPixels);
 
                     if (decodedPixels.Length == 0)
                         throw new InvalidOperationException("Failed to decompress ASTC block.");
@@ -108,7 +108,7 @@ public static class AstcDecoder
             decodedPixels = _arrayPool.Rent(footprint.Width * footprint.Height * BytesPerPixelUnorm8);
             var decodedPixelBuffer = decodedPixels.AsSpan();
 
-            DecompressBlock(blockData, footprint, ref decodedPixelBuffer);
+            DecompressBlock(blockData, footprint, decodedPixelBuffer);
         }
         
         finally
@@ -121,7 +121,7 @@ public static class AstcDecoder
 
     /// <inheritdoc cref="DecompressBlock(ReadOnlySpan{byte}, Footprint)"/>
     /// <param name="buffer">The buffer to write the decoded pixels into</param>
-    public static void DecompressBlock(ReadOnlySpan<byte> blockData, Footprint footprint, ref Span<byte> buffer)
+    public static void DecompressBlock(ReadOnlySpan<byte> blockData, Footprint footprint, Span<byte> buffer)
     {
         // Copy the 16 bytes that make up the ASTC block
         var blockBits = (UInt128)BitConverter.ToUInt64(blockData.Slice(0,8).ToArray(),0) | ((UInt128)BitConverter.ToUInt64(blockData.Slice(8,8).ToArray(),0) << 64);
