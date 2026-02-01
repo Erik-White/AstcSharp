@@ -28,8 +28,8 @@ internal class BoundedIntegerSequenceDecoder : BoundedIntegerSequenceCodec
         while (bitsRemaining > 0)
         {
             int bitsToRead = Math.Min(bitsRemaining, bitsPerBlock);
-            var blockBits = bitSource.GetBits<ulong>(bitsToRead)
-                ?? throw new InvalidOperationException("Not enough bits in BitStream to decode BISE block");
+            if (!bitSource.TryGetBits<ulong>(bitsToRead, out var blockBits))
+                throw new InvalidOperationException("Not enough bits in BitStream to decode BISE block");
 
             var decodedValues = _encoding switch
             {
@@ -80,13 +80,13 @@ internal class BoundedIntegerSequenceDecoder : BoundedIntegerSequenceCodec
 
         for (int i = 0; i < valuesCount; i++)
         {
-            var bits = bitSource.GetBits<ulong>(encodedBitCount)
-                ?? throw new InvalidOperationException();
+            if (!bitSource.TryGetBits<ulong>(encodedBitCount, out var bits))
+                throw new InvalidOperationException();
 
             m[i] = (int)bits;
 
-            var encoded_bits = bitSource.GetBits<ulong>(interleavedBits[i])
-                ?? throw new InvalidOperationException();
+            if (!bitSource.TryGetBits<ulong>(interleavedBits[i], out var encoded_bits))
+                throw new InvalidOperationException();
 
             encodedBits |= encoded_bits << encodedBitsRead;
             encodedBitsRead += interleavedBits[i];

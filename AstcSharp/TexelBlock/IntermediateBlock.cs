@@ -393,8 +393,8 @@ internal static class IntermediateBlock
             }
 
             int cem_bits = 2 + partitionCount * 3;
-            var encodedCem = cemEncoder.GetBits<uint>(cem_bits)
-                ?? throw new InvalidOperationException();
+            if (!cemEncoder.TryGetBits<uint>(cem_bits, out var encodedCem))
+                throw new InvalidOperationException();
 
             extra_config = (int)(encodedCem >> 6);
 
@@ -452,10 +452,10 @@ internal static class IntermediateBlock
         ArgumentOutOfRangeException.ThrowIfNotEqual(bitSink.Bits, (uint)128 - weightBitsCount);
 
         // Flush out the bit writer
-        var astc_bits = bitSink.GetBits<UInt128>(128 - weightBitsCount)
-            ?? throw new InvalidOperationException();
-        var rev_weight_bits = weightSink.GetBits<UInt128>(weightBitsCount)
-            ?? throw new InvalidOperationException();
+        if (!bitSink.TryGetBits<UInt128>(128 - weightBitsCount, out var astc_bits))
+            throw new InvalidOperationException();
+        if (!weightSink.TryGetBits<UInt128>(weightBitsCount, out var rev_weight_bits))
+            throw new InvalidOperationException();
 
         var combined = astc_bits | UInt128Extensions.ReverseBits(rev_weight_bits);
         pb = combined;

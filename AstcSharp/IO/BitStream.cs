@@ -1,10 +1,11 @@
 
 using AstcSharp.Core;
 
-// Port of astc-codec/src/base/bit_stream.h
 namespace AstcSharp.IO;
 
-// A simple bit stream used for reading/writing arbitrary-sized chunks.
+/// <summary>
+/// A simple bit stream used for reading/writing arbitrary-sized chunks.
+/// </summary>
 internal class BitStream
 {
     private ulong _low;
@@ -69,6 +70,37 @@ internal class BitStream
         _dataSize += (uint)size;
     }
 
+    /// <summary>
+    /// Attempt to retrieve the specified number of bits from the buffer.
+    /// The buffer is shifted accordingly if successful.
+    /// </summary>
+    public bool TryGetBits<T>(int count, out T bits) where T : unmanaged
+    {
+        T? result = null;
+
+        if (typeof(T) == typeof(UInt128))
+        {
+            result = (T?)(object?)GetBitsUInt128(count);
+        }
+        else if (count <= _dataSize)
+        {
+            ulong value = count switch
+            {
+                0 => 0,
+                <= 64 => _low & MaskFor(count),
+                _ => _low
+            };
+
+            ShiftBuffer(count);
+            object boxed = Convert.ChangeType(value, typeof(T));
+            result = (T)boxed;
+        }
+
+        bits = result ?? default;
+
+        return result is not null;
+    }
+
     private UInt128? GetBitsUInt128(int count)
     {
         if (count > _dataSize)
@@ -85,30 +117,8 @@ internal class BitStream
         };
 
         ShiftBuffer(count);
+
         return result;
-    }
-
-    public T? GetBits<T>(int count) where T : unmanaged
-    {
-        if (typeof(T) == typeof(UInt128))
-        {
-            var result = GetBitsUInt128(count);
-            return result.HasValue ? (T)(object)result.Value : null;
-        }
-
-        if (count > _dataSize)
-            return null;
-
-        ulong value = count switch
-        {
-            0 => 0,
-            <= 64 => _low & MaskFor(count),
-            _ => _low
-        };
-
-        ShiftBuffer(count);
-        object boxed = Convert.ChangeType(value, typeof(T));
-        return (T)boxed;
     }
 
     private void ShiftBuffer(int count)
