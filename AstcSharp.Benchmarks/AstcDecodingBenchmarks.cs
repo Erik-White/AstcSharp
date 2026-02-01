@@ -27,7 +27,7 @@ namespace AstcSharp.Benchmarks
             blocks.Slice(0, 16).CopyTo(blockBytes);
             var low = BitConverter.ToUInt64(blockBytes);
             var high = BitConverter.ToUInt64(blockBytes.Slice(8));
-            var block = new PhysicalBlock(((UInt128)low | ((UInt128)high << 64)));
+            var block = PhysicalBlock.Create(((UInt128)low | ((UInt128)high << 64)));
         }
 
         [Benchmark]
@@ -38,7 +38,7 @@ namespace AstcSharp.Benchmarks
             blocks.Slice(0, 16).CopyTo(blockBytes);
             var low = BitConverter.ToUInt64(blockBytes);
             var high = BitConverter.ToUInt64(blockBytes.Slice(8));
-            var block = new PhysicalBlock(((UInt128)low | ((UInt128)high << 64)));
+            var block = PhysicalBlock.Create(((UInt128)low | ((UInt128)high << 64)));
             var ib = IntermediateBlock.UnpackIntermediateBlock(block);
         }
 
@@ -50,7 +50,7 @@ namespace AstcSharp.Benchmarks
             blocks.Slice(0, 16).CopyTo(blockBytes);
             var low = BitConverter.ToUInt64(blockBytes);
             var high = BitConverter.ToUInt64(blockBytes.Slice(8));
-            var block = new PhysicalBlock(((UInt128)low | ((UInt128)high << 64)));
+            var block = PhysicalBlock.Create(((UInt128)low | ((UInt128)high << 64)));
             var ib = IntermediateBlock.UnpackIntermediateBlock(block);
             var logical = ib is not null
                 ? new LogicalBlock(Footprint.Get4x4(), ib)

@@ -7,62 +7,49 @@ namespace AstcSharp.TexelBlock;
 /// <summary>
 /// A physical ASTC texel block (128 bits)
 /// </summary>
-public class PhysicalBlock
+public abstract class PhysicalBlock
 {
     public const int SizeInBytes = 16;
 
     public UInt128 BlockBits { get; init; }
 
-    public bool IsDualPlane
-        => !IsIllegalEncoding && DecodeDualPlaneBit(BlockBits);
+    public abstract bool IsDualPlane { get; }
 
     public bool IsIllegalEncoding
         => IdentifyInvalidEncodingIssues() is not null;
 
-    public bool IsVoidExtent
-        => !IsIllegalEncoding && DecodeBlockMode(BlockBits) == PhysicalBlockMode.VoidExtent;
+    public abstract bool IsVoidExtent { get; }
 
-    public PhysicalBlock(ulong low) : this((UInt128)low)
+    protected PhysicalBlock(ulong low) : this((UInt128)low)
     {
     }
 
-    public PhysicalBlock(ulong low, ulong high) : this(new UInt128(high, low))
+    protected PhysicalBlock(ulong low, ulong high) : this(new UInt128(high, low))
     {
     }
 
-    public PhysicalBlock(UInt128 bits)
+    protected PhysicalBlock(UInt128 bits)
     {
         BlockBits = bits;
     }
 
-    internal (int Width, int Height)? GetWeightGridDimensions()
-    {
-        var (weightGridProperties, _) = DecodeWeightProperties(BlockBits);
+    /// <summary>
+    /// Factory method to create the appropriate PhysicalBlock subtype
+    /// </summary>
+    public static PhysicalBlock Create(UInt128 bits)
+        => DecodeBlockMode(bits) == PhysicalBlockMode.VoidExtent
+            ? new VoidExtentPhysicalBlock(bits)
+            : new StandardPhysicalBlock(bits);
 
-        return weightGridProperties is not null && !IsIllegalEncoding
-            ? (weightGridProperties.Value.Width, weightGridProperties.Value.Height)
-            : null;
-    }
+    public static PhysicalBlock Create(ulong low) => Create((UInt128)low);
 
-    internal int? GetWeightRange()
-    {
-        var (weightGridProperties, _) = DecodeWeightProperties(BlockBits);
+    public static PhysicalBlock Create(ulong low, ulong high) => Create(new UInt128(high, low));
 
-        return weightGridProperties is not null && !IsIllegalEncoding
-            ? weightGridProperties.Value.Range
-            : null;
-    }
+    internal abstract (int Width, int Height)? GetWeightGridDimensions();
 
-    internal int[]? GetVoidExtentCoordinates()
-    {
-        // If void extent coords are all 1's then these are not valid void extent coords
-        ulong voidExtentMask = 0xFFFFFFFFFFFFFDFFUL;
-        ulong constBlockMode = 0xFFFFFFFFFFFFFDFCUL;
+    internal abstract int? GetWeightRange();
 
-        return !IsIllegalEncoding && IsVoidExtent && (voidExtentMask & BlockBits.Low()) != constBlockMode
-            ? DecodeVoidExtentCoordinates(BlockBits)
-            : null;
-    }
+    internal abstract int[]? GetVoidExtentCoordinates();
 
     /// <summary>
     /// Get the dual plane channel if dual plane is enabled
@@ -78,73 +65,13 @@ public class PhysicalBlock
         return (int)planeBits.Low();
     }
 
-    internal string? IdentifyInvalidEncodingIssues()
-    {
-        // If the block is not a void extent block, then it must have
-        // weights specified. DecodeWeightProps will return the weight specifications
-        // if they exist and are legal according to C.2.24, and will otherwise be
-        // empty.
-        var blockMode = DecodeBlockMode(BlockBits);
-        if (blockMode != PhysicalBlockMode.VoidExtent)
-        {
-            var (props, error) = DecodeWeightProperties(BlockBits);
-            if (props == null)
-            {
-                return error;
-            }
-        }
+    internal abstract string? IdentifyInvalidEncodingIssues();
 
-        if (blockMode == PhysicalBlockMode.VoidExtent)
-        {
-            // Check reserved bits at the full 128-bit level like the C++ reference.
-            if (BitOperations.GetBits(BlockBits, 10, 2).Low() != 0x3UL)
-            {
-                return "Reserved bits set for void extent block";
-            }
+    internal abstract int? GetWeightBitCount();
 
-            var coords = DecodeVoidExtentCoordinates(BlockBits);
-            bool coordsAll1s = true;
-            foreach (var coord in coords) coordsAll1s &= coord == ((1 << 13) - 1);
+    internal abstract int? GetWeightStartBit();
 
-            if (!coordsAll1s && (coords[0] >= coords[1] || coords[2] >= coords[3]))
-            {
-                return "Void extent texture coordinates are invalid";
-            }
-        }
-
-        if (blockMode != PhysicalBlockMode.VoidExtent)
-        {
-            int numColorVals = DecodeNumColorValues(BlockBits);
-            if (numColorVals > 18) return "Too many color values";
-
-            int numPartitions = DecodePartitionsCount(BlockBits);
-            int dualPlaneStartPos = DecodeDualPlaneBitStartPosition(BlockBits);
-            int colorStartBit = (numPartitions == 1) ? 17 : 29;
-
-            int requiredColorBits = ((13 * numColorVals) + 4) / 5;
-            int availableColorBits = dualPlaneStartPos - colorStartBit;
-            if (availableColorBits < requiredColorBits) return "Not enough color bits";
-
-            if (numPartitions == 4 && DecodeDualPlaneBit(BlockBits)) return "Both four partitions and dual plane specified";
-        }
-
-        return null;
-    }
-
-    internal int? GetWeightBitCount()
-        => !IsIllegalEncoding && !IsVoidExtent
-            ? DecodeNumWeightBits(BlockBits)
-            : null;
-
-    internal int? GetWeightStartBit()
-        => !IsIllegalEncoding && !IsVoidExtent
-            ? 128 - DecodeNumWeightBits(BlockBits)
-            : null;
-
-    internal int? GetPartitionsCount()
-        => !IsIllegalEncoding && !IsVoidExtent
-            ? DecodePartitionsCount(BlockBits)
-            : null;
+    internal abstract int? GetPartitionsCount();
 
     internal int? GetPartitionId()
     {
@@ -155,51 +82,17 @@ public class PhysicalBlock
             : null;
     }
 
-    internal ColorEndpointMode? GetEndpointMode(int partition)
-        => !IsVoidExtent && partition >= 0 && DecodePartitionsCount(BlockBits) > partition
-            ? DecodeEndpointMode(BlockBits, partition)
-            : null;
+    internal abstract ColorEndpointMode? GetEndpointMode(int partition);
 
-    internal int? GetColorStartBit()
-    {
-        if (IsVoidExtent) return 64;
+    internal abstract int? GetColorStartBit();
 
-        var numPartitions = GetPartitionsCount();
-        if (!numPartitions.HasValue) return null;
+    internal abstract int? GetColorValuesCount();
 
-        return (numPartitions.Value == 1) ? 17 : 29;
-    }
+    internal abstract int? GetColorBitCount();
 
-    internal int? GetColorValuesCount()
-    {
-        if (IsVoidExtent) return 4;
-        
-        return !IsIllegalEncoding
-            ? DecodeNumColorValues(BlockBits)
-            : null;
-    }
+    internal abstract int? GetColorValuesRange();
 
-    internal int? GetColorBitCount()
-    {
-        if (IsIllegalEncoding) return null;
-        if (IsVoidExtent) return 64;
-
-        var (colorBits, _) = GetColorValuesInfo();
-
-        return colorBits;
-    }
-
-    internal int? GetColorValuesRange()
-    {
-        if (IsIllegalEncoding) return null;
-        if (IsVoidExtent) return (1 << 16) - 1;
-
-        var (_, colorRange) = GetColorValuesInfo();
-
-        return colorRange;
-    }
-
-    private static PhysicalBlockMode? DecodeBlockMode(UInt128 astcBits)
+    internal static PhysicalBlockMode? DecodeBlockMode(UInt128 astcBits)
     {
         const int kVoidExtentMaskBits = 9;
         const uint kVoidExtentMask = 0x1FC;
@@ -244,7 +137,7 @@ public class PhysicalBlock
         return null;
     }
 
-    private static (WeightGridDimensions? dimensions, string? error) DecodeWeightProperties(UInt128 astcBits)
+    internal static (WeightGridDimensions? dimensions, string? error) DecodeWeightProperties(UInt128 astcBits)
     {
         string? error = null;
         var blockMode = DecodeBlockMode(astcBits);
@@ -407,7 +300,7 @@ public class PhysicalBlock
         return (props, null);
     }
 
-    private static int[] DecodeVoidExtentCoordinates(UInt128 astcBits)
+    internal static int[] DecodeVoidExtentCoordinates(UInt128 astcBits)
     {
         ulong low_bits = astcBits.Low();
         var coords = new int[4];
@@ -418,7 +311,7 @@ public class PhysicalBlock
         return coords;
     }
 
-    private static bool DecodeDualPlaneBit(UInt128 astcBits)
+    internal static bool DecodeDualPlaneBit(UInt128 astcBits)
     {
         var blockMode = DecodeBlockMode(astcBits);
         if (blockMode == PhysicalBlockMode.VoidExtent) return false;
@@ -427,7 +320,7 @@ public class PhysicalBlock
         return BitOperations.GetBits(astcBits, kDualPlaneBitPosition, 1).Low() != 0UL;
     }
 
-    private static int DecodePartitionsCount(UInt128 astcBits)
+    internal static int DecodePartitionsCount(UInt128 astcBits)
     {
         const int kNumPartitionsBitPosition = 11;
         const int kNumPartitionsBitLength = 2;
@@ -440,7 +333,7 @@ public class PhysicalBlock
         return num_partitions;
     }
 
-    private static int DecodeNumWeightBits(UInt128 astcBits)
+    internal static int DecodeNumWeightBits(UInt128 astcBits)
     {
         var (maybe, _) = DecodeWeightProperties(astcBits);
         if (maybe == null) return 0;
@@ -451,7 +344,7 @@ public class PhysicalBlock
         return BoundedIntegerSequenceCodec.GetBitCountForRange(numWeights, props.Range);
     }
 
-    private static int DecodeNumExtraCEMBits(UInt128 astcBits)
+    internal static int DecodeNumExtraCEMBits(UInt128 astcBits)
     {
         int num_partitions = DecodePartitionsCount(astcBits);
         if (num_partitions == 1) return 0;
@@ -463,7 +356,7 @@ public class PhysicalBlock
         return extra_cem_bits_for_partition[num_partitions - 1];
     }
 
-    private static int DecodeDualPlaneBitStartPosition(UInt128 astcBits)
+    internal static int DecodeDualPlaneBitStartPosition(UInt128 astcBits)
     {
         int start_pos = 128 - DecodeNumWeightBits(astcBits) - DecodeNumExtraCEMBits(astcBits);
         if (DecodeDualPlaneBit(astcBits)) return start_pos - 2;
@@ -471,7 +364,7 @@ public class PhysicalBlock
         return start_pos;
     }
 
-    private static ColorEndpointMode DecodeEndpointMode(UInt128 astcBits, int partition)
+    internal static ColorEndpointMode DecodeEndpointMode(UInt128 astcBits, int partition)
     {
         int num_partitions = DecodePartitionsCount(astcBits);
         ulong low_bits = astcBits.Low();
@@ -520,7 +413,7 @@ public class PhysicalBlock
         return (ColorEndpointMode)mode;
     }
 
-    private static int DecodeNumColorValues(UInt128 astcBits)
+    internal static int DecodeNumColorValues(UInt128 astcBits)
     {
         int num_color_values = 0;
         int num_partitions = DecodePartitionsCount(astcBits);
@@ -532,7 +425,7 @@ public class PhysicalBlock
         return num_color_values;
     }
 
-    private (int colorBits, int colorRange) GetColorValuesInfo()
+    protected (int colorBits, int colorRange) GetColorValuesInfo()
     {
         int dualPlaneStartPos = DecodeDualPlaneBitStartPosition(BlockBits);
         var colorStartBitOpt = GetColorStartBit();
@@ -555,5 +448,5 @@ public class PhysicalBlock
         throw new InvalidOperationException("Not enough bits to store color values");
     }
 
-    private record struct WeightGridDimensions(int Width, int Height, int Range);
+    internal record struct WeightGridDimensions(int Width, int Height, int Range);
 }

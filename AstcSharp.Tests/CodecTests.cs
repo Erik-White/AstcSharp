@@ -58,11 +58,11 @@ namespace AstcSharp.Tests
             for (int i = 0; i < astc.Length; i += PhysicalBlock.SizeInBytes)
             {
                 var block = astc.AsSpan(i, PhysicalBlock.SizeInBytes).ToArray();
-                var physicalBlock = new PhysicalBlock(BitConverter.ToUInt64(block, 0), BitConverter.ToUInt64(block, 8));
+                var physicalBlock = PhysicalBlock.Create(BitConverter.ToUInt64(block, 0), BitConverter.ToUInt64(block, 8));
                 var logicalBlock = LogicalBlock.UnpackLogicalBlock(footprint, physicalBlock);
                 if (logicalBlock is null)
                 {
-                    var physicalBlockRetry = new PhysicalBlock(BitConverter.ToUInt64(block, 0), BitConverter.ToUInt64(block, 8));
+                    var physicalBlockRetry = PhysicalBlock.Create(BitConverter.ToUInt64(block, 0), BitConverter.ToUInt64(block, 8));
                     var logicalBlockRetry = LogicalBlock.UnpackLogicalBlock(footprint, physicalBlockRetry);
                     Assert.True(logicalBlockRetry is not null, "Block failed to unpack in both canonical and alternate byte orders");
                 }

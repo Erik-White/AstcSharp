@@ -460,7 +460,7 @@ internal static class IntermediateBlock
         var combined = astc_bits | UInt128Extensions.ReverseBits(rev_weight_bits);
         pb = combined;
 
-        var block = new PhysicalBlock(pb);
+        var block = PhysicalBlock.Create(pb);
         var illegal = block.IdentifyInvalidEncodingIssues();
 
         // debug: compare against last unpacked if present
@@ -506,7 +506,7 @@ internal static class IntermediateBlock
             // using full void extent representation
         }
 
-        var block = new PhysicalBlock(pb);
+        var block = PhysicalBlock.Create(pb);
         var illegal = block.IdentifyInvalidEncodingIssues();
         if (illegal is not null)
         {

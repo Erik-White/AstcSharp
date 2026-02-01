@@ -125,7 +125,7 @@ public static class AstcDecoder
     {
         // Copy the 16 bytes that make up the ASTC block
         var blockBits = (UInt128)BitConverter.ToUInt64(blockData.Slice(0,8).ToArray(),0) | ((UInt128)BitConverter.ToUInt64(blockData.Slice(8,8).ToArray(),0) << 64);
-        var physicalBlock = new PhysicalBlock(blockBits);
+        var physicalBlock = PhysicalBlock.Create(blockBits);
 
         var logicalBlock = LogicalBlock.UnpackLogicalBlock(footprint, physicalBlock);
         if (logicalBlock is null)
