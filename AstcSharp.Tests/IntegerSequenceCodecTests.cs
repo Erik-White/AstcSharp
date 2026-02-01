@@ -172,7 +172,7 @@ namespace AstcSharp.Tests
             var bitSrc = new BitStream(kValEncoding, 64);
             var dec = new BoundedIntegerSequenceDecoder(19);
             var decoded = dec.Decode(8, ref bitSrc);
-            Assert.Equal(vals.Count, decoded.Count);
+            Assert.Equal(vals.Count, decoded.Length);
             for (int i = 0; i < vals.Count; ++i) Assert.Equal(vals[i], decoded[i]);
 
             var bitSink = new BitStream();
@@ -195,7 +195,7 @@ namespace AstcSharp.Tests
             var bitSrc = new BitStream(kValEncoding, 64);
             var dec = new BoundedIntegerSequenceDecoder(11);
             var decoded = dec.Decode(vals.Count, ref bitSrc);
-            Assert.Equal(vals.Count, decoded.Count);
+            Assert.Equal(vals.Count, decoded.Length);
             for (int i = 0; i < vals.Count; ++i) Assert.Equal(vals[i], decoded[i]);
 
             var bitSink = new BitStream();
@@ -236,7 +236,7 @@ namespace AstcSharp.Tests
                 var dec = new BoundedIntegerSequenceDecoder(range);
                 var decoded = dec.Decode(num_vals, ref bitSrc);
 
-                Assert.Equal(generated.Count, decoded.Count);
+                Assert.Equal(generated.Count, decoded.Length);
                 for (int i = 0; i < generated.Count; ++i) Assert.Equal(generated[i], decoded[i]);
             }
         }

@@ -53,7 +53,7 @@ public class IntermediateAstcBlockTests
         Assert.Equal(-2, IntermediateBlock.EndpointRangeForBlock(data));
 
         // Resize weights to match grid
-        data.weights = Enumerable.Repeat(0, 64).ToList();
+        data.weights = new int[64];
         var err = IntermediateBlock.Pack(data, out var dummy);
         Assert.NotNull(err);
         Assert.Contains("illegal color range", err);
@@ -99,7 +99,7 @@ public class IntermediateAstcBlockTests
         Assert.Equal(7, data.weightRange);
         Assert.Null(data.partitionId);
         Assert.Null(data.dualPlaneChannel);
-        Assert.Equal(30, data.weights.Count);
+        Assert.Equal(30, data.weights.Length);
         foreach (var w in data.weights) Assert.Equal(0, w);
         Assert.Single(data.endpoints);
         var ep = data.endpoints[0];
@@ -118,7 +118,7 @@ public class IntermediateAstcBlockTests
         data.weightRange = 7;
         data.partitionId = null;
         data.dualPlaneChannel = null;
-        data.weights = Enumerable.Repeat(0, 30).ToList();
+        data.weights = new int[30];
         var ep = new IntermediateBlock.IntermediateEndpointData { mode = ColorEndpointMode.LdrLumaDirect };
         ep.colors.Add(0); ep.colors.Add(255);
         data.endpoints.Add(ep);

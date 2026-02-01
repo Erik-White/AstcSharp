@@ -16,7 +16,7 @@ internal class BoundedIntegerSequenceDecoder : BoundedIntegerSequenceCodec
     /// <returns>The decoded values. The collection always contains exactly <paramref name="valuesCount"/> elements.</returns>
     /// <exception cref="ArgumentOutOfRangeException"></exception>
     /// <exception cref="InvalidOperationException"></exception>
-    public List<int> Decode(int valuesCount, ref BitStream bitSource)
+    public int[] Decode(int valuesCount, ref BitStream bitSource)
     {
         int totalBitCount = GetBitCount(_encoding, valuesCount, _bitCount);
         int bitsPerBlock = GetEncodedBlockSize();
@@ -48,9 +48,10 @@ internal class BoundedIntegerSequenceDecoder : BoundedIntegerSequenceCodec
         if (result.Count < valuesCount)
             throw new InvalidOperationException("Decoded fewer values than expected from BISE block");
 
-        result.RemoveRange(valuesCount, result.Count - valuesCount);
-        
-        return result;
+        if (result.Count > valuesCount)
+            result.RemoveRange(valuesCount, result.Count - valuesCount);
+
+        return result.ToArray();
     }
 
     /// <summary>

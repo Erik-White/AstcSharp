@@ -31,7 +31,7 @@ internal static class IntermediateBlock
         public int weightGridY;
         public int weightRange;
 
-        public List<int> weights = new List<int>();
+        public int[] weights = [];
 
         public int? partitionId;
         public int? dualPlaneChannel;
@@ -254,10 +254,10 @@ internal static class IntermediateBlock
         data.weights = weightDecoder.Decode(weightsCount, ref colorBitStream);
 
         // store debug mapping from data signature to original pb for later pack-debugging
-        var key = $"{data.weightGridX}x{data.weightGridY}:{data.weightRange}:{data.weights.Count}:{data.endpoints.Count}:{data.partitionId}:{data.dualPlaneChannel}:{data.endpoint_range}";
+        var key = $"{data.weightGridX}x{data.weightGridY}:{data.weightRange}:{data.weights.Length}:{data.endpoints.Count}:{data.partitionId}:{data.dualPlaneChannel}:{data.endpoint_range}";
         s_lastUnpacked[key] = physicalBlock.BlockBits;
         // also store a variant with endpoint_range set to null so Pack can round-trip when endpoint_range is cleared
-        var keyWithNullEndpoint = $"{data.weightGridX}x{data.weightGridY}:{data.weightRange}:{data.weights.Count}:{data.endpoints.Count}:{data.partitionId}:{data.dualPlaneChannel}:null";
+        var keyWithNullEndpoint = $"{data.weightGridX}x{data.weightGridY}:{data.weightRange}:{data.weights.Length}:{data.endpoints.Count}:{data.partitionId}:{data.dualPlaneChannel}:null";
         s_lastUnpacked[keyWithNullEndpoint] = physicalBlock.BlockBits;
 
         return data;
@@ -323,7 +323,7 @@ internal static class IntermediateBlock
     public static string? Pack(IntermediateBlockData data, out UInt128 pb)
     {
         pb = 0;
-        if (data.weights.Count != data.weightGridX * data.weightGridY * (data.dualPlaneChannel.HasValue ? 2 : 1))
+        if (data.weights.Length != data.weightGridX * data.weightGridY * (data.dualPlaneChannel.HasValue ? 2 : 1))
         {
             return "Incorrect number of weights!";
         }
@@ -352,7 +352,7 @@ internal static class IntermediateBlock
         weightsEncoder.Encode(ref weightSink);
 
         int weightBitsCount = (int)weightSink.Bits;
-        if ((int)weightSink.Bits != BoundedIntegerSequenceCodec.GetBitCountForRange(data.weights.Count, data.weightRange))
+        if ((int)weightSink.Bits != BoundedIntegerSequenceCodec.GetBitCountForRange(data.weights.Length, data.weightRange))
             throw new InvalidOperationException($"{nameof(weightSink)}.{nameof(weightSink.Bits)} does not match expected bit count");
 
         int extra_config = 0;
@@ -464,7 +464,7 @@ internal static class IntermediateBlock
         var illegal = block.IdentifyInvalidEncodingIssues();
 
         // debug: compare against last unpacked if present
-        var key = $"{data.weightGridX}x{data.weightGridY}:{data.weightRange}:{data.weights.Count}:{data.endpoints.Count}:{data.partitionId}:{data.dualPlaneChannel}:{data.endpoint_range}";
+        var key = $"{data.weightGridX}x{data.weightGridY}:{data.weightRange}:{data.weights.Length}:{data.endpoints.Count}:{data.partitionId}:{data.dualPlaneChannel}:{data.endpoint_range}";
         if (s_lastUnpacked.TryGetValue(key, out var original))
         {
             if (!original.Equals(pb))
