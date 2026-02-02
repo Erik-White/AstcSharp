@@ -30,16 +30,16 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.x'
+          dotnet-version: '10.x'
 
       - name: Restore dependencies
-        run: dotnet restore AstcSharp.sln
+        run: dotnet restore
 
       - name: Build
-        run: dotnet build AstcSharp.sln --configuration Release --no-restore
+        run: dotnet build --configuration Release --no-restore
 
       - name: Test
-        run: dotnet test AstcSharp.sln --configuration Release --no-build --verbosity normal --logger "trx;LogFileName=test-results.trx"
+        run: dotnet test --configuration Release --no-build --verbosity normal --logger "trx;LogFileName=test-results.trx"
 
       - name: Export Failed Output Images
         uses: actions/upload-artifact@v4
