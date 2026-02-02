@@ -50,9 +50,7 @@ internal static class FileBasedHelpers
                 int rowOffset = row * stride;
                 for (int i = 3; i < stride; i += 4)
                 {
-                    var b = result.Data[rowOffset + i - 3];
-                    result.Data[rowOffset + i - 3] = result.Data[rowOffset + i - 1];
-                    result.Data[rowOffset + i - 1] = b;
+                    (result.Data[rowOffset + i - 1], result.Data[rowOffset + i - 3]) = (result.Data[rowOffset + i - 3], result.Data[rowOffset + i - 1]);
                 }
             }
         }
@@ -63,9 +61,7 @@ internal static class FileBasedHelpers
                 int rowOffset = row * stride;
                 for (int i = 2; i < stride; i += 3)
                 {
-                    var tmp = result.Data[rowOffset + i - 2];
-                    result.Data[rowOffset + i - 2] = result.Data[rowOffset + i];
-                    result.Data[rowOffset + i] = tmp;
+                    (result.Data[rowOffset + i], result.Data[rowOffset + i - 2]) = (result.Data[rowOffset + i - 2], result.Data[rowOffset + i]);
                 }
             }
         }

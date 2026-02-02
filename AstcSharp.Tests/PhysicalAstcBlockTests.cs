@@ -1,4 +1,3 @@
-using AstcSharp.Core;
 using AstcSharp.ColorEncoding;
 using AstcSharp.TexelBlock;
 using AwesomeAssertions;
