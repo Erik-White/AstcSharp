@@ -302,7 +302,7 @@ public class EndpointCodecTests
     [Fact]
     public void DecodeCheckerboard_ShouldDecodeToGrayscaleEndpoints()
     {
-        string astcFilePath = Path.Combine("AstcSharp.Reference", "astc-codec", "src", "decoder", "testdata", "checkerboard.astc");
+        string astcFilePath = Path.Combine("TestData", "Input", "checkerboard.astc");
         byte[] astcData = File.ReadAllBytes(astcFilePath);
 
         int blocksDecoded = 0;
