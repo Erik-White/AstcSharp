@@ -1,44 +1,71 @@
 using AstcSharp.Core;
+using FluentAssertions;
 
 namespace AstcSharp.Tests;
 
 public class BitOperationsTests
 {
+    #region GetBits UInt128 Tests
+
     [Fact]
-    public void GetBits_UInt128_ExtractsLowBits()
+    public void GetBits_UInt128WithLowBits_ShouldExtractCorrectly()
     {
+        // Arrange
         UInt128 value = new UInt128(0x1234567890ABCDEF, 0xFEDCBA0987654321);
 
-        // Test extracting lowest 8 bits
+        // Act
         var result = BitOperations.GetBits(value, 0, 8);
-        Assert.Equal(0x21UL, result.Low());
+
+        // Assert
+        result.Low().Should().Be(0x21UL);
     }
 
     [Fact]
-    public void GetBits_ULong_ExtractsLowBits()
+    public void GetBits_UInt128WithZeroLength_ShouldReturnZero()
     {
+        // Arrange
+        UInt128 value = new UInt128(0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF);
+
+        // Act
+        var result = BitOperations.GetBits(value, 0, 0);
+
+        // Assert
+        result.Should().Be(UInt128.Zero);
+    }
+
+    #endregion
+
+    #region GetBits ULong Tests
+
+    [Fact]
+    public void GetBits_ULongWithLowBits_ShouldExtractCorrectly()
+    {
+        // Arrange
         ulong value = 0xFEDCBA0987654321;
 
-        // Test extracting lowest 8 bits
+        // Act
         var result = BitOperations.GetBits(value, 0, 8);
-        Assert.Equal(0x21UL, result);
+
+        // Assert
+        result.Should().Be(0x21UL);
     }
 
     [Fact]
-    public void GetBits_UInt128_ExtractsZeroLengthReturnsZero()
+    public void GetBits_ULongWithZeroLength_ShouldReturnZero()
     {
-        UInt128 value = new UInt128(0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF);
-        var result = BitOperations.GetBits(value, 0, 0);
-        Assert.Equal(UInt128.Zero, result);
-    }
-
-    [Fact]
-    public void GetBits_ULong_ExtractsZeroLengthReturnsZero()
-    {
+        // Arrange
         ulong value = 0xFFFFFFFFFFFFFFFF;
+
+        // Act
         var result = BitOperations.GetBits(value, 0, 0);
-        Assert.Equal(0UL, result);
+
+        // Assert
+        result.Should().Be(0UL);
     }
+
+    #endregion
+
+    #region TransferPrecision Tests
 
     [Theory]
     [InlineData(0, 0)]
@@ -46,17 +73,34 @@ public class BitOperationsTests
     [InlineData(128, 255)]
     [InlineData(255, 128)]
     [InlineData(64, 64)]
-    public void TransferPrecision_ProducesConsistentResults(int inputA, int inputB)
+    public void TransferPrecision_WithSameInput_ShouldBeDeterministic(int inputA, int inputB)
     {
-        // Just verify it completes without exception and produces deterministic results
-        var (a, b) = BitOperations.TransferPrecision(inputA, inputB);
-
-        // Run again with same inputs to verify determinism
+        // Act
+        var (a1, b1) = BitOperations.TransferPrecision(inputA, inputB);
         var (a2, b2) = BitOperations.TransferPrecision(inputA, inputB);
 
-        Assert.Equal(a, a2);
-        Assert.Equal(b, b2);
+        // Assert
+        a1.Should().Be(a2);
+        b1.Should().Be(b2);
     }
+
+    [Fact]
+    public void TransferPrecision_WithAllValidByteInputs_ShouldNotThrow()
+    {
+        // Act & Assert
+        for (int a = 0; a < 256; a++)
+        {
+            for (int b = 0; b < 256; b++)
+            {
+                var action = () => BitOperations.TransferPrecision(a, b);
+                action.Should().NotThrow();
+            }
+        }
+    }
+
+    #endregion
+
+    #region TransferPrecisionInverse Tests
 
     [Theory]
     [InlineData(0, 0)]
@@ -65,17 +109,34 @@ public class BitOperationsTests
     [InlineData(31, 128)]
     [InlineData(-32, 200)]
     [InlineData(-1, 100)]
-    public void TransferPrecisionInverse_ProducesConsistentResults(int inputA, int inputB)
+    public void TransferPrecisionInverse_WithSameInput_ShouldBeDeterministic(int inputA, int inputB)
     {
-        // Just verify it completes without exception and produces deterministic results
-        var (a, b) = BitOperations.TransferPrecisionInverse(inputA, inputB);
-
-        // Run again with same inputs to verify determinism
+        // Act
+        var (a1, b1) = BitOperations.TransferPrecisionInverse(inputA, inputB);
         var (a2, b2) = BitOperations.TransferPrecisionInverse(inputA, inputB);
 
-        Assert.Equal(a, a2);
-        Assert.Equal(b, b2);
+        // Assert
+        a1.Should().Be(a2);
+        b1.Should().Be(b2);
     }
+
+    [Theory]
+    [InlineData(-33, 128)]  // a too small
+    [InlineData(32, 128)]   // a too large
+    [InlineData(0, -1)]     // b too small
+    [InlineData(0, 256)]    // b too large
+    public void TransferPrecisionInverse_WithInvalidInput_ShouldThrowArgumentOutOfRangeException(int a, int b)
+    {
+        // Act
+        var action = () => BitOperations.TransferPrecisionInverse(a, b);
+
+        // Assert
+        action.Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    #endregion
+
+    #region Round-Trip Tests
 
     [Theory]
     [InlineData(0, 0)]
@@ -83,42 +144,18 @@ public class BitOperationsTests
     [InlineData(31, 255)]
     [InlineData(-32, 128)]
     [InlineData(-1, 200)]
-    public void TransferPrecision_RoundTrip_ReturnsOriginalValues(int originalA, int originalB)
+    public void TransferPrecision_AfterInverse_ShouldReturnOriginalValues(int originalA, int originalB)
     {
-        // Apply inverse first to get encoded values
+        // Arrange & Act - apply inverse to encode
         var (encodedA, encodedB) = BitOperations.TransferPrecisionInverse(originalA, originalB);
 
-        // Then apply regular to decode
-        var (a, b) = BitOperations.TransferPrecision(encodedA, encodedB);
+        // Apply regular to decode
+        var (decodedA, decodedB) = BitOperations.TransferPrecision(encodedA, encodedB);
 
-        Assert.Equal(originalA, a);
-        Assert.Equal(originalB, b);
+        // Assert
+        decodedA.Should().Be(originalA);
+        decodedB.Should().Be(originalB);
     }
 
-    [Theory]
-    [InlineData(-33, 128)] // a too small
-    [InlineData(32, 128)]  // a too large
-    [InlineData(0, -1)]    // b too small
-    [InlineData(0, 256)]   // b too large
-    public void TransferPrecisionInverse_ThrowsOnInvalidInput(int a, int b)
-    {
-        Assert.Throws<ArgumentOutOfRangeException>(() =>
-        {
-            BitOperations.TransferPrecisionInverse(a, b);
-        });
-    }
-
-    [Fact]
-    public void TransferPrecision_DoesNotThrowOnAnyValidByteInput()
-    {
-        // TransferPrecision should work with any int values
-        for (int a = 0; a < 256; a++)
-        {
-            for (int b = 0; b < 256; b++)
-            {
-                var exception = Record.Exception(() => BitOperations.TransferPrecision(a, b));
-                Assert.Null(exception);
-            }
-        }
-    }
+    #endregion
 }

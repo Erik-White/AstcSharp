@@ -1,239 +1,425 @@
 using AstcSharp.ColorEncoding;
 using AstcSharp.Core;
 using AstcSharp.TexelBlock;
+using FluentAssertions;
 
 namespace AstcSharp.Tests;
 
 public class IntermediateAstcBlockTests
 {
+    private static readonly UInt128 ErrorBlock = UInt128.Zero;
+
     private static byte[] LoadASTCFile(string basename)
     {
         var filename = Path.Combine("TestData", "Input", basename + ".astc");
-        Assert.True(File.Exists(filename), $"Testdata missing: {filename}");
+        File.Exists(filename).Should().BeTrue($"Testdata missing: {filename}");
         var data = File.ReadAllBytes(filename);
-        Assert.True(data.Length >= 16, "ASTC file too small");
+        data.Length.Should().BeGreaterOrEqualTo(16, "ASTC file too small");
         return data.Skip(16).ToArray();
     }
 
+    #region Unpack Error Tests
+
     [Fact]
-    public void TestUnpackError()
+    public void UnpackVoidExtent_WithErrorBlock_ShouldReturnNull()
     {
-        var kErrorBlock = PhysicalBlock.Create((UInt128)0UL);
-        Assert.Null(IntermediateBlock.UnpackVoidExtent(kErrorBlock));
-        Assert.Null(IntermediateBlock.UnpackIntermediateBlock(kErrorBlock));
+        // Arrange
+        var errorBlock = PhysicalBlock.Create(ErrorBlock);
+
+        // Act
+        var result = IntermediateBlock.UnpackVoidExtent(errorBlock);
+
+        // Assert
+        result.Should().BeNull();
     }
 
     [Fact]
-    public void TestEndpointRangeErrorOnNotSettingWeights()
+    public void UnpackIntermediateBlock_WithErrorBlock_ShouldReturnNull()
     {
-        var data = new IntermediateBlock.IntermediateBlockData();
-        data.weightRange = 15;
-        data.weightGridX = 6;
-        data.weightGridY = 6;
-        Assert.Equal(-1, IntermediateBlock.EndpointRangeForBlock(data));
+        // Arrange
+        var errorBlock = PhysicalBlock.Create(ErrorBlock);
 
-        var (err, dummy) = IntermediateBlock.Pack(data);
-        Assert.NotNull(err);
-        Assert.Contains("Incorrect number of weights", err);
+        // Act
+        var result = IntermediateBlock.UnpackIntermediateBlock(errorBlock);
+
+        // Assert
+        result.Should().BeNull();
+    }
+
+    #endregion
+
+    #region Endpoint Range Tests
+
+    [Fact]
+    public void EndpointRangeForBlock_WithoutWeights_ShouldReturnNegativeOne()
+    {
+        // Arrange
+        var data = new IntermediateBlock.IntermediateBlockData
+        {
+            weightRange = 15,
+            weightGridX = 6,
+            weightGridY = 6
+        };
+
+        // Act
+        var result = IntermediateBlock.EndpointRangeForBlock(data);
+
+        // Assert
+        result.Should().Be(-1);
     }
 
     [Fact]
-    public void TestEndpointRangeErrorOnNotEnoughBits()
+    public void Pack_WithIncorrectNumberOfWeights_ShouldReturnError()
     {
-        var data = new IntermediateBlock.IntermediateBlockData();
-        data.weightRange = 1;
-        data.partitionId = 0;
-        data.endpoints = new List<IntermediateBlock.IntermediateEndpointData>();
-        data.endpoints.Add(new IntermediateBlock.IntermediateEndpointData { mode = ColorEndpointMode.LdrRgbDirect });
-        data.endpoints.Add(new IntermediateBlock.IntermediateEndpointData { mode = ColorEndpointMode.LdrRgbDirect });
-        data.endpoints.Add(new IntermediateBlock.IntermediateEndpointData { mode = ColorEndpointMode.LdrRgbDirect });
+        // Arrange
+        var data = new IntermediateBlock.IntermediateBlockData
+        {
+            weightRange = 15,
+            weightGridX = 6,
+            weightGridY = 6
+        };
 
-        data.weightGridX = 8;
-        data.weightGridY = 8;
-        Assert.Equal(-2, IntermediateBlock.EndpointRangeForBlock(data));
+        // Act
+        var (error, _) = IntermediateBlock.Pack(data);
 
-        // Resize weights to match grid
-        data.weights = new int[64];
-        var (err, dummy) = IntermediateBlock.Pack(data);
-        Assert.NotNull(err);
-        Assert.Contains("illegal color range", err);
+        // Assert
+        error.Should().NotBeNull();
+        error.Should().Contain("Incorrect number of weights");
     }
 
     [Fact]
-    public void TestEndpointRangeForBlock()
+    public void EndpointRangeForBlock_WithNotEnoughBits_ShouldReturnNegativeTwo()
     {
-        var data = new IntermediateBlock.IntermediateBlockData();
-        data.weightRange = 2;
-        data.endpoints = new List<IntermediateBlock.IntermediateEndpointData> { new IntermediateBlock.IntermediateEndpointData(), new IntermediateBlock.IntermediateEndpointData() };
-        data.dualPlaneChannel = null;
-        foreach (var ep in data.endpoints) ep.mode = ColorEndpointMode.LdrRgbDirect;
+        // Arrange
+        var data = new IntermediateBlock.IntermediateBlockData
+        {
+            weightRange = 1,
+            partitionId = 0,
+            weightGridX = 8,
+            weightGridY = 8,
+            endpoints = new List<IntermediateBlock.IntermediateEndpointData>
+            {
+                new() { mode = ColorEndpointMode.LdrRgbDirect },
+                new() { mode = ColorEndpointMode.LdrRgbDirect },
+                new() { mode = ColorEndpointMode.LdrRgbDirect }
+            }
+        };
 
-        var weight_params = new List<(int w, int h)>();
+        // Act
+        var result = IntermediateBlock.EndpointRangeForBlock(data);
+
+        // Assert
+        result.Should().Be(-2);
+    }
+
+    [Fact]
+    public void Pack_WithNotEnoughBitsForColors_ShouldReturnError()
+    {
+        // Arrange
+        var data = new IntermediateBlock.IntermediateBlockData
+        {
+            weightRange = 1,
+            partitionId = 0,
+            weightGridX = 8,
+            weightGridY = 8,
+            weights = new int[64],
+            endpoints = new List<IntermediateBlock.IntermediateEndpointData>
+            {
+                new() { mode = ColorEndpointMode.LdrRgbDirect },
+                new() { mode = ColorEndpointMode.LdrRgbDirect },
+                new() { mode = ColorEndpointMode.LdrRgbDirect }
+            }
+        };
+
+        // Act
+        var (error, _) = IntermediateBlock.Pack(data);
+
+        // Assert
+        error.Should().NotBeNull();
+        error.Should().Contain("illegal color range");
+    }
+
+    [Fact]
+    public void EndpointRangeForBlock_WithIncreasingWeightGrid_ShouldDecreaseColorRange()
+    {
+        // Arrange
+        var data = new IntermediateBlock.IntermediateBlockData
+        {
+            weightRange = 2,
+            dualPlaneChannel = null,
+            endpoints = new List<IntermediateBlock.IntermediateEndpointData>
+            {
+                new() { mode = ColorEndpointMode.LdrRgbDirect },
+                new() { mode = ColorEndpointMode.LdrRgbDirect }
+            }
+        };
+
+        var weightParams = new List<(int w, int h)>();
         for (int y = 2; y < 8; ++y)
             for (int x = 2; x < 8; ++x)
-                weight_params.Add((x, y));
+                weightParams.Add((x, y));
 
-        weight_params.Sort((a, b) => (a.w * a.h).CompareTo(b.w * b.h));
+        weightParams.Sort((a, b) => (a.w * a.h).CompareTo(b.w * b.h));
 
-        int last_color_range = 255;
-        foreach (var p in weight_params)
+        // Act & Assert
+        int lastColorRange = 255;
+        foreach (var (w, h) in weightParams)
         {
-            data.weightGridX = p.w;
-            data.weightGridY = p.h;
-            int color_range = IntermediateBlock.EndpointRangeForBlock(data);
-            Assert.True(color_range <= last_color_range);
-            last_color_range = Math.Min(color_range, last_color_range);
+            data.weightGridX = w;
+            data.weightGridY = h;
+            int colorRange = IntermediateBlock.EndpointRangeForBlock(data);
+
+            colorRange.Should().BeLessOrEqualTo(lastColorRange);
+            lastColorRange = Math.Min(colorRange, lastColorRange);
         }
-        Assert.True(last_color_range < 255);
+
+        lastColorRange.Should().BeLessThan(255);
     }
 
     [Fact]
-    public void TestUnpackNonVoidExtentBlock()
+    public void EndpointRange_WithStandardBlock_ShouldBe255()
     {
-        var blk = PhysicalBlock.Create((UInt128)0x0000000001FE000173UL);
-        var b = IntermediateBlock.UnpackIntermediateBlock(blk);
-        Assert.NotNull(b);
-        var data = b!;
-        Assert.Equal(6, data.weightGridX);
-        Assert.Equal(5, data.weightGridY);
-        Assert.Equal(7, data.weightRange);
-        Assert.Null(data.partitionId);
-        Assert.Null(data.dualPlaneChannel);
-        Assert.Equal(30, data.weights.Length);
-        foreach (var w in data.weights) Assert.Equal(0, w);
-        Assert.Single(data.endpoints);
-        var ep = data.endpoints[0];
-        Assert.Equal(ColorEndpointMode.LdrLumaDirect, ep.mode);
-        Assert.Equal(2, ep.colors.Count);
-        Assert.Equal(0, ep.colors[0]);
-        Assert.Equal(255, ep.colors[1]);
+        // Arrange
+        var block = PhysicalBlock.Create((UInt128)0x0000000001FE000173UL);
+
+        // Act
+        var data = IntermediateBlock.UnpackIntermediateBlock(block);
+
+        // Assert
+        block.GetColorValuesRange().Should().Be(255);
+        data.Should().NotBeNull();
+        data!.endpoints.Should().ContainSingle();
+        data.endpoints[0].mode.Should().Be(ColorEndpointMode.LdrLumaDirect);
+        data.endpoints[0].colors.Should().Equal(new List<int> { 0, 255 });
+        data.endpointRange.Should().Be(255);
+    }
+
+    #endregion
+
+    #region Unpack Non-Void Extent Tests
+
+    [Fact]
+    public void UnpackIntermediateBlock_WithStandardBlock_ShouldReturnCorrectData()
+    {
+        // Arrange
+        var block = PhysicalBlock.Create((UInt128)0x0000000001FE000173UL);
+
+        // Act
+        var result = IntermediateBlock.UnpackIntermediateBlock(block);
+
+        // Assert
+        result.Should().NotBeNull();
+        var data = result!;
+
+        data.weightGridX.Should().Be(6);
+        data.weightGridY.Should().Be(5);
+        data.weightRange.Should().Be(7);
+        data.partitionId.Should().BeNull();
+        data.dualPlaneChannel.Should().BeNull();
+
+        data.weights.Should().HaveCount(30);
+        data.weights.Should().AllBeEquivalentTo(0);
+
+        data.endpoints.Should().ContainSingle();
+        var endpoint = data.endpoints[0];
+        endpoint.mode.Should().Be(ColorEndpointMode.LdrLumaDirect);
+        endpoint.colors.Should().HaveCount(2);
+        endpoint.colors[0].Should().Be(0);
+        endpoint.colors[1].Should().Be(255);
+    }
+
+    #endregion
+
+    #region Pack Non-Void Extent Tests
+
+    [Fact]
+    public void Pack_WithStandardBlockData_ShouldProduceExpectedBits()
+    {
+        // Arrange
+        var data = new IntermediateBlock.IntermediateBlockData
+        {
+            weightGridX = 6,
+            weightGridY = 5,
+            weightRange = 7,
+            partitionId = null,
+            dualPlaneChannel = null,
+            weights = new int[30]
+        };
+
+        var endpoint = new IntermediateBlock.IntermediateEndpointData
+        {
+            mode = ColorEndpointMode.LdrLumaDirect
+        };
+        endpoint.colors.Add(0);
+        endpoint.colors.Add(255);
+        data.endpoints.Add(endpoint);
+
+        // Act
+        var (error, packed) = IntermediateBlock.Pack(data);
+
+        // Assert
+        error.Should().BeNull();
+        packed.Should().Be((UInt128)0x0000000001FE000173UL);
     }
 
     [Fact]
-    public void TestPackNonVoidExtentBlock()
+    public void Pack_WithLargeGapInBits_ShouldPreserveOriginalEncoding()
     {
-        var data = new IntermediateBlock.IntermediateBlockData();
-        data.weightGridX = 6;
-        data.weightGridY = 5;
-        data.weightRange = 7;
-        data.partitionId = null;
-        data.dualPlaneChannel = null;
-        data.weights = new int[30];
-        var ep = new IntermediateBlock.IntermediateEndpointData { mode = ColorEndpointMode.LdrLumaDirect };
-        ep.colors.Add(0); ep.colors.Add(255);
-        data.endpoints.Add(ep);
+        // Arrange
+        var original = new UInt128(0xBEDEAD0000000000UL, 0x0000000001FE032EUL);
+        var block = PhysicalBlock.Create(original);
+        var data = IntermediateBlock.UnpackIntermediateBlock(block);
 
-        var (err, packed) = IntermediateBlock.Pack(data);
-        Assert.Null(err);
-        Assert.Equal((UInt128)0x0000000001FE000173UL, packed);
+        // Act
+        data.Should().NotBeNull();
+        var intermediate = data!;
+
+        // Assert unpacked values
+        intermediate.weightGridX.Should().Be(2);
+        intermediate.weightGridY.Should().Be(3);
+        intermediate.weightRange.Should().Be(15);
+        intermediate.partitionId.Should().BeNull();
+        intermediate.dualPlaneChannel.Should().BeNull();
+        intermediate.endpoints.Should().ContainSingle();
+        intermediate.endpoints[0].mode.Should().Be(ColorEndpointMode.LdrLumaDirect);
+        intermediate.endpoints[0].colors.Should().Equal(new List<int> { 255, 0 });
+
+        // Act - repack
+        var (error, repacked) = IntermediateBlock.Pack(intermediate);
+
+        // Assert
+        error.Should().BeNull();
+        repacked.Should().Be(original);
+    }
+
+    #endregion
+
+    #region Unpack Void Extent Tests
+
+    [Fact]
+    public void UnpackVoidExtent_WithAllOnesPattern_ShouldReturnZeroColors()
+    {
+        // Arrange
+        var block = PhysicalBlock.Create((UInt128)0xFFFFFFFFFFFFFDFCUL);
+
+        // Act
+        var result = IntermediateBlock.UnpackVoidExtent(block);
+
+        // Assert
+        result.Should().NotBeNull();
+        var data = result!.Value;
+
+        data.r.Should().Be(0);
+        data.g.Should().Be(0);
+        data.b.Should().Be(0);
+        data.a.Should().Be(0);
+
+        data.coords.Should().AllSatisfy(c => c.Should().Be((1 << 13) - 1));
     }
 
     [Fact]
-    public void TestUnpackVoidExtentBlock()
+    public void UnpackVoidExtent_WithColorData_ShouldReturnCorrectColors()
     {
-        var void_blk = PhysicalBlock.Create((UInt128)0xFFFFFFFFFFFFFDFCUL);
-        var b = IntermediateBlock.UnpackVoidExtent(void_blk);
-        Assert.NotNull(b);
-        var data = b.Value;
-        Assert.Equal((ushort)0, data.r);
-        Assert.Equal((ushort)0, data.g);
-        Assert.Equal((ushort)0, data.b);
-        Assert.Equal((ushort)0, data.a);
-        foreach (var c in data.coords) Assert.Equal((1 << 13) - 1, c);
+        // Arrange
+        var blockBits = new UInt128(0xdeadbeefdeadbeefUL, 0xFFF8003FFE000DFCUL);
+        var block = PhysicalBlock.Create(blockBits);
 
-        var more_interesting = new UInt128(0xdeadbeefdeadbeefUL, 0xFFF8003FFE000DFCUL);
-        b = IntermediateBlock.UnpackVoidExtent(PhysicalBlock.Create(more_interesting));
-        Assert.NotNull(b);
-        var other = b.Value;
-        Assert.Equal((ushort)0xbeef, other.r);
-        Assert.Equal((ushort)0xdead, other.g);
-        Assert.Equal((ushort)0xbeef, other.b);
-        Assert.Equal((ushort)0xdead, other.a);
-        Assert.Equal(0, other.coords[0]);
-        Assert.Equal(8191, other.coords[1]);
-        Assert.Equal(0, other.coords[2]);
-        Assert.Equal(8191, other.coords[3]);
+        // Act
+        var result = IntermediateBlock.UnpackVoidExtent(block);
+
+        // Assert
+        result.Should().NotBeNull();
+        var data = result!.Value;
+
+        data.r.Should().Be(0xbeef);
+        data.g.Should().Be(0xdead);
+        data.b.Should().Be(0xbeef);
+        data.a.Should().Be(0xdead);
+
+        data.coords[0].Should().Be(0);
+        data.coords[1].Should().Be(8191);
+        data.coords[2].Should().Be(0);
+        data.coords[3].Should().Be(8191);
+    }
+
+    #endregion
+
+    #region Pack Void Extent Tests
+
+    [Fact]
+    public void Pack_WithZeroColorVoidExtent_ShouldProduceAllOnesPattern()
+    {
+        // Arrange
+        var data = new IntermediateBlock.VoidExtentData
+        {
+            r = 0,
+            g = 0,
+            b = 0,
+            a = 0,
+            coords = new ushort[4]
+        };
+
+        for (int i = 0; i < 4; ++i)
+            data.coords[i] = (ushort)((1 << 13) - 1);
+
+        // Act
+        var (error, packed) = IntermediateBlock.Pack(data);
+
+        // Assert
+        error.Should().BeNull();
+        packed.Should().Be((UInt128)0xFFFFFFFFFFFFFDFCUL);
     }
 
     [Fact]
-    public void TestPackVoidExtentBlock()
+    public void Pack_WithColorVoidExtent_ShouldProduceExpectedBits()
     {
-        var data = new IntermediateBlock.VoidExtentData();
-        data.r = 0; data.g = 0; data.b = 0; data.a = 0;
-        data.coords = new ushort[4];
-        for (int i = 0; i < 4; ++i) data.coords[i] = (ushort)((1 << 13) - 1);
+        // Arrange
+        var data = new IntermediateBlock.VoidExtentData
+        {
+            r = 0xbeef,
+            g = 0xdead,
+            b = 0xbeef,
+            a = 0xdead,
+            coords = new ushort[4] { 0, 8191, 0, 8191 }
+        };
 
-        var (err, packed) = IntermediateBlock.Pack(data);
-        Assert.Null(err);
-        Assert.Equal((UInt128)0xFFFFFFFFFFFFFDFCUL, packed);
+        // Act
+        var (error, packed) = IntermediateBlock.Pack(data);
 
-        data.r = 0xbeef; data.g = 0xdead; data.b = 0xbeef; data.a = 0xdead;
-        data.coords = new ushort[4] { 0, 8191, 0, 8191 };
-        (err, packed) = IntermediateBlock.Pack(data);
-        Assert.Null(err);
-        Assert.Equal(new UInt128(0xdeadbeefdeadbeefUL, 0xFFF8003FFE000DFCUL), packed);
+        // Assert
+        error.Should().BeNull();
+        packed.Should().Be(new UInt128(0xdeadbeefdeadbeefUL, 0xFFF8003FFE000DFCUL));
     }
 
-    [Fact]
-    public void TestPackUnpackWithSameCEM()
-    {
-        var orig = new UInt128(0xe8e8eaea20000980UL, 0x20000200cb73f045UL);
-        var b = IntermediateBlock.UnpackIntermediateBlock(PhysicalBlock.Create(orig));
-        Assert.NotNull(b);
-        var (err, repacked) = IntermediateBlock.Pack(b!);
-        Assert.Null(err);
-        Assert.Equal(orig, repacked);
+    #endregion
 
-        orig = new UInt128(0x3300c30700cb01c5UL, 0x0573907b8c0f6879UL);
-        b = IntermediateBlock.UnpackIntermediateBlock(PhysicalBlock.Create(orig));
-        Assert.NotNull(b);
-        (err, repacked) = IntermediateBlock.Pack(b!);
-        Assert.Null(err);
-        Assert.Equal(orig, repacked);
+    #region Round-Trip Tests
+
+    [Theory]
+    [InlineData(0xe8e8eaea20000980UL, 0x20000200cb73f045UL)]
+    [InlineData(0x3300c30700cb01c5UL, 0x0573907b8c0f6879UL)]
+    public void PackUnpack_WithSameCEM_ShouldRoundTripCorrectly(ulong high, ulong low)
+    {
+        // Arrange
+        var original = new UInt128(high, low);
+        var block = PhysicalBlock.Create(original);
+
+        // Act
+        var unpacked = IntermediateBlock.UnpackIntermediateBlock(block);
+
+        unpacked.Should().NotBeNull();
+
+        var (error, repacked) = IntermediateBlock.Pack(unpacked!);
+
+        // Assert
+        error.Should().BeNull();
+        repacked.Should().Be(original);
     }
 
-    [Fact]
-    public void TestPackingWithLargeGap()
-    {
-        var orig = new UInt128(0xBEDEAD0000000000UL, 0x0000000001FE032EUL);
-        var b = IntermediateBlock.UnpackIntermediateBlock(PhysicalBlock.Create(orig));
-        Assert.NotNull(b);
-        var data = b!;
-        Assert.Equal(2, data.weightGridX);
-        Assert.Equal(3, data.weightGridY);
-        Assert.Equal(15, data.weightRange);
-        Assert.Null(data.partitionId);
-        Assert.Null(data.dualPlaneChannel);
-        Assert.Single(data.endpoints);
-        Assert.Equal(ColorEndpointMode.LdrLumaDirect, data.endpoints[0].mode);
-        Assert.Equal(2, data.endpoints[0].colors.Count);
-        Assert.Equal(255, data.endpoints[0].colors[0]);
-        Assert.Equal(0, data.endpoints[0].colors[1]);
+    #endregion
 
-        var (err, repacked) = IntermediateBlock.Pack(data);
-        Assert.Null(err);
-        Assert.Equal(orig, repacked);
-    }
+    #region Integration Tests with Test Data
 
-    [Fact]
-    public void TestEndpointRange()
-    {
-        var blk = PhysicalBlock.Create((UInt128)0x0000000001FE000173UL);
-        Assert.NotNull(blk.GetColorValuesRange());
-        Assert.Equal(255, blk.GetColorValuesRange().Value);
-
-        var b = IntermediateBlock.UnpackIntermediateBlock(blk);
-        Assert.NotNull(b);
-        var data = b!;
-        Assert.Single(data.endpoints);
-        Assert.Equal(ColorEndpointMode.LdrLumaDirect, data.endpoints[0].mode);
-        Assert.Equal(new List<int> { 0, 255 }, data.endpoints[0].colors);
-        Assert.NotNull(data.endpointRange);
-        Assert.Equal(255, data.endpointRange.Value);
-    }
-    // The comprehensive pack/unpack test that iterates over ASTC testdata.
-    // This test port mirrors the reference C++ test and may be slower; it is
-    // kept to ensure broad parity with the reference dataset.
     [Theory]
     [InlineData("checkered_4", 4)]
     [InlineData("checkered_5", 5)]
@@ -244,77 +430,102 @@ public class IntermediateAstcBlockTests
     [InlineData("checkered_10", 10)]
     [InlineData("checkered_11", 11)]
     [InlineData("checkered_12", 12)]
-    public void TestPackUnpack(string image_name, int checkered_dim)
+    public void PackUnpack_WithTestDataBlocks_ShouldPreserveBlockProperties(string imageName, int checkeredDim)
     {
-        const int astc_dim = 8;
-        int img_dim = checkered_dim * astc_dim;
-        var astc = LoadASTCFile(image_name);
-        int numBlocks = (img_dim / astc_dim) * (img_dim / astc_dim);
-        Assert.Equal(0, astc.Length % PhysicalBlock.SizeInBytes);
+        // Arrange
+        const int astcDim = 8;
+        int imgDim = checkeredDim * astcDim;
+        var astcData = LoadASTCFile(imageName);
+        int numBlocks = (imgDim / astcDim) * (imgDim / astcDim);
+
+        (astcData.Length % PhysicalBlock.SizeInBytes).Should().Be(0);
+
+        // Act & Assert - test each block
         for (int i = 0; i < numBlocks; ++i)
         {
-            var slice = new ReadOnlySpan<byte>(astc, i * PhysicalBlock.SizeInBytes, PhysicalBlock.SizeInBytes);
-            var block_bits = new UInt128(BitConverter.ToUInt64(slice.Slice(8, 8)), BitConverter.ToUInt64(slice.Slice(0, 8)));
-            var block = PhysicalBlock.Create(block_bits);
+            var slice = new ReadOnlySpan<byte>(astcData, i * PhysicalBlock.SizeInBytes, PhysicalBlock.SizeInBytes);
+            var blockBits = new UInt128(
+                BitConverter.ToUInt64(slice.Slice(8, 8)),
+                BitConverter.ToUInt64(slice.Slice(0, 8)));
+            var originalBlock = PhysicalBlock.Create(blockBits);
+
+            // Unpack and repack
             UInt128 repacked;
-            string? err;
-            if (block.IsVoidExtent)
+            if (originalBlock.IsVoidExtent)
             {
-                var vb = IntermediateBlock.UnpackVoidExtent(block);
-                Assert.NotNull(vb);
-                (err, repacked) = IntermediateBlock.Pack(vb!.Value);
-                Assert.Null(err);
+                var voidData = IntermediateBlock.UnpackVoidExtent(originalBlock);
+                voidData.Should().NotBeNull();
+
+                var (error, packed) = IntermediateBlock.Pack(voidData!.Value);
+                error.Should().BeNull();
+                repacked = packed;
             }
             else
             {
-                var ib = IntermediateBlock.UnpackIntermediateBlock(block);
-                Assert.NotNull(ib);
-                var block_data = ib!;
+                var intermediateData = IntermediateBlock.UnpackIntermediateBlock(originalBlock);
+                intermediateData.Should().NotBeNull();
 
-                // make sure endpointRange was set to ColorValuesRange
-                Assert.Equal(block.GetColorValuesRange(), block_data.endpointRange);
+                // Verify endpoint range was set
+                intermediateData!.endpointRange.Should().Be(originalBlock.GetColorValuesRange());
 
-                block_data.endpointRange = null;
-                (err, repacked) = IntermediateBlock.Pack(block_data);
-                Assert.Null(err);
+                // Clear endpoint range before repacking (to test calculation)
+                intermediateData.endpointRange = null;
+                var (error, packed) = IntermediateBlock.Pack(intermediateData);
+                error.Should().BeNull();
+                repacked = packed;
             }
 
-            var pb = PhysicalBlock.Create(repacked);
-            Assert.False(pb.IsIllegalEncoding);
-
-            var pb_num_color_bits = pb.GetColorBitCount().Value;
-            var pb_color_mask = UInt128Extensions.OnesMask(pb_num_color_bits);
-            var pb_color_bits = (pb.BlockBits >> pb.GetColorStartBit().Value) & pb_color_mask;
-
-            var b_num_color_bits = block.GetColorBitCount().Value;
-            var b_color_mask = UInt128Extensions.OnesMask(b_num_color_bits);
-            var b_color_bits = (block.BlockBits >> block.GetColorStartBit().Value) & b_color_mask;
-
-            Assert.Equal(pb_color_mask, b_color_mask);
-            Assert.Equal(pb_color_bits, b_color_bits);
-
-            Assert.Equal(pb.IsVoidExtent, block.IsVoidExtent);
-            Assert.Equal(pb.GetVoidExtentCoordinates(), block.GetVoidExtentCoordinates());
-
-            Assert.Equal(pb.GetWeightGridDimensions(), block.GetWeightGridDimensions());
-            Assert.Equal(pb.GetWeightRange(), block.GetWeightRange());
-            Assert.Equal(pb.GetWeightBitCount(), block.GetWeightBitCount());
-            Assert.Equal(pb.GetWeightStartBit(), block.GetWeightStartBit());
-
-            Assert.Equal(pb.IsDualPlane, block.IsDualPlane);
-            Assert.Equal(pb.GetDualPlaneChannel(), block.GetDualPlaneChannel());
-
-            Assert.Equal(pb.GetPartitionsCount(), block.GetPartitionsCount());
-            Assert.Equal(pb.GetPartitionId(), block.GetPartitionId());
-
-            Assert.Equal(pb.GetColorValuesCount(), block.GetColorValuesCount());
-            Assert.Equal(pb.GetColorValuesRange(), block.GetColorValuesRange());
-
-            var numParts = pb.GetPartitionsCount().GetValueOrDefault(0);
-            for (int j = 0; j < numParts; ++j)
-            {
-                Assert.Equal(pb.GetEndpointMode(j), block.GetEndpointMode(j));
-            }
+            // Verify repacked block
+            var repackedBlock = PhysicalBlock.Create(repacked);
+            VerifyBlockPropertiesMatch(repackedBlock, originalBlock);
         }
     }
+
+    private static void VerifyBlockPropertiesMatch(PhysicalBlock repacked, PhysicalBlock original)
+    {
+        repacked.IsIllegalEncoding.Should().BeFalse();
+
+        // Verify color bits match
+        var repackedColorBitCount = repacked.GetColorBitCount().Value;
+        var repackedColorMask = UInt128Extensions.OnesMask(repackedColorBitCount);
+        var repackedColorBits = (repacked.BlockBits >> repacked.GetColorStartBit().Value) & repackedColorMask;
+
+        var originalColorBitCount = original.GetColorBitCount().Value;
+        var originalColorMask = UInt128Extensions.OnesMask(originalColorBitCount);
+        var originalColorBits = (original.BlockBits >> original.GetColorStartBit().Value) & originalColorMask;
+
+        repackedColorMask.Should().Be(originalColorMask);
+        repackedColorBits.Should().Be(originalColorBits);
+
+        // Verify void extent properties
+        repacked.IsVoidExtent.Should().Be(original.IsVoidExtent);
+        repacked.GetVoidExtentCoordinates().Should().Equal(original.GetVoidExtentCoordinates());
+
+        // Verify weight properties
+        repacked.GetWeightGridDimensions().Should().Be(original.GetWeightGridDimensions());
+        repacked.GetWeightRange().Should().Be(original.GetWeightRange());
+        repacked.GetWeightBitCount().Should().Be(original.GetWeightBitCount());
+        repacked.GetWeightStartBit().Should().Be(original.GetWeightStartBit());
+
+        // Verify dual plane properties
+        repacked.IsDualPlane.Should().Be(original.IsDualPlane);
+        repacked.GetDualPlaneChannel().Should().Be(original.GetDualPlaneChannel());
+
+        // Verify partition properties
+        repacked.GetPartitionsCount().Should().Be(original.GetPartitionsCount());
+        repacked.GetPartitionId().Should().Be(original.GetPartitionId());
+
+        // Verify color value properties
+        repacked.GetColorValuesCount().Should().Be(original.GetColorValuesCount());
+        repacked.GetColorValuesRange().Should().Be(original.GetColorValuesRange());
+
+        // Verify endpoint modes for all partitions
+        var numParts = repacked.GetPartitionsCount().GetValueOrDefault(0);
+        for (int j = 0; j < numParts; ++j)
+        {
+            repacked.GetEndpointMode(j).Should().Be(original.GetEndpointMode(j));
+        }
+    }
+
+    #endregion
 }

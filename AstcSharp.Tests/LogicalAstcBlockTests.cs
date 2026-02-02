@@ -1,74 +1,455 @@
+using AstcSharp.ColorEncoding;
 using AstcSharp.Core;
 using AstcSharp.TexelBlock;
+using FluentAssertions;
 
 namespace AstcSharp.Tests;
 
 public class LogicalAstcBlockTests
 {
+    #region Constructor and Basic Property Tests
+
     [Fact]
-    public void SetEndpoints_Checkerboard()
+    public void Constructor_WithFootprint_ShouldInitializeCorrectly()
     {
-        var lb = new LogicalBlock(Footprint.Get8x8());
-        for (int j = 0; j < 8; ++j)
-        for (int i = 0; i < 8; ++i)
-        {
-            if (((i ^ j) & 1) == 1) lb.SetWeightAt(i, j, 0);
-            else lb.SetWeightAt(i, j, 64);
-        }
+        // Arrange & Act
+        var logicalBlock = new LogicalBlock(Footprint.Get4x4());
 
-        var a = new RgbaColor(123,45,67,89);
-        var b = new RgbaColor(101,121,31,41);
-        lb.SetEndpoints(a, b, 0);
+        // Assert
+        logicalBlock.Should().NotBeNull();
+        logicalBlock.GetFootprint().Should().Be(Footprint.Get4x4());
+        logicalBlock.IsDualPlane().Should().BeFalse();
+    }
 
-        for (int j = 0; j < 8; ++j)
-        for (int i = 0; i < 8; ++i)
+    [Theory]
+    [InlineData(4, 4)]
+    [InlineData(5, 5)]
+    [InlineData(8, 8)]
+    [InlineData(10, 10)]
+    [InlineData(12, 12)]
+    public void Constructor_WithVariousFootprints_ShouldMatchFootprint(int width, int height)
+    {
+        // Arrange
+        var footprint = width switch
         {
-            var c = lb.ColorAt(i, j);
-            if (((i ^ j) & 1) == 1)
-            {
-                Assert.Equal(a.R, c.R);
-                Assert.Equal(a.G, c.G);
-                Assert.Equal(a.B, c.B);
-                Assert.Equal(a.A, c.A);
-            }
-            else
-            {
-                Assert.Equal(b.R, c.R);
-                Assert.Equal(b.G, c.G);
-                Assert.Equal(b.B, c.B);
-                Assert.Equal(b.A, c.A);
-            }
+            4 => Footprint.Get4x4(),
+            5 => Footprint.Get5x5(),
+            8 => Footprint.Get8x8(),
+            10 => Footprint.Get10x10(),
+            12 => Footprint.Get12x12(),
+            _ => throw new ArgumentException("Invalid footprint size")
+        };
+
+        // Act
+        var logicalBlock = new LogicalBlock(footprint);
+
+        // Assert
+        logicalBlock.GetFootprint().Should().Be(footprint);
+        logicalBlock.GetFootprint().Width.Should().Be(width);
+        logicalBlock.GetFootprint().Height.Should().Be(height);
+    }
+
+    [Fact]
+    public void GetFootprint_AfterConstruction_ShouldReturnOriginalFootprint()
+    {
+        // Arrange
+        var footprint = Footprint.Get8x8();
+        var logicalBlock = new LogicalBlock(footprint);
+
+        // Act
+        var result = logicalBlock.GetFootprint();
+
+        // Assert
+        result.Should().Be(footprint);
+    }
+
+    #endregion
+
+    #region Weight Tests
+
+    [Fact]
+    public void SetWeightAt_WithValidWeight_ShouldStoreCorrectly()
+    {
+        // Arrange
+        var logicalBlock = new LogicalBlock(Footprint.Get4x4());
+
+        // Act
+        logicalBlock.SetWeightAt(2, 3, 42);
+
+        // Assert
+        logicalBlock.WeightAt(2, 3).Should().Be(42);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(32)]
+    [InlineData(64)]
+    public void SetWeightAt_WithVariousValidWeights_ShouldStoreCorrectly(int weight)
+    {
+        // Arrange
+        var logicalBlock = new LogicalBlock(Footprint.Get4x4());
+
+        // Act
+        logicalBlock.SetWeightAt(1, 1, weight);
+
+        // Assert
+        logicalBlock.WeightAt(1, 1).Should().Be(weight);
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(65)]
+    [InlineData(100)]
+    public void SetWeightAt_WithInvalidWeight_ShouldThrowArgumentOutOfRangeException(int weight)
+    {
+        // Arrange
+        var logicalBlock = new LogicalBlock(Footprint.Get4x4());
+
+        // Act
+        var action = () => logicalBlock.SetWeightAt(0, 0, weight);
+
+        // Assert
+        action.Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    [Fact]
+    public void WeightAt_WithDefaultWeights_ShouldReturnZero()
+    {
+        // Arrange
+        var logicalBlock = new LogicalBlock(Footprint.Get4x4());
+
+        // Act
+        var weight = logicalBlock.WeightAt(2, 2);
+
+        // Assert
+        weight.Should().Be(0);
+    }
+
+    #endregion
+
+    #region Dual Plane Tests
+
+    [Fact]
+    public void IsDualPlane_ByDefault_ShouldBeFalse()
+    {
+        // Arrange
+        var logicalBlock = new LogicalBlock(Footprint.Get4x4());
+
+        // Act
+        var result = logicalBlock.IsDualPlane();
+
+        // Assert
+        result.Should().BeFalse();
+    }
+
+    [Fact]
+    public void SetDualPlaneChannel_WithValidChannel_ShouldEnableDualPlane()
+    {
+        // Arrange
+        var logicalBlock = new LogicalBlock(Footprint.Get4x4());
+
+        // Act
+        logicalBlock.SetDualPlaneChannel(0);
+
+        // Assert
+        logicalBlock.IsDualPlane().Should().BeTrue();
+    }
+
+    [Fact]
+    public void SetDualPlaneChannel_WithNegativeValue_ShouldDisableDualPlane()
+    {
+        // Arrange
+        var logicalBlock = new LogicalBlock(Footprint.Get4x4());
+        logicalBlock.SetDualPlaneChannel(0);
+
+        // Act
+        logicalBlock.SetDualPlaneChannel(-1);
+
+        // Assert
+        logicalBlock.IsDualPlane().Should().BeFalse();
+    }
+
+    [Fact]
+    public void SetDualPlaneWeightAt_WhenNotDualPlane_ShouldThrowInvalidOperationException()
+    {
+        // Arrange
+        var logicalBlock = new LogicalBlock(Footprint.Get4x4());
+
+        // Act
+        var action = () => logicalBlock.SetDualPlaneWeightAt(0, 2, 3, 1);
+
+        // Assert
+        action.Should().Throw<InvalidOperationException>()
+            .WithMessage("Not a dual plane block");
+    }
+
+    [Fact]
+    public void SetDualPlaneWeightAt_AfterEnablingDualPlane_ShouldPreserveOriginalWeight()
+    {
+        // Arrange
+        var logicalBlock = new LogicalBlock(Footprint.Get4x4());
+        logicalBlock.SetWeightAt(2, 3, 2);
+        logicalBlock.SetDualPlaneChannel(0);
+
+        // Act
+        logicalBlock.SetDualPlaneWeightAt(0, 2, 3, 1);
+
+        // Assert
+        logicalBlock.WeightAt(2, 3).Should().Be(2);
+        logicalBlock.DualPlaneWeightAt(0, 2, 3).Should().Be(1);
+    }
+
+    [Fact]
+    public void DualPlaneWeightAt_ForNonDualPlaneChannel_ShouldReturnOriginalWeight()
+    {
+        // Arrange
+        var logicalBlock = new LogicalBlock(Footprint.Get4x4());
+        logicalBlock.SetWeightAt(2, 3, 2);
+        logicalBlock.SetDualPlaneChannel(0);
+        logicalBlock.SetDualPlaneWeightAt(0, 2, 3, 1);
+
+        // Act & Assert
+        for (int i = 1; i < 4; ++i)
+        {
+            logicalBlock.DualPlaneWeightAt(i, 2, 3).Should().Be(2);
         }
     }
 
     [Fact]
-    public void SetWeightVals_DualPlaneBehavior()
+    public void DualPlaneWeightAt_WhenNotDualPlane_ShouldReturnWeightAt()
     {
-        var lb = new LogicalBlock(Footprint.Get4x4());
-        Assert.Equal(Footprint.Get4x4(), lb.GetFootprint());
-        Assert.False(lb.IsDualPlane());
+        // Arrange
+        var logicalBlock = new LogicalBlock(Footprint.Get4x4());
+        logicalBlock.SetWeightAt(2, 3, 42);
 
-        lb.SetWeightAt(2,3,2);
-        lb.SetDualPlaneChannel(0);
-        Assert.True(lb.IsDualPlane());
+        // Act
+        var result = logicalBlock.DualPlaneWeightAt(0, 2, 3);
 
-        var other = lb; // copy
-        Assert.Equal(2, other.WeightAt(2,3));
-        Assert.Equal(2, other.DualPlaneWeightAt(0,2,3));
-
-        lb.SetDualPlaneWeightAt(0,2,3,1);
-        Assert.Equal(2, lb.WeightAt(2,3));
-        Assert.Equal(1, lb.DualPlaneWeightAt(0,2,3));
-        for (int i = 1; i < 4; ++i) Assert.Equal(2, lb.DualPlaneWeightAt(i,2,3));
-
-        lb.SetDualPlaneChannel(-1);
-        Assert.False(lb.IsDualPlane());
-        var other2 = lb;
-        Assert.Equal(2, lb.WeightAt(2,3));
-        for (int i = 0; i < 4; ++i) Assert.Equal(lb.WeightAt(2,3), other2.DualPlaneWeightAt(i,2,3));
+        // Assert
+        result.Should().Be(42);
     }
 
-    private static (string image_name, bool has_alpha, Footprint fp, int width, int height)[] GetSyntheticImageTestParams()
+    [Fact]
+    public void SetDualPlaneWeightAt_ThenDisableDualPlane_ShouldResetToOriginalWeight()
+    {
+        // Arrange
+        var logicalBlock = new LogicalBlock(Footprint.Get4x4());
+        logicalBlock.SetWeightAt(2, 3, 2);
+        logicalBlock.SetDualPlaneChannel(0);
+        logicalBlock.SetDualPlaneWeightAt(0, 2, 3, 1);
+
+        // Act
+        logicalBlock.SetDualPlaneChannel(-1);
+
+        // Assert
+        logicalBlock.IsDualPlane().Should().BeFalse();
+        logicalBlock.WeightAt(2, 3).Should().Be(2);
+        for (int i = 0; i < 4; ++i)
+        {
+            logicalBlock.DualPlaneWeightAt(i, 2, 3).Should().Be(2);
+        }
+    }
+
+    #endregion
+
+    #region Endpoint and Color Tests
+
+    [Fact]
+    public void SetEndpoints_WithValidColors_ShouldStoreCorrectly()
+    {
+        // Arrange
+        var logicalBlock = new LogicalBlock(Footprint.Get4x4());
+        var color1 = new RgbaColor(255, 0, 0, 255);
+        var color2 = new RgbaColor(0, 255, 0, 255);
+
+        // Act
+        logicalBlock.SetEndpoints(color1, color2, 0);
+
+        // No direct getter, but we can verify through ColorAt
+        logicalBlock.SetWeightAt(0, 0, 0);
+        logicalBlock.SetWeightAt(1, 1, 64);
+
+        // Assert
+        var colorAtMinWeight = logicalBlock.ColorAt(0, 0);
+        var colorAtMaxWeight = logicalBlock.ColorAt(1, 1);
+
+        colorAtMinWeight.R.Should().Be(color1.R);
+        colorAtMaxWeight.R.Should().BeCloseTo(color2.R, 1);
+    }
+
+    [Fact]
+    public void ColorAt_WithCheckerboardWeights_ShouldInterpolateCorrectly()
+    {
+        // Arrange
+        var logicalBlock = new LogicalBlock(Footprint.Get8x8());
+
+        // Create checkerboard weight pattern
+        for (int j = 0; j < 8; ++j)
+        {
+            for (int i = 0; i < 8; ++i)
+            {
+                if (((i ^ j) & 1) == 1)
+                    logicalBlock.SetWeightAt(i, j, 0);
+                else
+                    logicalBlock.SetWeightAt(i, j, 64);
+            }
+        }
+
+        var endpointA = new RgbaColor(123, 45, 67, 89);
+        var endpointB = new RgbaColor(101, 121, 31, 41);
+        logicalBlock.SetEndpoints(endpointA, endpointB, 0);
+
+        // Act & Assert - verify checkerboard pattern
+        for (int j = 0; j < 8; ++j)
+        {
+            for (int i = 0; i < 8; ++i)
+            {
+                var color = logicalBlock.ColorAt(i, j);
+                if (((i ^ j) & 1) == 1)
+                {
+                    // Weight 0 = first endpoint
+                    color.R.Should().Be(endpointA.R);
+                    color.G.Should().Be(endpointA.G);
+                    color.B.Should().Be(endpointA.B);
+                    color.A.Should().Be(endpointA.A);
+                }
+                else
+                {
+                    // Weight 64 = second endpoint
+                    color.R.Should().Be(endpointB.R);
+                    color.G.Should().Be(endpointB.G);
+                    color.B.Should().Be(endpointB.B);
+                    color.A.Should().Be(endpointB.A);
+                }
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(-1, 0)]
+    [InlineData(0, -1)]
+    [InlineData(4, 0)]
+    [InlineData(0, 4)]
+    public void ColorAt_WithOutOfBoundsCoordinates_ShouldThrowArgumentOutOfRangeException(int x, int y)
+    {
+        // Arrange
+        var logicalBlock = new LogicalBlock(Footprint.Get4x4());
+
+        // Act
+        var action = () => logicalBlock.ColorAt(x, y);
+
+        // Assert
+        action.Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    #endregion
+
+    #region Partition Tests
+
+    [Fact]
+    public void SetPartition_WithValidPartition_ShouldUpdateCorrectly()
+    {
+        // Arrange
+        var footprint = Footprint.Get8x8();
+        var logicalBlock = new LogicalBlock(footprint);
+        var newPartition = new Partition(footprint, 2, 5)
+        {
+            assignment = Enumerable.Repeat(0, footprint.PixelCount).ToList()
+        };
+
+        // Act
+        logicalBlock.SetPartition(newPartition);
+
+        // Assert - verify by setting endpoints for both partitions
+        logicalBlock.SetEndpoints(new RgbaColor(255, 0, 0, 255), new RgbaColor(0, 0, 0, 255), 0);
+        logicalBlock.SetEndpoints(new RgbaColor(0, 255, 0, 255), new RgbaColor(0, 0, 0, 255), 1);
+    }
+
+    [Fact]
+    public void SetPartition_WithDifferentFootprint_ShouldThrowInvalidOperationException()
+    {
+        // Arrange
+        var logicalBlock = new LogicalBlock(Footprint.Get4x4());
+        var wrongPartition = new Partition(Footprint.Get8x8(), 1, 0)
+        {
+            assignment = Enumerable.Repeat(0, 64).ToList()
+        };
+
+        // Act
+        var action = () => logicalBlock.SetPartition(wrongPartition);
+
+        // Assert
+        action.Should().Throw<InvalidOperationException>()
+            .WithMessage("New partitions may not be for a different footprint");
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(2)]
+    public void SetEndpoints_WithInvalidSubset_ShouldThrowArgumentOutOfRangeException(int subset)
+    {
+        // Arrange
+        var logicalBlock = new LogicalBlock(Footprint.Get4x4());
+        var color1 = new RgbaColor(255, 0, 0, 255);
+        var color2 = new RgbaColor(0, 255, 0, 255);
+
+        // Act
+        var action = () => logicalBlock.SetEndpoints(color1, color2, subset);
+
+        // Assert
+        action.Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    #endregion
+
+    #region Unpack Tests
+
+    [Fact]
+    public void UnpackLogicalBlock_WithErrorBlock_ShouldReturnNull()
+    {
+        // Arrange
+        var errorBlock = PhysicalBlock.Create(UInt128.Zero);
+
+        // Act
+        var result = LogicalBlock.UnpackLogicalBlock(Footprint.Get8x8(), errorBlock);
+
+        // Assert
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public void UnpackLogicalBlock_WithVoidExtentBlock_ShouldReturnLogicalBlock()
+    {
+        // Arrange
+        var voidExtentBlock = PhysicalBlock.Create((UInt128)0xFFFFFFFFFFFFFDFCUL);
+
+        // Act
+        var result = LogicalBlock.UnpackLogicalBlock(Footprint.Get8x8(), voidExtentBlock);
+
+        // Assert
+        result.Should().NotBeNull();
+        result!.GetFootprint().Should().Be(Footprint.Get8x8());
+    }
+
+    [Fact]
+    public void UnpackLogicalBlock_WithStandardBlock_ShouldReturnLogicalBlock()
+    {
+        // Arrange
+        var standardBlock = PhysicalBlock.Create((UInt128)0x0000000001FE000173UL);
+
+        // Act
+        var result = LogicalBlock.UnpackLogicalBlock(Footprint.Get6x5(), standardBlock);
+
+        // Assert
+        result.Should().NotBeNull();
+        result!.GetFootprint().Should().Be(Footprint.Get6x5());
+    }
+
+    #endregion
+
+    #region Integration Tests - Synthetic Images
+
+    private static (string imageName, bool hasAlpha, Footprint fp, int width, int height)[] GetSyntheticImageTestParams()
         => new[] {
             ("footprint_4x4", false, Footprint.Get4x4(), 32, 32),
             ("footprint_5x4", false, Footprint.Get5x4(), 32, 32),
@@ -88,56 +469,68 @@ public class LogicalAstcBlockTests
 
     public static IEnumerable<object[]> SyntheticParams()
     {
-        foreach (var p in GetSyntheticImageTestParams()) yield return new object[] { p.image_name, p.has_alpha, p.fp, p.width, p.height };
+        foreach (var p in GetSyntheticImageTestParams())
+            yield return new object[] { p.imageName, p.hasAlpha, p.fp, p.width, p.height };
     }
 
     [Theory]
     [MemberData(nameof(SyntheticParams))]
-    public void ImageWithFootprint_Synthetic(string image_name, bool has_alpha, Footprint fp, int width, int height)
+    public void UnpackLogicalBlock_WithSyntheticImage_ShouldDecodeCorrectly(
+        string imageName, bool hasAlpha, Footprint fp, int width, int height)
     {
-        var astc = FileBasedHelpers.LoadASTCFile(image_name);
+        // Arrange
+        var astc = FileBasedHelpers.LoadASTCFile(imageName);
+        var decodedImage = ImageBuffer.Allocate(width, height, hasAlpha ? 4 : 3);
 
-        var our_decoded_image = ImageBuffer.Allocate(width, height, has_alpha ? 4 : 3);
+        int blockWidth = fp.Width;
+        int blockHeight = fp.Height;
 
-        int block_width = fp.Width;
-        int block_height = fp.Height;
-
+        // Act
         for (int i = 0; i < astc.Length; i += PhysicalBlock.SizeInBytes)
         {
-            int block_index = i / PhysicalBlock.SizeInBytes;
-            int blocks_wide = (width + block_width - 1) / block_width;
-            int block_x = block_index % blocks_wide;
-            int block_y = block_index / blocks_wide;
+            int blockIndex = i / PhysicalBlock.SizeInBytes;
+            int blocksWide = (width + blockWidth - 1) / blockWidth;
+            int blockX = blockIndex % blocksWide;
+            int blockY = blockIndex / blocksWide;
 
-            var blkSpan = astc.AsSpan(i, PhysicalBlock.SizeInBytes).ToArray();
-            var pb = PhysicalBlock.Create(new UInt128(BitConverter.ToUInt64(blkSpan, 8), BitConverter.ToUInt64(blkSpan, 0)));
-            LogicalBlock? lb = LogicalBlock.UnpackLogicalBlock(fp, pb);
-            Assert.NotNull(lb);
-            var logical_block = lb!;
+            var blockSpan = astc.AsSpan(i, PhysicalBlock.SizeInBytes).ToArray();
+            var physicalBlock = PhysicalBlock.Create(new UInt128(
+                BitConverter.ToUInt64(blockSpan, 8),
+                BitConverter.ToUInt64(blockSpan, 0)));
 
-            for (int y = 0; y < block_height; ++y)
-            for (int x = 0; x < block_width; ++x)
+            var logicalBlock = LogicalBlock.UnpackLogicalBlock(fp, physicalBlock);
+            logicalBlock.Should().NotBeNull();
+
+            for (int y = 0; y < blockHeight; ++y)
             {
-                int px = block_width * block_x + x;
-                int py = block_height * block_y + y;
-                if (px >= width || py >= height) continue;
+                for (int x = 0; x < blockWidth; ++x)
+                {
+                    int px = blockWidth * blockX + x;
+                    int py = blockHeight * blockY + y;
+                    if (px >= width || py >= height) continue;
 
-                var decoded = logical_block.ColorAt(x, y);
-                int row = py * our_decoded_image.Stride();
-                int off = row + px * our_decoded_image.BytesPerPixel();
-                our_decoded_image.Data()[off + 0] = (byte)decoded.R;
-                our_decoded_image.Data()[off + 1] = (byte)decoded.G;
-                our_decoded_image.Data()[off + 2] = (byte)decoded.B;
-                if (has_alpha) our_decoded_image.Data()[off + 3] = (byte)decoded.A;
+                    var decoded = logicalBlock!.ColorAt(x, y);
+                    int row = py * decodedImage.Stride();
+                    int off = row + px * decodedImage.BytesPerPixel();
+                    decodedImage.Data()[off + 0] = (byte)decoded.R;
+                    decodedImage.Data()[off + 1] = (byte)decoded.G;
+                    decodedImage.Data()[off + 2] = (byte)decoded.B;
+                    if (hasAlpha) decodedImage.Data()[off + 3] = (byte)decoded.A;
+                }
             }
         }
 
-        var filePath = Path.Combine("TestData", "Expected", image_name + ".bmp");
-        var decoded_image = FileBasedHelpers.LoadExpectedImage(filePath);
-        ImageUtils.CompareSumOfSquaredDifferences(decoded_image, our_decoded_image, 0.1);
+        // Assert
+        var expectedPath = Path.Combine("TestData", "Expected", imageName + ".bmp");
+        var expectedImage = FileBasedHelpers.LoadExpectedImage(expectedPath);
+        ImageUtils.CompareSumOfSquaredDifferences(expectedImage, decodedImage, 0.1);
     }
 
-    private static (string image_name, bool has_alpha, Footprint fp, int width, int height)[] GetRealWorldImageTestParams()
+    #endregion
+
+    #region Integration Tests - Real World Images
+
+    private static (string imageName, bool hasAlpha, Footprint fp, int width, int height)[] GetRealWorldImageTestParams()
         => new[] {
             ("rgb_4x4", false, Footprint.Get4x4(), 224, 288),
             ("rgb_6x6", false, Footprint.Get6x6(), 224, 288),
@@ -148,18 +541,24 @@ public class LogicalAstcBlockTests
 
     public static IEnumerable<object[]> RealWorldParams()
     {
-        foreach (var p in GetRealWorldImageTestParams()) yield return new object[] { p.image_name, p.has_alpha, p.fp, p.width, p.height };
+        foreach (var p in GetRealWorldImageTestParams())
+            yield return new object[] { p.imageName, p.hasAlpha, p.fp, p.width, p.height };
     }
 
     [Theory]
     [MemberData(nameof(RealWorldParams))]
-    public void ImageWithFootprint_RealWorld(string image_name, bool has_alpha, Footprint fp, int width, int height)
+    public void UnpackLogicalBlock_WithRealWorldImage_ShouldDecodeCorrectly(
+        string imageName, bool hasAlpha, Footprint fp, int width, int height)
     {
-        // Reuse synthetic test logic since it performs the same decode+compare
-        ImageWithFootprint_Synthetic(image_name, has_alpha, fp, width, height);
+        // Act & Assert - reuse synthetic test implementation
+        UnpackLogicalBlock_WithSyntheticImage_ShouldDecodeCorrectly(imageName, hasAlpha, fp, width, height);
     }
 
-    private static (string image_name, bool has_alpha, Footprint fp, int width, int height)[] GetTransparentImageTestParams()
+    #endregion
+
+    #region Integration Tests - Transparent Images
+
+    private static (string imageName, bool hasAlpha, Footprint fp, int width, int height)[] GetTransparentImageTestParams()
         => new[] {
             ("atlas_small_4x4", true, Footprint.Get4x4(), 256, 256),
             ("atlas_small_5x5", true, Footprint.Get5x5(), 256, 256),
@@ -169,13 +568,18 @@ public class LogicalAstcBlockTests
 
     public static IEnumerable<object[]> TransparentParams()
     {
-        foreach (var p in GetTransparentImageTestParams()) yield return new object[] { p.image_name, p.has_alpha, p.fp, p.width, p.height };
+        foreach (var p in GetTransparentImageTestParams())
+            yield return new object[] { p.imageName, p.hasAlpha, p.fp, p.width, p.height };
     }
 
     [Theory]
     [MemberData(nameof(TransparentParams))]
-    public void ImageWithFootprint_Transparent(string image_name, bool has_alpha, Footprint fp, int width, int height)
+    public void UnpackLogicalBlock_WithTransparentImage_ShouldDecodeCorrectly(
+        string imageName, bool hasAlpha, Footprint fp, int width, int height)
     {
-        ImageWithFootprint_Synthetic(image_name, has_alpha, fp, width, height);
+        // Act & Assert - reuse synthetic test implementation
+        UnpackLogicalBlock_WithSyntheticImage_ShouldDecodeCorrectly(imageName, hasAlpha, fp, width, height);
     }
+
+    #endregion
 }
