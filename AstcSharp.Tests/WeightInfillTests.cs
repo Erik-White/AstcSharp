@@ -1,6 +1,6 @@
 using AstcSharp.BiseEncoding;
 using AstcSharp.Core;
-using FluentAssertions;
+using AwesomeAssertions;
 
 namespace AstcSharp.Tests;
 

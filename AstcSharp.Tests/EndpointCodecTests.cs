@@ -2,7 +2,7 @@ using System.Buffers.Binary;
 using AstcSharp.ColorEncoding;
 using AstcSharp.Core;
 using AstcSharp.TexelBlock;
-using FluentAssertions;
+using AwesomeAssertions;
 
 namespace AstcSharp.Tests;
 
@@ -158,9 +158,9 @@ public class EndpointCodecTests
             63, mode);
 
         ((result1.Low == new RgbaColor(130, 130, 130, 125)) ||
-         result1.Low.IsCloseTo(new RgbaColor(130, 130, 130, 125), 1)).Should().BeTrue();
+            result1.Low.IsCloseTo(new RgbaColor(130, 130, 130, 125), 1)).Should().BeTrue();
         ((result1.High == new RgbaColor(0, 0, 0, 20)) ||
-         result1.High.IsCloseTo(new RgbaColor(0, 0, 0, 20), 1)).Should().BeTrue();
+            result1.High.IsCloseTo(new RgbaColor(0, 0, 0, 20), 1)).Should().BeTrue();
 
         // Different alpha values
         var result2 = EncodeAndDecodeColors(

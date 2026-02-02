@@ -1,5 +1,5 @@
 using AstcSharp.IO;
-using FluentAssertions;
+using AwesomeAssertions;
 
 namespace AstcSharp.Tests;
 

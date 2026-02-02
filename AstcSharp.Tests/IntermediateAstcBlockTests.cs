@@ -1,7 +1,7 @@
 using AstcSharp.ColorEncoding;
 using AstcSharp.Core;
 using AstcSharp.TexelBlock;
-using FluentAssertions;
+using AwesomeAssertions;
 
 namespace AstcSharp.Tests;
 
@@ -134,7 +134,7 @@ public class IntermediateAstcBlockTests
             data.weightGridY = h;
             int colorRange = IntermediateBlock.EndpointRangeForBlock(data);
 
-            colorRange.Should().BeLessOrEqualTo(lastColorRange);
+            colorRange.Should().BeLessThanOrEqualTo(lastColorRange);
             lastColorRange = Math.Min(colorRange, lastColorRange);
         }
 
@@ -444,7 +444,7 @@ public class IntermediateAstcBlockTests
         var filename = Path.Combine("TestData", "Input", basename + ".astc");
         File.Exists(filename).Should().BeTrue($"Testdata missing: {filename}");
         var data = File.ReadAllBytes(filename);
-        data.Length.Should().BeGreaterOrEqualTo(16, "ASTC file too small");
+        data.Length.Should().BeGreaterThanOrEqualTo(16, "ASTC file too small");
         return data.Skip(16).ToArray();
     }
 }

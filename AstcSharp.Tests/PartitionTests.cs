@@ -1,6 +1,6 @@
 using AstcSharp.ColorEncoding;
 using AstcSharp.Core;
-using FluentAssertions;
+using AwesomeAssertions;
 
 namespace AstcSharp.Tests;
 
@@ -217,7 +217,7 @@ public class PartitionTests
             // Matched partition should have fewer or equal subsets
             astcPartition.numParts
                 .Should()
-                .BeLessOrEqualTo(
+                .BeLessThanOrEqualTo(
                     partition.numParts,
                     $"Footprint {footprintType}, Test #{i}: Selected partition with ID {astcPartition.partitionId?.ToString() ?? "null"}");
         }

@@ -1,5 +1,5 @@
 using AstcSharp.BiseEncoding;
-using FluentAssertions;
+using AwesomeAssertions;
 
 namespace AstcSharp.Tests;
 
@@ -10,7 +10,7 @@ public class QuantizationTests
     {
         for (int range = Quantization.kEndpointRangeMinValue; range <= byte.MaxValue; range++)
         {
-            Quantization.QuantizeCEValueToRange(byte.MaxValue, range).Should().BeLessOrEqualTo(range);
+            Quantization.QuantizeCEValueToRange(byte.MaxValue, range).Should().BeLessThanOrEqualTo(range);
         }
     }
 
@@ -19,7 +19,7 @@ public class QuantizationTests
     {
         for (int range = 1; range < Quantization.kWeightRangeMaxValue; range++)
         {
-            Quantization.QuantizeWeightToRange(64, range).Should().BeLessOrEqualTo(range);
+            Quantization.QuantizeWeightToRange(64, range).Should().BeLessThanOrEqualTo(range);
         }
     }
 
@@ -33,7 +33,7 @@ public class QuantizationTests
         {
             foreach (var value in testValues)
             {
-                Quantization.QuantizeCEValueToRange(value, range).Should().BeLessOrEqualTo(range);
+                Quantization.QuantizeCEValueToRange(value, range).Should().BeLessThanOrEqualTo(range);
             }
         }
     }
@@ -48,7 +48,7 @@ public class QuantizationTests
         {
             foreach (var value in testValues)
             {
-                Quantization.QuantizeWeightToRange(value, range).Should().BeLessOrEqualTo(range);
+                Quantization.QuantizeWeightToRange(value, range).Should().BeLessThanOrEqualTo(range);
             }
         }
     }
@@ -111,7 +111,7 @@ public class QuantizationTests
     {
         var result = Quantization.UnquantizeWeightFromRange(quantizedValue, range);
 
-        result.Should().BeLessOrEqualTo(64);
+        result.Should().BeLessThanOrEqualTo(64);
     }
 
     [Fact]
@@ -174,7 +174,7 @@ public class QuantizationTests
             {
                 int quantizedValue = Quantization.QuantizeCEValueToRange(value, range);
 
-                quantizedValue.Should().BeGreaterOrEqualTo(lastQuantizedValue);
+                quantizedValue.Should().BeGreaterThanOrEqualTo(lastQuantizedValue);
                 lastQuantizedValue = quantizedValue;
             }
 
@@ -198,7 +198,7 @@ public class QuantizationTests
             {
                 int quantizedValue = Quantization.QuantizeWeightToRange(value, range);
 
-                quantizedValue.Should().BeGreaterOrEqualTo(lastQuantizedValue);
+                quantizedValue.Should().BeGreaterThanOrEqualTo(lastQuantizedValue);
                 lastQuantizedValue = quantizedValue;
             }
 

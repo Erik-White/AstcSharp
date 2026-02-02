@@ -1,7 +1,7 @@
 using System.ComponentModel;
 using AstcSharp.BiseEncoding;
 using AstcSharp.IO;
-using FluentAssertions;
+using AwesomeAssertions;
 
 namespace AstcSharp.Tests;
 

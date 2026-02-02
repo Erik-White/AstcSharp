@@ -2,7 +2,7 @@ using AstcSharp.ColorEncoding;
 using AstcSharp.Core;
 using AstcSharp.Tests.Utils;
 using AstcSharp.TexelBlock;
-using FluentAssertions;
+using AwesomeAssertions;
 
 namespace AstcSharp.Tests;
 

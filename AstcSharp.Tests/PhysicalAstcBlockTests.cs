@@ -1,7 +1,7 @@
 using AstcSharp.Core;
 using AstcSharp.ColorEncoding;
 using AstcSharp.TexelBlock;
-using FluentAssertions;
+using AwesomeAssertions;
 
 namespace AstcSharp.Tests;
 
