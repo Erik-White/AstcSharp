@@ -341,6 +341,7 @@ public class LogicalAstcBlockTests
     }
 
     [Theory]
+    // Synthetic test images
     [InlineData("footprint_4x4", false, FootprintType.Footprint4x4, 32, 32)]
     [InlineData("footprint_5x4", false, FootprintType.Footprint5x4, 32, 32)]
     [InlineData("footprint_5x5", false, FootprintType.Footprint5x5, 32, 32)]
@@ -355,88 +356,31 @@ public class LogicalAstcBlockTests
     [InlineData("footprint_10x10", false, FootprintType.Footprint10x10, 32, 32)]
     [InlineData("footprint_12x10", false, FootprintType.Footprint12x10, 32, 32)]
     [InlineData("footprint_12x12", false, FootprintType.Footprint12x12, 32, 32)]
-    public void UnpackLogicalBlock_WithSyntheticImage_ShouldDecodeCorrectly(
-        string imageName,
-        bool hasAlpha,
-        FootprintType footprintType,
-        int width,
-        int height)
-    {
-        // TODO: Break out common decoding logic into helper method
-        var fp = Footprint.FromFootprintType(footprintType);
-        var astc = FileBasedHelpers.LoadASTCFile(imageName);
-        var decodedImage = ImageBuffer.Allocate(width, height, hasAlpha ? RgbaColor.BytesPerPixel : RgbColor.BytesPerPixel);
-
-        int blockWidth = fp.Width;
-        int blockHeight = fp.Height;
-
-        for (int i = 0; i < astc.Length; i += PhysicalBlock.SizeInBytes)
-        {
-            int blockIndex = i / PhysicalBlock.SizeInBytes;
-            int blocksWide = (width + blockWidth - 1) / blockWidth;
-            int blockX = blockIndex % blocksWide;
-            int blockY = blockIndex / blocksWide;
-
-            var blockSpan = astc.AsSpan(i, PhysicalBlock.SizeInBytes).ToArray();
-            var physicalBlock = PhysicalBlock.Create(new UInt128(
-                BitConverter.ToUInt64(blockSpan, 8),
-                BitConverter.ToUInt64(blockSpan, 0)));
-
-            var logicalBlock = LogicalBlock.UnpackLogicalBlock(fp, physicalBlock);
-            logicalBlock.Should().NotBeNull();
-
-            for (int y = 0; y < blockHeight; ++y)
-            {
-                for (int x = 0; x < blockWidth; ++x)
-                {
-                    int px = blockWidth * blockX + x;
-                    int py = blockHeight * blockY + y;
-                    if (px >= width || py >= height) continue;
-
-                    var decoded = logicalBlock!.ColorAt(x, y);
-                    int row = py * decodedImage.Stride;
-                    int off = row + px * decodedImage.BytesPerPixel;
-                    decodedImage.Data[off + 0] = decoded.R;
-                    decodedImage.Data[off + 1] = decoded.G;
-                    decodedImage.Data[off + 2] = decoded.B;
-                    if (hasAlpha) decodedImage.Data[off + 3] = decoded.A;
-                }
-            }
-        }
-
-        var expectedPath = Path.Combine("TestData", "Expected", imageName + ".bmp");
-        var expectedImage = FileBasedHelpers.LoadExpectedImage(expectedPath);
-        ImageUtils.CompareSumOfSquaredDifferences(expectedImage, decodedImage, 0.1);
-    }
-
-    [Theory]
+    // RGB without alpha images
     [InlineData("rgb_4x4", false, FootprintType.Footprint4x4, 224, 288)]
     [InlineData("rgb_5x4", false, FootprintType.Footprint5x4, 224, 288)]
     [InlineData("rgb_6x6", false, FootprintType.Footprint6x6, 224, 288)]
     [InlineData("rgb_8x8", false, FootprintType.Footprint8x8, 224, 288)]
     [InlineData("rgb_12x12", false, FootprintType.Footprint12x12, 224, 288)]
-    public void UnpackLogicalBlock_WithRealWorldImage_ShouldDecodeCorrectly(
-        string imageName,
-        bool hasAlpha,
-        FootprintType footprintType,
-        int width,
-        int height)
-    {
-        UnpackLogicalBlock_WithSyntheticImage_ShouldDecodeCorrectly(imageName, hasAlpha, footprintType, width, height);
-    }
-
-    [Theory]
+    // RGB with alpha images
     [InlineData("atlas_small_4x4", true, FootprintType.Footprint4x4, 256, 256)]
     [InlineData("atlas_small_5x5", true, FootprintType.Footprint5x5, 256, 256)]
     [InlineData("atlas_small_6x6", true, FootprintType.Footprint6x6, 256, 256)]
     [InlineData("atlas_small_8x8", true, FootprintType.Footprint8x8, 256, 256)]
-    public void UnpackLogicalBlock_WithTransparentImage_ShouldDecodeCorrectly(
+    public void UnpackLogicalBlock_FromImage_ShouldDecodeCorrectly(
         string imageName,
         bool hasAlpha,
         FootprintType footprintType,
         int width,
         int height)
     {
-        UnpackLogicalBlock_WithSyntheticImage_ShouldDecodeCorrectly(imageName, hasAlpha, footprintType, width, height);
+        var footprint = Footprint.FromFootprintType(footprintType);
+        var astcData = FileBasedHelpers.LoadASTCFile(imageName);
+        
+        var decodedImage = ImageBuffer.FromAstcBuffer(footprint, astcData, width, height, hasAlpha);
+
+        var expectedPath = Path.Combine("TestData", "Expected", imageName + ".bmp");
+        var expectedImage = FileBasedHelpers.LoadExpectedImage(expectedPath);
+        ImageUtils.CompareSumOfSquaredDifferences(expectedImage, decodedImage, 0.1);
     }
 }
