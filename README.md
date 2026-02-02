@@ -67,7 +67,7 @@ Span<byte> rgbaPixels = AstcDecoder.DecompressToImage(astcFile);
 This implementation is based on:
 
 - **ASTC Specification**: [Khronos Data Format Specification](https://www.khronos.org/registry/DataFormat/specs/1.3/dataformat.1.3.html) - The official ASTC texture compression format specification
-- **Google astc-codec**: [github.com/google/astc-codec](https://github.com/google/astc-codec) - Google's C++ reference implementation, which served as the primary reference for this C# port
+- **Google astc-codec**: [github.com/google/astc-codec](https://github.com/google/astc-codec)
 
 ## License
 
