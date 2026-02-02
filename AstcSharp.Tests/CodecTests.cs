@@ -1,105 +1,128 @@
 using AstcSharp.Core;
 using AstcSharp.IO;
+using AstcSharp.Tests.Utils;
 using AstcSharp.TexelBlock;
+using AwesomeAssertions;
 
-namespace AstcSharp.Tests
+namespace AstcSharp.Tests;
+
+public class CodecTests
 {
-    public class CodecTests
+    [Fact]
+    public void ASTCDecompressToRGBA_WithZeroWidth_ShouldReturnEmpty()
     {
-        [Fact]
-        public void InvalidInput()
-        {
-            const int valid_width = 16;
-            const int valid_height = 16;
+        var data = new byte[256];
+        const int height = 16;
 
-            var data = new byte[256];
-            var output = new byte[valid_width * valid_height * 4];
+        var result = AstcDecoder.ASTCDecompressToRGBA(data, 0, height, FootprintType.Footprint4x4);
 
-            // Fail for 0 width or height
-            Assert.Empty(AstcDecoder.ASTCDecompressToRGBA(data, 0, valid_height, FootprintType.Footprint4x4).ToArray());
-            Assert.Empty(AstcDecoder.ASTCDecompressToRGBA(data, valid_width, 0, FootprintType.Footprint4x4).ToArray());
-
-            // Fail for data size that's not a multiple of block size
-            Assert.Empty(AstcDecoder.ASTCDecompressToRGBA(data.AsSpan(0, data.Length - 1).ToArray(), valid_width, valid_height, FootprintType.Footprint4x4).ToArray());
-            
-            // Fail for data size that doesn't match block count
-            Assert.Empty(AstcDecoder.ASTCDecompressToRGBA(data.AsSpan(0, data.Length - PhysicalBlock.SizeInBytes).ToArray(), valid_width, valid_height, FootprintType.Footprint4x4).ToArray());
-        }
-
-        private static (string image_name, FootprintType footprint, int width, int height)[] GetTransparentImageTestParams()
-            =>
-                [
-                    ("atlas_small_4x4", FootprintType.Footprint4x4, 256, 256),
-                    ("atlas_small_5x5", FootprintType.Footprint5x5, 256, 256),
-                    ("atlas_small_6x6", FootprintType.Footprint6x6, 256, 256),
-                    ("atlas_small_8x8", FootprintType.Footprint8x8, 256, 256),
-                ];
-
-        [Theory]
-        [MemberData(nameof(PublicApiParams))]
-        public void PublicAPI(string imageName, FootprintType footprintType, int width, int height)
-        {
-            var astc = FileBasedHelpers.LoadASTCFile(imageName);
-
-            var footprint = Footprint.FromFootprintType(footprintType);
-            int block_width = footprint.Width;
-            int block_height = footprint.Height;
-            int blocks_wide = (width + block_width - 1) / block_width;
-            int blocks_high = (height + block_height - 1) / block_height;
-            int expected_block_count = blocks_wide * blocks_high;
-
-            Assert.True(astc.Length % PhysicalBlock.SizeInBytes == 0, "astc byte length not multiple of block size");
-            Assert.True(astc.Length / PhysicalBlock.SizeInBytes == expected_block_count, $"ASTC block count mismatch: {astc.Length / PhysicalBlock.SizeInBytes} != {expected_block_count}");
-
-            var filePath = Path.Combine("TestData", "Expected", imageName + ".bmp");
-            var expectedImage = FileBasedHelpers.LoadExpectedImage(filePath);
-
-            // Diagnostic: check per-block unpacking to find failing block
-            for (int i = 0; i < astc.Length; i += PhysicalBlock.SizeInBytes)
-            {
-                var block = astc.AsSpan(i, PhysicalBlock.SizeInBytes).ToArray();
-                var physicalBlock = PhysicalBlock.Create(BitConverter.ToUInt64(block, 0), BitConverter.ToUInt64(block, 8));
-                var logicalBlock = LogicalBlock.UnpackLogicalBlock(footprint, physicalBlock);
-                if (logicalBlock is null)
-                {
-                    var physicalBlockRetry = PhysicalBlock.Create(BitConverter.ToUInt64(block, 0), BitConverter.ToUInt64(block, 8));
-                    var logicalBlockRetry = LogicalBlock.UnpackLogicalBlock(footprint, physicalBlockRetry);
-                    Assert.True(logicalBlockRetry is not null, "Block failed to unpack in both canonical and alternate byte orders");
-                }
-                Assert.NotNull(logicalBlock);
-            }
-
-            var decodedPixels = AstcDecoder.ASTCDecompressToRGBA(astc, width, height, footprintType);
-            var actualImage = new ImageBuffer(decodedPixels.ToArray(), width, height, 4);
-
-            ImageUtils.CompareSumOfSquaredDifferences(expectedImage, actualImage, 0.1);
-        }
-
-        public static IEnumerable<object[]> PublicApiParams()
-        {
-            foreach (var p in GetTransparentImageTestParams())
-                yield return new object[] { p.image_name, p.footprint, p.width, p.height };
-        }
-
-        [Theory]
-        [MemberData(nameof(PublicApiParams))]
-        public void DecompressToImageTest(string image_name, FootprintType footprint, int width, int height)
-        {
-            var astcBytes = File.ReadAllBytes(Path.Combine("TestData", "Input", image_name + ".astc"));
-            var file = AstcFile.FromMemory(astcBytes);
-            
-            Assert.Equal(footprint, file.Footprint.Type);
-            // Ensure the header matches the expected dimensions from the test data
-            Assert.Equal(width, file.Width);
-            Assert.Equal(height, file.Height);
-            
-            var filePath = Path.Combine("TestData", "Expected", image_name + ".bmp");
-            var expectedImage = FileBasedHelpers.LoadExpectedImage(filePath);
-
-            var decodedPixels = AstcDecoder.DecompressToImage(file);
-            var actualImage = new ImageBuffer(decodedPixels.ToArray(), width, height, 4);
-
-            ImageUtils.CompareSumOfSquaredDifferences(expectedImage, actualImage, 0.1);
-        }
+        result.ToArray().Should().BeEmpty();
     }
+
+    [Fact]
+    public void ASTCDecompressToRGBA_WithZeroHeight_ShouldReturnEmpty()
+    {
+        var data = new byte[256];
+        const int width = 16;
+
+        var result = AstcDecoder.ASTCDecompressToRGBA(data, width, 0, FootprintType.Footprint4x4);
+
+        result.ToArray().Should().BeEmpty();
+    }
+
+    [Fact]
+    public void ASTCDecompressToRGBA_WithDataSizeNotMultipleOfBlockSize_ShouldReturnEmpty()
+    {
+        var data = new byte[256];
+        const int width = 16;
+        const int height = 16;
+        var invalidData = data.AsSpan(0, data.Length - 1).ToArray();
+
+        var result = AstcDecoder.ASTCDecompressToRGBA(invalidData, width, height, FootprintType.Footprint4x4);
+
+        result.ToArray().Should().BeEmpty();
+    }
+
+    [Fact]
+    public void ASTCDecompressToRGBA_WithMismatchedBlockCount_ShouldReturnEmpty()
+    {
+        var data = new byte[256];
+        const int width = 16;
+        const int height = 16;
+        var mismatchedData = data.AsSpan(0, data.Length - PhysicalBlock.SizeInBytes).ToArray();
+
+        var result = AstcDecoder.ASTCDecompressToRGBA(mismatchedData, width, height, FootprintType.Footprint4x4);
+
+        result.ToArray().Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("atlas_small_4x4", FootprintType.Footprint4x4, 256, 256)]
+    [InlineData("atlas_small_5x5", FootprintType.Footprint5x5, 256, 256)]
+    [InlineData("atlas_small_6x6", FootprintType.Footprint6x6, 256, 256)]
+    [InlineData("atlas_small_8x8", FootprintType.Footprint8x8, 256, 256)]
+    public void ASTCDecompressToRGBA_WithValidData_ShouldMatchExpected(
+        string imageName,
+        FootprintType footprintType,
+        int width,
+        int height)
+    {
+        var astcData = FileBasedHelpers.LoadASTCFile(imageName);
+        var footprint = Footprint.FromFootprintType(footprintType);
+        int blockWidth = footprint.Width;
+        int blockHeight = footprint.Height;
+        int blocksWide = (width + blockWidth - 1) / blockWidth;
+        int blocksHigh = (height + blockHeight - 1) / blockHeight;
+        int expectedBlockCount = blocksWide * blocksHigh;
+
+        // Check ASTC data structure
+        (astcData.Length % PhysicalBlock.SizeInBytes).Should().Be(0, "astc byte length must be multiple of block size");
+        (astcData.Length / PhysicalBlock.SizeInBytes).Should().Be(expectedBlockCount, $"ASTC block count should match expected");
+
+        // Verify all blocks can be unpacked
+        for (int i = 0; i < astcData.Length; i += PhysicalBlock.SizeInBytes)
+        {
+            var block = astcData.AsSpan(i, PhysicalBlock.SizeInBytes).ToArray();
+            var physicalBlock = PhysicalBlock.Create(BitConverter.ToUInt64(block, 0), BitConverter.ToUInt64(block, 8));
+            var logicalBlock = LogicalBlock.UnpackLogicalBlock(footprint, physicalBlock);
+
+            logicalBlock.Should().NotBeNull("all blocks should unpack successfully");
+        }
+
+        var decodedPixels = AstcDecoder.ASTCDecompressToRGBA(astcData, width, height, footprintType);
+        var actualImage = new ImageBuffer(decodedPixels.ToArray(), width, height, 4);
+
+        var expectedImagePath = Path.Combine("TestData", "Expected", imageName + ".bmp");
+        var expectedImage = FileBasedHelpers.LoadExpectedImage(expectedImagePath);
+        ImageUtils.CompareSumOfSquaredDifferences(expectedImage, actualImage, 0.1);
+    }
+
+    [Theory]
+    [InlineData("atlas_small_4x4", FootprintType.Footprint4x4, 256, 256)]
+    [InlineData("atlas_small_5x5", FootprintType.Footprint5x5, 256, 256)]
+    [InlineData("atlas_small_6x6", FootprintType.Footprint6x6, 256, 256)]
+    [InlineData("atlas_small_8x8", FootprintType.Footprint8x8, 256, 256)]
+    public void DecompressToImage_WithAstcFile_ShouldMatchExpected(
+        string imageName,
+        FootprintType footprint,
+        int width,
+        int height)
+    {
+        var astcPath = Path.Combine("TestData", "Input", imageName + ".astc");
+        var astcBytes = File.ReadAllBytes(astcPath);
+        var file = AstcFile.FromMemory(astcBytes);
+
+        // Check file header
+        file.Footprint.Type.Should().Be(footprint);
+        file.Width.Should().Be(width);
+        file.Height.Should().Be(height);
+
+        var decodedPixels = AstcDecoder.DecompressToImage(file);
+        var actualImage = new ImageBuffer(decodedPixels.ToArray(), width, height, 4);
+
+        var expectedImagePath = Path.Combine("TestData", "Expected", imageName + ".bmp");
+        var expectedImage = FileBasedHelpers.LoadExpectedImage(expectedImagePath);
+        ImageUtils.CompareSumOfSquaredDifferences(expectedImage, actualImage, 0.1);
+    }
+
 }

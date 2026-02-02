@@ -3,6 +3,7 @@ namespace AstcSharp.Core;
 public record RgbaColor : RgbColor
 {
     public static new int BytesPerPixel => 4;
+
     public byte A { get; }
 
     public RgbaColor(byte r, byte g, byte b, byte a)
@@ -20,19 +21,23 @@ public record RgbaColor : RgbColor
     }
 
     public override int this[int i]
-    {
-        get => i switch
+        => i switch
         {
             0 => R,
             1 => G,
             2 => B,
             3 => A,
-            _ => throw new IndexOutOfRangeException()
-        };
-    }
+            _ => throw new ArgumentOutOfRangeException(nameof(i), $"Index must be between 0 and {BytesPerPixel - 1}. Actual value: {i}.")
+    };
 
     public static new RgbaColor Empty => new(0, 0, 0, 0);
 
     public static new int SquaredError(RgbColor a, RgbColor b)
         => SquaredError(a, b, BytesPerPixel);
+
+    public bool IsCloseTo(RgbaColor other, int tolerance)
+        => Math.Abs(R - other.R) <= tolerance &&
+           Math.Abs(G - other.G) <= tolerance &&
+           Math.Abs(B - other.B) <= tolerance &&
+           Math.Abs(A - other.A) <= tolerance;
 }

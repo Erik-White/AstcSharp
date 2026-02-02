@@ -1,290 +1,613 @@
-using AstcSharp.Core;
 using AstcSharp.ColorEncoding;
 using AstcSharp.TexelBlock;
+using AwesomeAssertions;
 
 namespace AstcSharp.Tests;
 
 public class PhysicalAstcBlockTests
 {
+    private static readonly UInt128 ErrorBlock = UInt128.Zero;
+
     [Fact]
-    public void GetBlockBits_RoundTrip()
+    public void Create_WithUInt64_ShouldRoundTripBlockBits()
     {
-        var orig = (UInt128)0x12345678ABCDEF00UL | ((UInt128)0xCAFEBABEDEADBEEFUL << 64);
-        var blk = PhysicalBlock.Create(orig);
-        var bits = blk.BlockBits;
-        Assert.Equal(orig, bits);
+        const ulong expectedLow = 0x0000000001FE000173UL;
+
+        var block = PhysicalBlock.Create(expectedLow);
+
+        block.BlockBits.Should().Be((UInt128)expectedLow);
     }
 
     [Fact]
-    public void IsVoidExtent_DetectsKnownPattern()
+    public void Create_WithUInt128_ShouldRoundTripBlockBits()
     {
-        var blk = PhysicalBlock.Create((UInt128)0xFFFFFFFFFFFFFDFCUL);
-        Assert.True(blk.IsVoidExtent);
+        var expected = (UInt128)0x12345678ABCDEF00UL | ((UInt128)0xCAFEBABEDEADBEEFUL << 64);
+
+        var block = PhysicalBlock.Create(expected);
+
+        block.BlockBits.Should().Be(expected);
     }
 
     [Fact]
-    public void TestConstructors()
+    public void Create_WithMatchingUInt64AndUInt128_ShouldProduceIdenticalBlocks()
     {
-        const ulong low = 0x0000000001FE000173UL;
-        
-        var blk1 = PhysicalBlock.Create(low);
-        var blk2 = PhysicalBlock.Create((UInt128)low);
+        const ulong value = 0x0000000001FE000173UL;
 
-        Assert.Equal(blk1.BlockBits, blk2.BlockBits);
+        var block1 = PhysicalBlock.Create(value);
+        var block2 = PhysicalBlock.Create((UInt128)value);
+
+        block1.BlockBits.Should().Be(block2.BlockBits);
     }
 
     [Fact]
-    public void TestWeightRange()
+    public void IsVoidExtent_WithKnownVoidExtentPattern_ShouldReturnTrue()
     {
-        var blk1 = PhysicalBlock.Create(0x0000000001FE000173UL);
-        var wr = blk1.GetWeightRange();
-        Assert.NotNull(wr);
-        Assert.Equal(7, wr.Value);
+        var block = PhysicalBlock.Create((UInt128)0xFFFFFFFFFFFFFDFCUL);
 
-        var blk2 = PhysicalBlock.Create(0x0000000001FE000373UL);
-        Assert.Null(blk2.GetWeightRange());
-
-        var non_shared_cem = PhysicalBlock.Create(0x4000000000800D44UL);
-        var wr2 = non_shared_cem.GetWeightRange();
-        Assert.NotNull(wr2);
-        Assert.Equal(1, wr2.Value);
-
-        var kErrorBlock = PhysicalBlock.Create((UInt128)0UL);
-        Assert.Null(kErrorBlock.GetWeightRange());
+        block.IsVoidExtent.Should().BeTrue();
     }
 
     [Fact]
-    public void TestWeightDims()
+    public void IsVoidExtent_WithStandardBlock_ShouldReturnFalse()
     {
-        var blk1 = PhysicalBlock.Create(0x0000000001FE000173UL);
-        var dims = blk1.GetWeightGridDimensions();
-        Assert.NotNull(dims);
-        Assert.Equal(6, dims.Value.Item1);
-        Assert.Equal(5, dims.Value.Item2);
+        var block = PhysicalBlock.Create(0x0000000001FE000173UL);
 
-        var blk2 = PhysicalBlock.Create(0x0000000001FE000373UL);
-        var dims2 = blk2.GetWeightGridDimensions();
-        Assert.Null(dims2);
-        var err = blk2.IdentifyInvalidEncodingIssues();
-        Assert.NotNull(err);
-        Assert.Contains("Too many bits", err);
-
-        var blk3 = PhysicalBlock.Create(0x0000000001FE0005FFUL);
-        var dims3 = blk3.GetWeightGridDimensions();
-        Assert.NotNull(dims3);
-        Assert.Equal(3, dims3.Value.Item1);
-        Assert.Equal(5, dims3.Value.Item2);
-
-        var kErrorBlock = PhysicalBlock.Create((UInt128)0UL);
-        Assert.Null(kErrorBlock.GetWeightGridDimensions());
-
-        var non_shared_cem = PhysicalBlock.Create(0x4000000000800D44UL);
-        var dims4 = non_shared_cem.GetWeightGridDimensions();
-        Assert.NotNull(dims4);
-        Assert.Equal(8, dims4.Value.Item1);
-        Assert.Equal(8, dims4.Value.Item2);
+        block.IsVoidExtent.Should().BeFalse();
     }
 
     [Fact]
-    public void TestDualPlane()
+    public void IsVoidExtent_WithErrorBlock_ShouldReturnFalse()
     {
-        var blk1 = PhysicalBlock.Create(0x0000000001FE000173UL);
-        Assert.False(blk1.IsDualPlane);
+        var block = PhysicalBlock.Create(ErrorBlock);
 
-        var kErrorBlock = PhysicalBlock.Create((UInt128)0UL);
-        Assert.False(kErrorBlock.IsDualPlane);
-
-        var blk2 = PhysicalBlock.Create(0x0000000001FE000573UL);
-        Assert.False(blk2.IsDualPlane);
-        Assert.Null(blk2.GetWeightGridDimensions());
-        var err = blk2.IdentifyInvalidEncodingIssues();
-        Assert.NotNull(err);
-        Assert.Contains("Too many bits", err);
-
-        var blk3 = PhysicalBlock.Create(0x0000000001FE0005FFUL);
-        Assert.True(blk3.IsDualPlane);
-
-        var blk4 = PhysicalBlock.Create(0x0000000001FE000108UL);
-        Assert.False(blk4.IsDualPlane);
-        Assert.False(blk4.IsIllegalEncoding);
+        block.IsVoidExtent.Should().BeFalse();
     }
 
     [Fact]
-    public void TestNumWeightBits()
+    public void GetVoidExtentCoordinates_WithValidVoidExtentBlock_ShouldReturnExpectedCoordinates()
     {
-        var blk1 = PhysicalBlock.Create(0x0000000001FE000173UL);
-        Assert.Equal(90, blk1.GetWeightBitCount());
+        var block = PhysicalBlock.Create(0xFFF8003FFE000DFCUL);
 
-        var kErrorBlock = PhysicalBlock.Create((UInt128)0UL);
-        Assert.Null(kErrorBlock.GetWeightBitCount());
+        var coords = block.GetVoidExtentCoordinates();
 
-        var void_extent = PhysicalBlock.Create(0xFFF8003FFE000DFCUL);
-        Assert.Null(void_extent.GetWeightBitCount());
-
-        var blk2 = PhysicalBlock.Create(0x0000000001FE000573UL);
-        Assert.Null(blk2.GetWeightBitCount());
-
-        var blk3 = PhysicalBlock.Create(0x0000000001FE0005FFUL);
-        Assert.Equal(90, blk3.GetWeightBitCount());
+        coords.Should().NotBeNull();
+        coords.Should().HaveCount(4);
+        coords![0].Should().Be(0);
+        coords[1].Should().Be(8191);
+        coords[2].Should().Be(0);
+        coords[3].Should().Be(8191);
     }
 
     [Fact]
-    public void TestStartWeightBit()
+    public void GetVoidExtentCoordinates_WithAllOnesPattern_ShouldReturnNull()
     {
-        var b = PhysicalBlock.Create(0x4000000000800D44UL);
-        Assert.Equal(64, b.GetWeightStartBit());
+        var block = PhysicalBlock.Create(0xFFFFFFFFFFFFFDFCUL);
 
-        var kErrorBlock = PhysicalBlock.Create((UInt128)0UL);
-        Assert.Null(kErrorBlock.GetWeightStartBit());
+        var coords = block.GetVoidExtentCoordinates();
 
-        var void_extent = PhysicalBlock.Create(0xFFF8003FFE000DFCUL);
-        Assert.Null(void_extent.GetWeightStartBit());
+        block.IsVoidExtent.Should().BeTrue();
+        coords.Should().BeNull();
     }
 
     [Fact]
-    public void TestErrorBlocksAndPartitions()
+    public void Create_WithInvalidVoidExtentCoordinates_ShouldBeIllegalEncoding()
     {
-        // Valid blocks
-        Assert.False(PhysicalBlock.Create(0x0000000001FE000173UL).IsIllegalEncoding);
-        Assert.False(PhysicalBlock.Create(0x0000000001FE0005FFUL).IsIllegalEncoding);
-        Assert.False(PhysicalBlock.Create(0x0000000001FE000108UL).IsIllegalEncoding);
+        var block1 = PhysicalBlock.Create(0x0008004002001DFCUL);
+        var block2 = PhysicalBlock.Create(0x0007FFC001FFFDFCUL);
 
-            var kErrorBlock = PhysicalBlock.Create(UInt128.Zero);
-        var err = kErrorBlock.IdentifyInvalidEncodingIssues();
-        Assert.NotNull(err);
-        Assert.Contains("Reserved block mode", err);
-
-        var err_blk = PhysicalBlock.Create(0x0000000001FE000573UL);
-        var errStr = err_blk.IdentifyInvalidEncodingIssues();
-        Assert.NotNull(errStr);
-        Assert.Contains("Too many bits required for weight grid", errStr);
-
-        var err_blk2 = PhysicalBlock.Create(0x0000000001FE0005A8UL);
-        Assert.NotNull(err_blk2.IdentifyInvalidEncodingIssues());
-        var err_blk3 = PhysicalBlock.Create(0x0000000001FE000588UL);
-        Assert.NotNull(err_blk3.IdentifyInvalidEncodingIssues());
-
-        var err_blk4 = PhysicalBlock.Create(0x0000000001FE00002UL);
-        Assert.NotNull(err_blk4.IdentifyInvalidEncodingIssues());
-
-        var dual_plane_four_parts = PhysicalBlock.Create(0x000000000000001D1FUL);
-        Assert.Null(dual_plane_four_parts.GetPartitionsCount());
-        var e = dual_plane_four_parts.IdentifyInvalidEncodingIssues();
-        Assert.NotNull(e);
-        Assert.Contains("Both four partitions", e);
+        block1.IsIllegalEncoding.Should().BeTrue();
+        block2.IsIllegalEncoding.Should().BeTrue();
     }
 
     [Fact]
-    public void TestVoidExtentBlocksAndCoords()
+    public void Create_WithModifiedHighBitsOnVoidExtent_ShouldStillBeValid()
     {
-        // Various valid block modes that aren't void extent blocks
-        var non_void1 = PhysicalBlock.Create(0x0000000001FE000173UL);
-        Assert.False(non_void1.IsVoidExtent);
-        var non_void2 = PhysicalBlock.Create(0x0000000001FE0005FFUL);
-        Assert.False(non_void1.IsVoidExtent);
-        var non_void3 = PhysicalBlock.Create(0x0000000001FE000108UL);
-        Assert.False(non_void1.IsVoidExtent);
-
-        // Error block is not a void extent block
-        var kErrorBlock = PhysicalBlock.Create(UInt128.Zero);
-        Assert.False(kErrorBlock.IsVoidExtent);
-
-        // A valid void extent block
-        var void_extent_encoding = PhysicalBlock.Create(0xFFF8003FFE000DFCUL, 0UL);
-        Assert.False(void_extent_encoding.IsIllegalEncoding);
-        Assert.True(void_extent_encoding.IsVoidExtent);
-
-        // If we modify the high 64 bits it shouldn't change anything
+        var original = PhysicalBlock.Create(0xFFF8003FFE000DFCUL, 0UL);
         var modified = PhysicalBlock.Create(0xFFF8003FFE000DFCUL, 0xdeadbeefdeadbeef);
-        Assert.False(modified.IsIllegalEncoding);
-        Assert.True(modified.IsVoidExtent);
+
+        original.IsIllegalEncoding.Should().BeFalse();
+        original.IsVoidExtent.Should().BeTrue();
+        modified.IsIllegalEncoding.Should().BeFalse();
+        modified.IsVoidExtent.Should().BeTrue();
     }
 
     [Fact]
-    public void TestVoidExtentCoordinates()
+    public void GetWeightRange_WithValidBlock_ShouldReturn7()
     {
-        // Void extent coords for the single-ulong representation
-        var coords = PhysicalBlock.Create(0xFFF8003FFE000DFCUL).GetVoidExtentCoordinates();
-        Assert.NotNull(coords);
-        Assert.Equal(0, coords[0]);
-        Assert.Equal(8191, coords[1]);
-        Assert.Equal(0, coords[2]);
-        Assert.Equal(8191, coords[3]);
+        var block = PhysicalBlock.Create(0x0000000001FE000173UL);
 
-        // If we set the coords to all 1's then it's still a void extent
-        // block, but there aren't any void extent coords.
-        var be_all_ones = PhysicalBlock.Create(0xFFFFFFFFFFFFFDFCUL);
-        Assert.False(be_all_ones.IsIllegalEncoding);
-        Assert.True(be_all_ones.IsVoidExtent);
-        Assert.Null(be_all_ones.GetVoidExtentCoordinates());
+        var weightRange = block.GetWeightRange();
 
-        // If we set the void extent coords to something where the coords are
-        // >= each other, then the encoding is illegal.
-        Assert.True(PhysicalBlock.Create(0x0008004002001DFCUL).IsIllegalEncoding);
-        Assert.True(PhysicalBlock.Create(0x0007FFC001FFFDFCUL).IsIllegalEncoding);
+        weightRange.Should().HaveValue();
+        weightRange.Should().Be(7);
     }
 
     [Fact]
-    public void TestNumPartitionsAndEndpointModes()
+    public void GetWeightRange_WithTooManyBits_ShouldReturnNull()
     {
-        Assert.Equal(1, PhysicalBlock.Create(0x0000000001FE000173UL).GetPartitionsCount());
-        Assert.Equal(1, PhysicalBlock.Create(0x0000000001FE0005FFUL).GetPartitionsCount());
-        Assert.Equal(1, PhysicalBlock.Create(0x0000000001FE000108UL).GetPartitionsCount());
+        var block = PhysicalBlock.Create(0x0000000001FE000373UL);
 
-        Assert.Null(PhysicalBlock.Create(0x000000000000000973UL).GetPartitionsCount());
-        Assert.Null(PhysicalBlock.Create(0x000000000000001173UL).GetPartitionsCount());
-        Assert.Null(PhysicalBlock.Create(0x000000000000001973UL).GetPartitionsCount());
+        var weightRange = block.GetWeightRange();
 
-        var non_shared_cem = PhysicalBlock.Create(0x4000000000800D44UL);
-        Assert.Equal(2, non_shared_cem.GetPartitionsCount());
+        weightRange.Should().BeNull();
+    }
 
-        var blk1 = PhysicalBlock.Create(0x000000000000001961UL);
+    [Fact]
+    public void GetWeightRange_WithOneBitPerWeight_ShouldReturn1()
+    {
+        var block = PhysicalBlock.Create(0x4000000000800D44UL);
+
+        var weightRange = block.GetWeightRange();
+
+        weightRange.Should().HaveValue();
+        weightRange.Should().Be(1);
+    }
+
+    [Fact]
+    public void GetWeightRange_WithErrorBlock_ShouldReturnNull()
+    {
+        var block = PhysicalBlock.Create(ErrorBlock);
+
+        var weightRange = block.GetWeightRange();
+
+        weightRange.Should().BeNull();
+    }
+
+    [Fact]
+    public void GetWeightGridDimensions_WithValidBlock_ShouldReturn6x5()
+    {
+        var block = PhysicalBlock.Create(0x0000000001FE000173UL);
+
+        var dims = block.GetWeightGridDimensions();
+
+        dims.Should().NotBeNull();
+        dims!.Value.Width.Should().Be(6);
+        dims.Value.Height.Should().Be(5);
+    }
+
+    [Fact]
+    public void GetWeightGridDimensions_WithTooManyBitsForGrid_ShouldReturnNull()
+    {
+        var block = PhysicalBlock.Create(0x0000000001FE000373UL);
+
+        var dims = block.GetWeightGridDimensions();
+
+        dims.Should().BeNull();
+        var error = block.IdentifyInvalidEncodingIssues();
+        error.Should().Contain("Too many bits");
+    }
+
+    [Fact]
+    public void GetWeightGridDimensions_WithDualPlaneBlock_ShouldReturn3x5()
+    {
+        var block = PhysicalBlock.Create(0x0000000001FE0005FFUL);
+
+        var dims = block.GetWeightGridDimensions();
+
+        dims.Should().NotBeNull();
+        dims!.Value.Width.Should().Be(3);
+        dims.Value.Height.Should().Be(5);
+    }
+
+    [Fact]
+    public void GetWeightGridDimensions_WithNonSharedCEM_ShouldReturn8x8()
+    {
+        var block = PhysicalBlock.Create(0x4000000000800D44UL);
+
+        var dims = block.GetWeightGridDimensions();
+
+        dims.Should().NotBeNull();
+        dims!.Value.Width.Should().Be(8);
+        dims.Value.Height.Should().Be(8);
+    }
+
+    [Fact]
+    public void GetWeightGridDimensions_WithErrorBlock_ShouldReturnNull()
+    {
+        var block = PhysicalBlock.Create(ErrorBlock);
+
+        var dims = block.GetWeightGridDimensions();
+
+        dims.Should().BeNull();
+    }
+
+    [Fact]
+    public void IsDualPlane_WithSinglePlaneBlock_ShouldReturnFalse()
+    {
+        var block = PhysicalBlock.Create(0x0000000001FE000173UL);
+
+        block.IsDualPlane.Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsDualPlane_WithDualPlaneBlock_ShouldReturnTrue()
+    {
+        var block = PhysicalBlock.Create(0x0000000001FE0005FFUL);
+
+        block.IsDualPlane.Should().BeTrue();
+    }
+
+    [Fact]
+    public void IsDualPlane_WithErrorBlock_ShouldReturnFalse()
+    {
+        var block = PhysicalBlock.Create(ErrorBlock);
+
+        block.IsDualPlane.Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsDualPlane_WithInvalidEncoding_ShouldReturnFalse()
+    {
+        var block = PhysicalBlock.Create(0x0000000001FE000573UL);
+
+        block.IsDualPlane.Should().BeFalse();
+        block.GetWeightGridDimensions().Should().BeNull();
+        block.IdentifyInvalidEncodingIssues().Should().Contain("Too many bits");
+    }
+
+    [Fact]
+    public void IsDualPlane_WithValidSinglePlaneBlock_ShouldHaveValidEncoding()
+    {
+        var block = PhysicalBlock.Create(0x0000000001FE000108UL);
+
+        block.IsDualPlane.Should().BeFalse();
+        block.IsIllegalEncoding.Should().BeFalse();
+    }
+
+    [Fact]
+    public void GetWeightBitCount_WithStandardBlock_ShouldReturn90()
+    {
+        var block = PhysicalBlock.Create(0x0000000001FE000173UL);
+
+        var bitCount = block.GetWeightBitCount();
+
+        bitCount.Should().Be(90);
+    }
+
+    [Fact]
+    public void GetWeightBitCount_WithDualPlaneBlock_ShouldReturn90()
+    {
+        var block = PhysicalBlock.Create(0x0000000001FE0005FFUL);
+
+        var bitCount = block.GetWeightBitCount();
+
+        bitCount.Should().Be(90);
+    }
+
+    [Fact]
+    public void GetWeightBitCount_WithErrorBlock_ShouldReturnNull()
+    {
+        var block = PhysicalBlock.Create(ErrorBlock);
+
+        var bitCount = block.GetWeightBitCount();
+
+        bitCount.Should().BeNull();
+    }
+
+    [Fact]
+    public void GetWeightBitCount_WithVoidExtent_ShouldReturnNull()
+    {
+        var block = PhysicalBlock.Create(0xFFF8003FFE000DFCUL);
+
+        var bitCount = block.GetWeightBitCount();
+
+        bitCount.Should().BeNull();
+    }
+
+    [Fact]
+    public void GetWeightBitCount_WithInvalidBlock_ShouldReturnNull()
+    {
+        var block = PhysicalBlock.Create(0x0000000001FE000573UL);
+
+        var bitCount = block.GetWeightBitCount();
+
+        bitCount.Should().BeNull();
+    }
+
+    [Fact]
+    public void GetWeightStartBit_WithNonSharedCEM_ShouldReturn64()
+    {
+        var block = PhysicalBlock.Create(0x4000000000800D44UL);
+
+        var startBit = block.GetWeightStartBit();
+
+        startBit.Should().Be(64);
+    }
+
+    [Fact]
+    public void GetWeightStartBit_WithErrorBlock_ShouldReturnNull()
+    {
+        var block = PhysicalBlock.Create(ErrorBlock);
+
+        var startBit = block.GetWeightStartBit();
+
+        startBit.Should().BeNull();
+    }
+
+    [Fact]
+    public void GetWeightStartBit_WithVoidExtent_ShouldReturnNull()
+    {
+        var block = PhysicalBlock.Create(0xFFF8003FFE000DFCUL);
+
+        var startBit = block.GetWeightStartBit();
+
+        startBit.Should().BeNull();
+    }
+
+    [Fact]
+    public void IsIllegalEncoding_WithValidBlocks_ShouldReturnFalse()
+    {
+        PhysicalBlock.Create(0x0000000001FE000173UL).IsIllegalEncoding.Should().BeFalse();
+        PhysicalBlock.Create(0x0000000001FE0005FFUL).IsIllegalEncoding.Should().BeFalse();
+        PhysicalBlock.Create(0x0000000001FE000108UL).IsIllegalEncoding.Should().BeFalse();
+    }
+
+    [Fact]
+    public void IdentifyInvalidEncodingIssues_WithZeroBlock_ShouldReturnReservedBlockModeError()
+    {
+        var block = PhysicalBlock.Create(ErrorBlock);
+
+        var error = block.IdentifyInvalidEncodingIssues();
+
+        error.Should().NotBeNull();
+        error.Should().Contain("Reserved block mode");
+    }
+
+    [Fact]
+    public void IdentifyInvalidEncodingIssues_WithTooManyWeightBits_ShouldReturnError()
+    {
+        var block = PhysicalBlock.Create(0x0000000001FE000573UL);
+
+        var error = block.IdentifyInvalidEncodingIssues();
+
+        error.Should().NotBeNull();
+        error.Should().Contain("Too many bits required for weight grid");
+    }
+
+    [Theory]
+    [InlineData(0x0000000001FE0005A8UL)]
+    [InlineData(0x0000000001FE000588UL)]
+    [InlineData(0x0000000001FE00002UL)]
+    public void IdentifyInvalidEncodingIssues_WithInvalidBlocks_ShouldReturnError(ulong blockBits)
+    {
+        var block = PhysicalBlock.Create(blockBits);
+
+        var error = block.IdentifyInvalidEncodingIssues();
+
+        error.Should().NotBeNull();
+    }
+
+    [Fact]
+    public void IdentifyInvalidEncodingIssues_WithDualPlaneFourPartitions_ShouldReturnError()
+    {
+        var block = PhysicalBlock.Create(0x000000000000001D1FUL);
+
+        var error = block.IdentifyInvalidEncodingIssues();
+
+        block.GetPartitionsCount().Should().BeNull();
+        error.Should().NotBeNull();
+        error.Should().Contain("Both four partitions");
+    }
+
+    [Theory]
+    [InlineData(0x000000000000000973UL)]
+    [InlineData(0x000000000000001173UL)]
+    [InlineData(0x000000000000001973UL)]
+    public void GetPartitionsCount_WithInvalidPartitionConfig_ShouldReturnNull(ulong blockBits)
+    {
+        var block = PhysicalBlock.Create(blockBits);
+
+        var partitions = block.GetPartitionsCount();
+
+        partitions.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData(0x0000000001FE000173UL, 1)]
+    [InlineData(0x0000000001FE0005FFUL, 1)]
+    [InlineData(0x0000000001FE000108UL, 1)]
+    [InlineData(0x4000000000800D44UL, 2)]
+    public void GetPartitionsCount_WithValidBlock_ShouldReturnExpectedCount(ulong blockBits, int expectedCount)
+    {
+        var block = PhysicalBlock.Create(blockBits);
+
+        var count = block.GetPartitionsCount();
+
+        count.Should().Be(expectedCount);
+    }
+
+    [Theory]
+    [InlineData(0x4000000000FFED44UL, 0x3FF)]
+    [InlineData(0x4000000000AAAD44UL, 0x155)]
+    public void GetPartitionId_WithValidMultiPartitionBlock_ShouldReturnExpectedId(ulong blockBits, int expectedId)
+    {
+        var block = PhysicalBlock.Create(blockBits);
+
+        var partitionId = block.GetPartitionId();
+
+        partitionId.Should().Be(expectedId);
+    }
+
+    [Fact]
+    public void GetPartitionId_WithErrorBlock_ShouldReturnNull()
+    {
+        var block = PhysicalBlock.Create(ErrorBlock);
+
+        var partitionId = block.GetPartitionId();
+
+        partitionId.Should().BeNull();
+    }
+
+    [Fact]
+    public void GetPartitionId_WithVoidExtent_ShouldReturnNull()
+    {
+        var block = PhysicalBlock.Create(0xFFF8003FFE000DFCUL);
+
+        var partitionId = block.GetPartitionId();
+
+        partitionId.Should().BeNull();
+    }
+
+    [Fact]
+    public void GetEndpointMode_WithFourPartitionBlock_ShouldReturnSameModeForAll()
+    {
+        var block = PhysicalBlock.Create(0x000000000000001961UL);
+
         for (int i = 0; i < 4; ++i)
         {
-            var mode = blk1.GetEndpointMode(i);
-            Assert.Equal(ColorEndpointMode.LdrLumaDirect, mode);
+            var mode = block.GetEndpointMode(i);
+            mode.Should().Be(ColorEndpointMode.LdrLumaDirect);
         }
-
-        Assert.Null(PhysicalBlock.Create(0xFFF8003FFE000DFCUL).GetEndpointMode(0));
-        Assert.Null(PhysicalBlock.Create(0x0000000001FE000173UL).GetEndpointMode(1));
-        Assert.Null(PhysicalBlock.Create(0x0000000001FE000173UL).GetEndpointMode(-1));
-        Assert.Null(PhysicalBlock.Create(0x0000000001FE000173UL).GetEndpointMode(100));
-
-        var non_shared = PhysicalBlock.Create(0x4000000000800D44UL);
-        Assert.Equal(ColorEndpointMode.LdrLumaDirect, non_shared.GetEndpointMode(0));
-        Assert.Equal(ColorEndpointMode.LdrLumaBaseOffset, non_shared.GetEndpointMode(1));
     }
 
     [Fact]
-    public void TestPartitionIDAndColorBitsAndRanges()
+    public void GetEndpointMode_WithNonSharedCEM_ShouldReturnDifferentModes()
     {
-        Assert.Equal(0x3FF, PhysicalBlock.Create(0x4000000000FFED44UL).GetPartitionId());
-        Assert.Equal(0x155, PhysicalBlock.Create(0x4000000000AAAD44UL).GetPartitionId());
+        var block = PhysicalBlock.Create(0x4000000000800D44UL);
 
-        var kErrorBlock = PhysicalBlock.Create(UInt128.Zero);
-        Assert.Null(kErrorBlock.GetPartitionId());
-        Assert.Null(PhysicalBlock.Create(0xFFF8003FFE000DFCUL).GetPartitionId());
+        var mode0 = block.GetEndpointMode(0);
+        var mode1 = block.GetEndpointMode(1);
 
-        Assert.Equal(2, PhysicalBlock.Create(0x0000000001FE000173UL).GetColorValuesCount());
-        Assert.Equal(16, PhysicalBlock.Create(0x0000000001FE000173UL).GetColorBitCount());
+        mode0.Should().Be(ColorEndpointMode.LdrLumaDirect);
+        mode1.Should().Be(ColorEndpointMode.LdrLumaBaseOffset);
+    }
 
-        Assert.Null(kErrorBlock.GetColorValuesCount());
-        Assert.Null(kErrorBlock.GetColorBitCount());
+    [Fact]
+    public void GetEndpointMode_WithVoidExtent_ShouldReturnNull()
+    {
+        var block = PhysicalBlock.Create(0xFFF8003FFE000DFCUL);
 
-        Assert.Equal(4, PhysicalBlock.Create(0xFFF8003FFE000DFCUL).GetColorValuesCount());
-        Assert.Equal(64, PhysicalBlock.Create(0xFFF8003FFE000DFCUL).GetColorBitCount());
+        var mode = block.GetEndpointMode(0);
 
-        Assert.Equal(255, PhysicalBlock.Create(0x0000000001FE000173UL).GetColorValuesRange());
-        Assert.Null(kErrorBlock.GetColorValuesRange());
-        Assert.Equal((1 << 16) - 1, PhysicalBlock.Create(0xFFF8003FFE000DFCUL).GetColorValuesRange());
+        mode.Should().BeNull();
+    }
 
-        Assert.Equal(64, PhysicalBlock.Create(0xFFF8003FFE000DFCUL).GetColorStartBit());
-        Assert.Null(kErrorBlock.GetColorStartBit());
-        Assert.Equal(17, PhysicalBlock.Create(0x0000000001FE000173UL).GetColorStartBit());
-        Assert.Equal(17, PhysicalBlock.Create(0x0000000001FE0005FFUL).GetColorStartBit());
-        Assert.Equal(17, PhysicalBlock.Create(0x0000000001FE000108UL).GetColorStartBit());
+    [Theory]
+    [InlineData(1)]
+    [InlineData(-1)]
+    [InlineData(100)]
+    public void GetEndpointMode_WithInvalidPartitionIndex_ShouldReturnNull(int index)
+    {
+        var block = PhysicalBlock.Create(0x0000000001FE000173UL);
 
-        Assert.Equal(29, PhysicalBlock.Create(0x4000000000FFED44UL).GetColorStartBit());
-        Assert.Equal(29, PhysicalBlock.Create(0x4000000000AAAD44UL).GetColorStartBit());
+        var mode = block.GetEndpointMode(index);
+
+        mode.Should().BeNull();
+    }
+
+    [Fact]
+    public void GetColorValuesCount_WithStandardBlock_ShouldReturn2()
+    {
+        var block = PhysicalBlock.Create(0x0000000001FE000173UL);
+
+        var count = block.GetColorValuesCount();
+
+        count.Should().Be(2);
+    }
+
+    [Fact]
+    public void GetColorValuesCount_WithVoidExtent_ShouldReturn4()
+    {
+        var block = PhysicalBlock.Create(0xFFF8003FFE000DFCUL);
+
+        var count = block.GetColorValuesCount();
+
+        count.Should().Be(4);
+    }
+
+    [Fact]
+    public void GetColorValuesCount_WithErrorBlock_ShouldReturnNull()
+    {
+        var block = PhysicalBlock.Create(ErrorBlock);
+
+        var count = block.GetColorValuesCount();
+
+        count.Should().BeNull();
+    }
+
+    [Fact]
+    public void GetColorBitCount_WithStandardBlock_ShouldReturn16()
+    {
+        var block = PhysicalBlock.Create(0x0000000001FE000173UL);
+
+        var bitCount = block.GetColorBitCount();
+
+        bitCount.Should().Be(16);
+    }
+
+    [Fact]
+    public void GetColorBitCount_WithVoidExtent_ShouldReturn64()
+    {
+        var block = PhysicalBlock.Create(0xFFF8003FFE000DFCUL);
+
+        var bitCount = block.GetColorBitCount();
+
+        bitCount.Should().Be(64);
+    }
+
+    [Fact]
+    public void GetColorBitCount_WithErrorBlock_ShouldReturnNull()
+    {
+        var block = PhysicalBlock.Create(ErrorBlock);
+
+        var bitCount = block.GetColorBitCount();
+
+        bitCount.Should().BeNull();
+    }
+
+    [Fact]
+    public void GetColorValuesRange_WithStandardBlock_ShouldReturn255()
+    {
+        var block = PhysicalBlock.Create(0x0000000001FE000173UL);
+
+        var range = block.GetColorValuesRange();
+
+        range.Should().Be(255);
+    }
+
+    [Fact]
+    public void GetColorValuesRange_WithVoidExtent_ShouldReturnMaxUInt16()
+    {
+        var block = PhysicalBlock.Create(0xFFF8003FFE000DFCUL);
+
+        var range = block.GetColorValuesRange();
+
+        range.Should().Be((1 << 16) - 1);
+    }
+
+    [Fact]
+    public void GetColorValuesRange_WithErrorBlock_ShouldReturnNull()
+    {
+        var block = PhysicalBlock.Create(ErrorBlock);
+
+        var range = block.GetColorValuesRange();
+
+        range.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData(0x0000000001FE000173UL, 17)]
+    [InlineData(0x0000000001FE0005FFUL, 17)]
+    [InlineData(0x0000000001FE000108UL, 17)]
+    [InlineData(0x4000000000FFED44UL, 29)]
+    [InlineData(0x4000000000AAAD44UL, 29)]
+    [InlineData(0xFFF8003FFE000DFCUL, 64)]
+    public void GetColorStartBit_WithVariousBlocks_ShouldReturnExpectedValue(ulong blockBits, int expectedStartBit)
+    {
+        var block = PhysicalBlock.Create(blockBits);
+
+        var startBit = block.GetColorStartBit();
+
+        startBit.Should().Be(expectedStartBit);
+    }
+
+    [Fact]
+    public void GetColorStartBit_WithErrorBlock_ShouldReturnNull()
+    {
+        var block = PhysicalBlock.Create(ErrorBlock);
+
+        var startBit = block.GetColorStartBit();
+
+        startBit.Should().BeNull();
     }
 }

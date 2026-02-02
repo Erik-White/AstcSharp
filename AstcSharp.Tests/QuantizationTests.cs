@@ -1,245 +1,386 @@
-using Xunit;
-using System.Linq;
-using System;
-using System.Collections.Generic;
 using AstcSharp.BiseEncoding;
+using AwesomeAssertions;
 
-namespace AstcSharp.Tests
+namespace AstcSharp.Tests;
+
+public class QuantizationTests
 {
-    public class QuantizationTests
+    [Fact]
+    public void QuantizeCEValueToRange_WithMaxValue_ShouldNotExceedRange()
     {
-        [Fact]
-        public void QuantizeMaxRange()
+        for (int range = Quantization.kEndpointRangeMinValue; range <= byte.MaxValue; range++)
         {
-            for (int i = Quantization.kEndpointRangeMinValue; i < 256; ++i)
-            {
-                Assert.True(Quantization.QuantizeCEValueToRange(255, i) <= i);
-            }
-
-            for (int i = 1; i < Quantization.kWeightRangeMaxValue; ++i)
-            {
-                Assert.True(Quantization.QuantizeWeightToRange(64, i) <= i);
-            }
+            Quantization.QuantizeCEValueToRange(byte.MaxValue, range).Should().BeLessThanOrEqualTo(range);
         }
+    }
 
-        [Fact]
-        public void ReversibilityBasic()
+    [Fact]
+    public void QuantizeWeightToRange_WithMaxValue_ShouldNotExceedRange()
+    {
+        for (int range = 1; range < Quantization.kWeightRangeMaxValue; range++)
         {
-            var ranges = BoundedIntegerSequenceCodec.MaxRanges;
-            foreach (var range in ranges)
-            {
-                if (range <= Quantization.kWeightRangeMaxValue)
-                {
-                    for (int j = 0; j <= range; ++j)
-                    {
-                        var q = Quantization.UnquantizeWeightFromRange(j, range);
-                        Assert.Equal(j, Quantization.QuantizeWeightToRange(q, range));
-                    }
-                }
+            Quantization.QuantizeWeightToRange(64, range).Should().BeLessThanOrEqualTo(range);
+        }
+    }
 
-                if (range >= Quantization.kEndpointRangeMinValue)
-                {
-                    for (int j = 0; j <= range; ++j)
-                    {
-                        var q = Quantization.UnquantizeCEValueFromRange(j, range);
-                        Assert.Equal(j, Quantization.QuantizeCEValueToRange(q, range));
-                    }
-                }
+    [Fact]
+    public void QuantizeCEValueToRange_WithVariousValues_ShouldNotExceedRange()
+    {
+        var ranges = BoundedIntegerSequenceCodec.MaxRanges;
+        var testValues = new[] { 0, 4, 15, 22, 66, 91, 126 };
+
+        foreach (var range in ranges.Where(r => r >= Quantization.kEndpointRangeMinValue))
+        {
+            foreach (var value in testValues)
+            {
+                Quantization.QuantizeCEValueToRange(value, range).Should().BeLessThanOrEqualTo(range);
             }
         }
+    }
 
-        [Fact]
-        public void QuantizationRange()
+    [Fact]
+    public void QuantizeWeightToRange_WithVariousValues_ShouldNotExceedRange()
+    {
+        var ranges = BoundedIntegerSequenceCodec.MaxRanges;
+        var testValues = new[] { 0, 4, 15, 22 };
+
+        foreach (var range in ranges.Where(r => r <= Quantization.kWeightRangeMaxValue))
         {
-            var ranges = BoundedIntegerSequenceCodec.MaxRanges;
-            foreach (var range in ranges)
+            foreach (var value in testValues)
             {
-                if (range >= Quantization.kEndpointRangeMinValue)
-                {
-                    Assert.True(Quantization.QuantizeCEValueToRange(0, range) <= range);
-                    Assert.True(Quantization.QuantizeCEValueToRange(4, range) <= range);
-                    Assert.True(Quantization.QuantizeCEValueToRange(15, range) <= range);
-                    Assert.True(Quantization.QuantizeCEValueToRange(22, range) <= range);
-                    Assert.True(Quantization.QuantizeCEValueToRange(66, range) <= range);
-                    Assert.True(Quantization.QuantizeCEValueToRange(91, range) <= range);
-                    Assert.True(Quantization.QuantizeCEValueToRange(126, range) <= range);
-                }
-
-                if (range <= Quantization.kWeightRangeMaxValue)
-                {
-                    Assert.True(Quantization.QuantizeWeightToRange(0, range) <= range);
-                    Assert.True(Quantization.QuantizeWeightToRange(4, range) <= range);
-                    Assert.True(Quantization.QuantizeWeightToRange(15, range) <= range);
-                    Assert.True(Quantization.QuantizeWeightToRange(22, range) <= range);
-                }
+                Quantization.QuantizeWeightToRange(value, range).Should().BeLessThanOrEqualTo(range);
             }
         }
+    }
 
-        [Fact]
-        public void UnquantizationRange()
+    [Fact]
+    public void QuantizeWeight_ThenUnquantize_ShouldReturnOriginalQuantizedValue()
+    {
+        var ranges = BoundedIntegerSequenceCodec.MaxRanges;
+
+        foreach (var range in ranges.Where(r => r <= Quantization.kWeightRangeMaxValue))
         {
-            Assert.True(Quantization.UnquantizeCEValueFromRange(2, 7) < 256);
-            Assert.True(Quantization.UnquantizeCEValueFromRange(7, 7) < 256);
-            Assert.True(Quantization.UnquantizeCEValueFromRange(39, 63) < 256);
-            Assert.True(Quantization.UnquantizeCEValueFromRange(66, 79) < 256);
-            Assert.True(Quantization.UnquantizeCEValueFromRange(91, 191) < 256);
-            Assert.True(Quantization.UnquantizeCEValueFromRange(126, 255) < 256);
-            Assert.True(Quantization.UnquantizeCEValueFromRange(255, 255) < 256);
-
-            Assert.True(Quantization.UnquantizeWeightFromRange(0, 1) <= 64);
-            Assert.True(Quantization.UnquantizeWeightFromRange(2, 7) <= 64);
-            Assert.True(Quantization.UnquantizeWeightFromRange(7, 7) <= 64);
-            Assert.True(Quantization.UnquantizeWeightFromRange(29, 31) <= 64);
-        }
-
-        [Fact]
-        public void UpperBoundRanges()
-        {
-            var ranges = BoundedIntegerSequenceCodec.MaxRanges;
-            int idx = 0;
-            for (int desired_range = 1; desired_range < 256; ++desired_range)
+            for (int quantizedValue = 0; quantizedValue <= range; ++quantizedValue)
             {
-                while (idx + 1 < ranges.Length && ranges[idx + 1] <= desired_range) ++idx;
-                int expected_range = ranges[idx];
-                if (desired_range >= Quantization.kEndpointRangeMinValue)
-                {
-                    Assert.Equal(Quantization.QuantizeCEValueToRange(0, desired_range), Quantization.QuantizeCEValueToRange(0, expected_range));
-                    Assert.Equal(Quantization.QuantizeCEValueToRange(208, desired_range), Quantization.QuantizeCEValueToRange(208, expected_range));
-                    Assert.Equal(Quantization.QuantizeCEValueToRange(173, desired_range), Quantization.QuantizeCEValueToRange(173, expected_range));
-                    Assert.Equal(Quantization.QuantizeCEValueToRange(13, desired_range), Quantization.QuantizeCEValueToRange(13, expected_range));
-                    Assert.Equal(Quantization.QuantizeCEValueToRange(255, desired_range), Quantization.QuantizeCEValueToRange(255, expected_range));
-                }
+                var unquantized = Quantization.UnquantizeWeightFromRange(quantizedValue, range);
+                var requantized = Quantization.QuantizeWeightToRange(unquantized, range);
 
-                if (desired_range <= Quantization.kWeightRangeMaxValue)
+                requantized.Should().Be(quantizedValue);
+            }
+        }
+    }
+
+    [Fact]
+    public void QuantizeCEValue_ThenUnquantize_ShouldReturnOriginalQuantizedValue()
+    {
+        var ranges = BoundedIntegerSequenceCodec.MaxRanges;
+
+        foreach (var range in ranges.Where(r => r >= Quantization.kEndpointRangeMinValue))
+        {
+            for (int quantizedValue = 0; quantizedValue <= range; ++quantizedValue)
+            {
+                var unquantized = Quantization.UnquantizeCEValueFromRange(quantizedValue, range);
+                var requantized = Quantization.QuantizeCEValueToRange(unquantized, range);
+
+                requantized.Should().Be(quantizedValue);
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(2, 7)]
+    [InlineData(7, 7)]
+    [InlineData(39, 63)]
+    [InlineData(66, 79)]
+    [InlineData(91, 191)]
+    [InlineData(126, 255)]
+    [InlineData(255, 255)]
+    public void UnquantizeCEValueFromRange_ShouldProduceValidByteValue(int quantizedValue, int range)
+    {
+        var result = Quantization.UnquantizeCEValueFromRange(quantizedValue, range);
+
+        result.Should().BeLessThan(256);
+    }
+
+    [Theory]
+    [InlineData(0, 1)]
+    [InlineData(2, 7)]
+    [InlineData(7, 7)]
+    [InlineData(29, 31)]
+    public void UnquantizeWeightFromRange_ShouldNotExceed64(int quantizedValue, int range)
+    {
+        var result = Quantization.UnquantizeWeightFromRange(quantizedValue, range);
+
+        result.Should().BeLessThanOrEqualTo(64);
+    }
+
+    [Fact]
+    public void Quantize_WithDesiredRange_ShouldMatchExpectedRangeOutput()
+    {
+        var ranges = BoundedIntegerSequenceCodec.MaxRanges;
+        int rangeIndex = 0;
+
+        for (int desiredRange = 1; desiredRange <= byte.MaxValue; ++desiredRange)
+        {
+            while (rangeIndex + 1 < ranges.Length && ranges[rangeIndex + 1] <= desiredRange)
+                ++rangeIndex;
+
+            int expectedRange = ranges[rangeIndex];
+
+            // Test CE values
+            if (desiredRange >= Quantization.kEndpointRangeMinValue)
+            {
+                var testValues = new[] { 0, 13, 173, 208, 255 };
+                foreach (var value in testValues)
                 {
-                    Assert.Equal(Quantization.QuantizeWeightToRange(0, desired_range), Quantization.QuantizeWeightToRange(0, expected_range));
-                    Assert.Equal(Quantization.QuantizeWeightToRange(63, desired_range), Quantization.QuantizeWeightToRange(63, expected_range));
-                    Assert.Equal(Quantization.QuantizeWeightToRange(12, desired_range), Quantization.QuantizeWeightToRange(12, expected_range));
-                    Assert.Equal(Quantization.QuantizeWeightToRange(23, desired_range), Quantization.QuantizeWeightToRange(23, expected_range));
+                    Quantization.QuantizeCEValueToRange(value, desiredRange)
+                        .Should().Be(Quantization.QuantizeCEValueToRange(value, expectedRange));
                 }
             }
 
-            Assert.Equal(ranges.Length - 1, idx);
-        }
-
-        [Fact]
-        public void Identity()
-        {
-            for (int i = 0; i < 256; ++i) Assert.Equal(i, Quantization.QuantizeCEValueToRange(i, 255));
-        }
-
-        [Fact]
-        public void MonotonicBitPacking()
-        {
-            for (int num_bits = 3; num_bits < 8; ++num_bits)
+            // Test weight values
+            if (desiredRange <= Quantization.kWeightRangeMaxValue)
             {
-                int range = (1 << num_bits) - 1;
-                int last_quant_val = -1;
-                for (int i = 0; i < 256; ++i)
+                var testValues = new[] { 0, 12, 23, 63 };
+                foreach (var value in testValues)
                 {
-                    int quant_val = Quantization.QuantizeCEValueToRange(i, range);
-                    Assert.True(last_quant_val <= quant_val);
-                    last_quant_val = quant_val;
-                }
-                Assert.Equal(range, last_quant_val);
-
-                if (range <= Quantization.kWeightRangeMaxValue)
-                {
-                    last_quant_val = -1;
-                    for (int i = 0; i <= 64; ++i)
-                    {
-                        int quant_val = Quantization.QuantizeWeightToRange(i, range);
-                        Assert.True(last_quant_val <= quant_val);
-                        last_quant_val = quant_val;
-                    }
-                    Assert.Equal(range, last_quant_val);
+                    Quantization.QuantizeWeightToRange(value, desiredRange)
+                        .Should().Be(Quantization.QuantizeWeightToRange(value, expectedRange));
                 }
             }
         }
 
-        [Fact]
-        public void SmallBitPacking()
+        rangeIndex.Should().Be(ranges.Length - 1);
+    }
+
+    [Fact]
+    public void QuantizeCEValueToRange_WithRangeByteMax_ShouldBeIdentity()
+    {
+        for (int value = byte.MinValue; value <= byte.MaxValue; value++)
         {
-            for (int num_bits = 1; num_bits <= 8; ++num_bits)
-            {
-                int range = (1 << num_bits) - 1;
-
-                if (range >= Quantization.kEndpointRangeMinValue)
-                {
-                    const int cev_bits = 8;
-                    int half_max_quant_bits = Math.Max(0, cev_bits - num_bits - 1);
-                    int largest_cev_to_zero = (1 << half_max_quant_bits) - 1;
-                    Assert.Equal(0, Quantization.QuantizeCEValueToRange(largest_cev_to_zero, range));
-                }
-
-                if (range <= Quantization.kWeightRangeMaxValue)
-                {
-                    const int weight_bits = 6;
-                    int half_max_quant_bits = Math.Max(0, weight_bits - num_bits - 1);
-                    int largest_weight_to_zero = (1 << half_max_quant_bits) - 1;
-                    Assert.Equal(0, Quantization.QuantizeWeightToRange(largest_weight_to_zero, range));
-                }
-            }
+            Quantization.QuantizeCEValueToRange(value, byte.MaxValue).Should().Be(value);
         }
+    }
 
-        [Fact]
-        public void SpecificQuintTritPackings()
+    [Fact]
+    public void QuantizeCEValueToRange_ShouldBeMonotonicIncreasing()
+    {
+        for (int numBits = 3; numBits < 8; numBits++)
         {
-            var vals = new List<int> { 4, 6, 4, 6, 7, 5, 7, 5 };
-            var quantized = vals.Select(v => Quantization.UnquantizeWeightFromRange(v, 9)).ToList();
-            var quintExpected = new List<int> { 14, 21, 14, 21, 43, 50, 43, 50 };
-            Assert.Equal(quintExpected, quantized);
+            int range = (1 << numBits) - 1;
+            int lastQuantizedValue = -1;
 
-            quantized = vals.Select(v => Quantization.UnquantizeWeightFromRange(v, 11)).ToList();
-            var tritExpected = new List<int> { 5, 23, 5, 23, 41, 59, 41, 59 };
-            Assert.Equal(tritExpected, quantized);
-        }
-
-        [Fact]
-        public void InvalidMinRangeThrows()
-        {
-            for (int i = 0; i < Quantization.kEndpointRangeMinValue; ++i)
+            for (int value = byte.MinValue; value <= byte.MaxValue; value++)
             {
-                Assert.Throws<ArgumentOutOfRangeException>(() => Quantization.QuantizeCEValueToRange(0, i));
-                Assert.Throws<ArgumentOutOfRangeException>(() => Quantization.UnquantizeCEValueFromRange(0, i));
+                int quantizedValue = Quantization.QuantizeCEValueToRange(value, range);
+
+                quantizedValue.Should().BeGreaterThanOrEqualTo(lastQuantizedValue);
+                lastQuantizedValue = quantizedValue;
             }
 
-            Assert.Throws<ArgumentOutOfRangeException>(() => Quantization.QuantizeWeightToRange(0, 0));
-            Assert.Throws<ArgumentOutOfRangeException>(() => Quantization.UnquantizeWeightFromRange(0, 0));
+            lastQuantizedValue.Should().Be(range);
         }
+    }
 
-        [Fact]
-        public void OutOfRangeInputsThrow()
+    [Fact]
+    public void QuantizeWeightToRange_ShouldBeMonotonicallyIncreasing()
+    {
+        for (int numBits = 3; numBits < 8; ++numBits)
         {
-            // CE value checks
-            Assert.Throws<ArgumentOutOfRangeException>(() => Quantization.QuantizeCEValueToRange(-1, 10));
-            Assert.Throws<ArgumentOutOfRangeException>(() => Quantization.QuantizeCEValueToRange(256, 7));
-            Assert.Throws<ArgumentOutOfRangeException>(() => Quantization.QuantizeCEValueToRange(10000, 17));
+            int range = (1 << numBits) - 1;
 
-            Assert.Throws<ArgumentOutOfRangeException>(() => Quantization.UnquantizeCEValueFromRange(-1, 10));
-            Assert.Throws<ArgumentOutOfRangeException>(() => Quantization.UnquantizeCEValueFromRange(8, 7));
-            Assert.Throws<ArgumentOutOfRangeException>(() => Quantization.UnquantizeCEValueFromRange(-1000, 17));
+            if (range > Quantization.kWeightRangeMaxValue)
+                continue;
 
-            Assert.Throws<ArgumentOutOfRangeException>(() => Quantization.QuantizeCEValueToRange(0, -7));
-            Assert.Throws<ArgumentOutOfRangeException>(() => Quantization.UnquantizeCEValueFromRange(0, -17));
+            int lastQuantizedValue = -1;
 
-            Assert.Throws<ArgumentOutOfRangeException>(() => Quantization.QuantizeCEValueToRange(0, 257));
-            Assert.Throws<ArgumentOutOfRangeException>(() => Quantization.UnquantizeCEValueFromRange(0, 256));
+            for (int value = 0; value <= 64; ++value)
+            {
+                int quantizedValue = Quantization.QuantizeWeightToRange(value, range);
 
-            // Weight checks
-            Assert.Throws<ArgumentOutOfRangeException>(() => Quantization.QuantizeWeightToRange(-1, 10));
-            Assert.Throws<ArgumentOutOfRangeException>(() => Quantization.QuantizeWeightToRange(256, 7));
-            Assert.Throws<ArgumentOutOfRangeException>(() => Quantization.QuantizeWeightToRange(10000, 17));
+                quantizedValue.Should().BeGreaterThanOrEqualTo(lastQuantizedValue);
+                lastQuantizedValue = quantizedValue;
+            }
 
-            Assert.Throws<ArgumentOutOfRangeException>(() => Quantization.UnquantizeWeightFromRange(-1, 10));
-            Assert.Throws<ArgumentOutOfRangeException>(() => Quantization.UnquantizeWeightFromRange(8, 7));
-            Assert.Throws<ArgumentOutOfRangeException>(() => Quantization.UnquantizeWeightFromRange(-1000, 17));
-
-            Assert.Throws<ArgumentOutOfRangeException>(() => Quantization.QuantizeWeightToRange(0, -7));
-            Assert.Throws<ArgumentOutOfRangeException>(() => Quantization.UnquantizeWeightFromRange(0, -17));
-
-            Assert.Throws<ArgumentOutOfRangeException>(() => Quantization.QuantizeWeightToRange(0, 32));
-            Assert.Throws<ArgumentOutOfRangeException>(() => Quantization.UnquantizeWeightFromRange(0, 64));
+            lastQuantizedValue.Should().Be(range);
         }
+    }
+
+    [Fact]
+    public void QuantizeCEValueToRange_WithSmallBitRanges_ShouldQuantizeLowValuesToZero()
+    {
+        for (int numBits = 1; numBits <= 8; ++numBits)
+        {
+            int range = (1 << numBits) - 1;
+
+            if (range < Quantization.kEndpointRangeMinValue)
+                continue;
+
+            const int cevBits = 8;
+            int halfMaxQuantBits = Math.Max(0, cevBits - numBits - 1);
+            int largestCevToZero = (1 << halfMaxQuantBits) - 1;
+
+            Quantization.QuantizeCEValueToRange(largestCevToZero, range).Should().Be(0);
+        }
+    }
+
+    [Fact]
+    public void QuantizeWeightToRange_WithSmallBitRanges_ShouldQuantizeLowValuesToZero()
+    {
+        for (int numBits = 1; numBits <= 8; numBits++)
+        {
+            int range = (1 << numBits) - 1;
+
+            if (range > Quantization.kWeightRangeMaxValue)
+                continue;
+
+            const int weightBits = 6;
+            int halfMaxQuantBits = Math.Max(0, weightBits - numBits - 1);
+            int largestWeightToZero = (1 << halfMaxQuantBits) - 1;
+
+            Quantization.QuantizeWeightToRange(largestWeightToZero, range).Should().Be(0);
+        }
+    }
+
+    [Fact]
+    public void UnquantizeWeightFromRange_WithQuintRange_ShouldMatchExpected()
+    {
+        var values = new List<int> { 4, 6, 4, 6, 7, 5, 7, 5 };
+        var quintExpected = new List<int> { 14, 21, 14, 21, 43, 50, 43, 50 };
+
+        var quantized = values.Select(v => Quantization.UnquantizeWeightFromRange(v, 9)).ToList();
+
+        quantized.Should().Equal(quintExpected);
+    }
+
+    [Fact]
+    public void UnquantizeWeightFromRange_WithTritRange_ShouldMatchExpected()
+    {
+        var values = new List<int> { 4, 6, 4, 6, 7, 5, 7, 5 };
+        var tritExpected = new List<int> { 5, 23, 5, 23, 41, 59, 41, 59 };
+
+        var quantized = values.Select(v => Quantization.UnquantizeWeightFromRange(v, 11)).ToList();
+
+        quantized.Should().Equal(tritExpected);
+    }
+
+    [Fact]
+    public void QuantizeCEValueToRange_WithInvalidMinRange_ShouldThrowArgumentOutOfRangeException()
+    {
+        for (int range = 0; range < Quantization.kEndpointRangeMinValue; range++)
+        {
+            var action = () => Quantization.QuantizeCEValueToRange(0, range);
+            action.Should().Throw<ArgumentOutOfRangeException>();
+        }
+    }
+
+    [Fact]
+    public void UnquantizeCEValueFromRange_WithInvalidMinRange_ShouldThrowArgumentOutOfRangeException()
+    {
+        for (int range = 0; range < Quantization.kEndpointRangeMinValue; range++)
+        {
+            var action = () => Quantization.UnquantizeCEValueFromRange(0, range);
+            action.Should().Throw<ArgumentOutOfRangeException>();
+        }
+    }
+
+    [Fact]
+    public void QuantizeWeightToRange_WithZeroRange_ShouldThrowArgumentOutOfRangeException()
+    {
+        var action = () => Quantization.QuantizeWeightToRange(0, 0);
+
+        action.Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    [Fact]
+    public void UnquantizeWeightFromRange_WithZeroRange_ShouldThrowArgumentOutOfRangeException()
+    {
+        var action = () => Quantization.UnquantizeWeightFromRange(0, 0);
+
+        action.Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    [Theory]
+    [InlineData(-1, 10)]
+    [InlineData(256, 7)]
+    [InlineData(10000, 17)]
+    public void QuantizeCEValueToRange_WithInvalidValue_ShouldThrowArgumentOutOfRangeException(int value, int range)
+    {
+        var action = () => Quantization.QuantizeCEValueToRange(value, range);
+
+        action.Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    [Theory]
+    [InlineData(-1, 10)]
+    [InlineData(8, 7)]
+    [InlineData(-1000, 17)]
+    public void UnquantizeCEValueFromRange_WithInvalidValue_ShouldThrowArgumentOutOfRangeException(int value, int range)
+    {
+        var action = () => Quantization.UnquantizeCEValueFromRange(value, range);
+
+        action.Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    [Theory]
+    [InlineData(0, -7)]
+    [InlineData(0, 257)]
+    public void QuantizeCEValueToRange_WithInvalidRange_ShouldThrowArgumentOutOfRangeException(int value, int range)
+    {
+        var action = () => Quantization.QuantizeCEValueToRange(value, range);
+
+        action.Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    [Theory]
+    [InlineData(0, -17)]
+    [InlineData(0, 256)]
+    public void UnquantizeCEValueFromRange_WithInvalidRange_ShouldThrowArgumentOutOfRangeException(int value, int range)
+    {
+        var action = () => Quantization.UnquantizeCEValueFromRange(value, range);
+
+        action.Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    [Theory]
+    [InlineData(-1, 10)]
+    [InlineData(256, 7)]
+    [InlineData(10000, 17)]
+    public void QuantizeWeightToRange_WithInvalidValue_ShouldThrowArgumentOutOfRangeException(int value, int range)
+    {
+        var action = () => Quantization.QuantizeWeightToRange(value, range);
+
+        action.Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    [Theory]
+    [InlineData(-1, 10)]
+    [InlineData(8, 7)]
+    [InlineData(-1000, 17)]
+    public void UnquantizeWeightFromRange_WithInvalidValue_ShouldThrowArgumentOutOfRangeException(int value, int range)
+    {
+        var action = () => Quantization.UnquantizeWeightFromRange(value, range);
+
+        action.Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    [Theory]
+    [InlineData(0, -7)]
+    [InlineData(0, 32)]
+    public void QuantizeWeightToRange_WithInvalidRange_ShouldThrowArgumentOutOfRangeException(int value, int range)
+    {
+        var action = () => Quantization.QuantizeWeightToRange(value, range);
+
+        action.Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    [Theory]
+    [InlineData(0, -17)]
+    [InlineData(0, 64)]
+    public void UnquantizeWeightFromRange_WithInvalidRange_ShouldThrowArgumentOutOfRangeException(int value, int range)
+    {
+        var action = () => Quantization.UnquantizeWeightFromRange(value, range);
+
+        action.Should().Throw<ArgumentOutOfRangeException>();
     }
 }

@@ -1,181 +1,386 @@
+using AstcSharp.ColorEncoding;
 using AstcSharp.Core;
+using AstcSharp.Tests.Utils;
 using AstcSharp.TexelBlock;
+using AwesomeAssertions;
 
 namespace AstcSharp.Tests;
 
 public class LogicalAstcBlockTests
 {
-    [Fact]
-    public void SetEndpoints_Checkerboard()
+    [Theory]
+    [InlineData(FootprintType.Footprint4x4)]
+    [InlineData(FootprintType.Footprint5x5)]
+    [InlineData(FootprintType.Footprint8x8)]
+    [InlineData(FootprintType.Footprint10x10)]
+    [InlineData(FootprintType.Footprint12x12)]
+    public void Constructor_WithValidFootprintType_ShoulReturnExpectedFootprint(FootprintType footprintType)
     {
-        var lb = new LogicalBlock(Footprint.Get8x8());
-        for (int j = 0; j < 8; ++j)
-        for (int i = 0; i < 8; ++i)
-        {
-            if (((i ^ j) & 1) == 1) lb.SetWeightAt(i, j, 0);
-            else lb.SetWeightAt(i, j, 64);
-        }
+        var footprint = Footprint.FromFootprintType(footprintType);
+        var logicalBlock = new LogicalBlock(footprint);
 
-        var a = new RgbaColor(123,45,67,89);
-        var b = new RgbaColor(101,121,31,41);
-        lb.SetEndpoints(a, b, 0);
-
-        for (int j = 0; j < 8; ++j)
-        for (int i = 0; i < 8; ++i)
-        {
-            var c = lb.ColorAt(i, j);
-            if (((i ^ j) & 1) == 1)
-            {
-                Assert.Equal(a.R, c.R);
-                Assert.Equal(a.G, c.G);
-                Assert.Equal(a.B, c.B);
-                Assert.Equal(a.A, c.A);
-            }
-            else
-            {
-                Assert.Equal(b.R, c.R);
-                Assert.Equal(b.G, c.G);
-                Assert.Equal(b.B, c.B);
-                Assert.Equal(b.A, c.A);
-            }
-        }
+        logicalBlock.GetFootprint().Should().Be(footprint);
+        logicalBlock.GetFootprint().Type.Should().Be(footprintType);
     }
 
     [Fact]
-    public void SetWeightVals_DualPlaneBehavior()
+    public void GetFootprint_AfterConstruction_ShouldReturnOriginalFootprint()
     {
-        var lb = new LogicalBlock(Footprint.Get4x4());
-        Assert.Equal(Footprint.Get4x4(), lb.GetFootprint());
-        Assert.False(lb.IsDualPlane());
+        var footprint = Footprint.Get8x8();
+        var logicalBlock = new LogicalBlock(footprint);
 
-        lb.SetWeightAt(2,3,2);
-        lb.SetDualPlaneChannel(0);
-        Assert.True(lb.IsDualPlane());
+        var result = logicalBlock.GetFootprint();
 
-        var other = lb; // copy
-        Assert.Equal(2, other.WeightAt(2,3));
-        Assert.Equal(2, other.DualPlaneWeightAt(0,2,3));
-
-        lb.SetDualPlaneWeightAt(0,2,3,1);
-        Assert.Equal(2, lb.WeightAt(2,3));
-        Assert.Equal(1, lb.DualPlaneWeightAt(0,2,3));
-        for (int i = 1; i < 4; ++i) Assert.Equal(2, lb.DualPlaneWeightAt(i,2,3));
-
-        lb.SetDualPlaneChannel(-1);
-        Assert.False(lb.IsDualPlane());
-        var other2 = lb;
-        Assert.Equal(2, lb.WeightAt(2,3));
-        for (int i = 0; i < 4; ++i) Assert.Equal(lb.WeightAt(2,3), other2.DualPlaneWeightAt(i,2,3));
-    }
-
-    private static (string image_name, bool has_alpha, Footprint fp, int width, int height)[] GetSyntheticImageTestParams()
-        => new[] {
-            ("footprint_4x4", false, Footprint.Get4x4(), 32, 32),
-            ("footprint_5x4", false, Footprint.Get5x4(), 32, 32),
-            ("footprint_5x5", false, Footprint.Get5x5(), 32, 32),
-            ("footprint_6x5", false, Footprint.Get6x5(), 32, 32),
-            ("footprint_6x6", false, Footprint.Get6x6(), 32, 32),
-            ("footprint_8x5", false, Footprint.Get8x5(), 32, 32),
-            ("footprint_8x6", false, Footprint.Get8x6(), 32, 32),
-            ("footprint_10x5", false, Footprint.Get10x5(), 32, 32),
-            ("footprint_10x6", false, Footprint.Get10x6(), 32, 32),
-            ("footprint_8x8", false, Footprint.Get8x8(), 32, 32),
-            ("footprint_10x8", false, Footprint.Get10x8(), 32, 32),
-            ("footprint_10x10", false, Footprint.Get10x10(), 32, 32),
-            ("footprint_12x10", false, Footprint.Get12x10(), 32, 32),
-            ("footprint_12x12", false, Footprint.Get12x12(), 32, 32),
-        };
-
-    public static IEnumerable<object[]> SyntheticParams()
-    {
-        foreach (var p in GetSyntheticImageTestParams()) yield return new object[] { p.image_name, p.has_alpha, p.fp, p.width, p.height };
+        result.Should().Be(footprint);
     }
 
     [Theory]
-    [MemberData(nameof(SyntheticParams))]
-    public void ImageWithFootprint_Synthetic(string image_name, bool has_alpha, Footprint fp, int width, int height)
+    [InlineData(0)]
+    [InlineData(32)]
+    [InlineData(64)]
+    public void SetWeightAt_WithValidWeight_ShouldStoreCorrectly(int weight)
     {
-        var astc = FileBasedHelpers.LoadASTCFile(image_name);
+        var logicalBlock = new LogicalBlock(Footprint.Get4x4());
 
-        var our_decoded_image = ImageBuffer.Allocate(width, height, has_alpha ? 4 : 3);
+        logicalBlock.SetWeightAt(1, 1, weight);
 
-        int block_width = fp.Width;
-        int block_height = fp.Height;
+        logicalBlock.WeightAt(1, 1).Should().Be(weight);
+    }
 
-        for (int i = 0; i < astc.Length; i += PhysicalBlock.SizeInBytes)
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(65)]
+    [InlineData(100)]
+    public void SetWeightAt_WithInvalidWeight_ShouldThrowArgumentOutOfRangeException(int weight)
+    {
+        var logicalBlock = new LogicalBlock(Footprint.Get4x4());
+
+        var action = () => logicalBlock.SetWeightAt(0, 0, weight);
+
+        action.Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    [Fact]
+    public void WeightAt_WithDefaultWeights_ShouldReturnZero()
+    {
+        var logicalBlock = new LogicalBlock(Footprint.Get4x4());
+
+        var weight = logicalBlock.WeightAt(2, 2);
+
+        weight.Should().Be(0);
+    }
+
+    [Fact]
+    public void IsDualPlane_ByDefault_ShouldBeFalse()
+    {
+        var logicalBlock = new LogicalBlock(Footprint.Get4x4());
+
+        var result = logicalBlock.IsDualPlane();
+
+        result.Should().BeFalse();
+    }
+
+    [Fact]
+    public void SetDualPlaneChannel_WithValidChannel_ShouldEnableDualPlane()
+    {
+        var logicalBlock = new LogicalBlock(Footprint.Get4x4());
+
+        logicalBlock.SetDualPlaneChannel(0);
+
+        logicalBlock.IsDualPlane().Should().BeTrue();
+    }
+
+    [Fact]
+    public void SetDualPlaneChannel_WithNegativeValue_ShouldDisableDualPlane()
+    {
+        var logicalBlock = new LogicalBlock(Footprint.Get4x4());
+        logicalBlock.SetDualPlaneChannel(0);
+
+        logicalBlock.SetDualPlaneChannel(-1);
+
+        logicalBlock.IsDualPlane().Should().BeFalse();
+    }
+
+    [Fact]
+    public void SetDualPlaneWeightAt_WhenNotDualPlane_ShouldThrowInvalidOperationException()
+    {
+        var logicalBlock = new LogicalBlock(Footprint.Get4x4());
+
+        var action = () => logicalBlock.SetDualPlaneWeightAt(0, 2, 3, 1);
+
+        action.Should().Throw<InvalidOperationException>()
+            .WithMessage("Not a dual plane block");
+    }
+
+    [Fact]
+    public void SetDualPlaneWeightAt_AfterEnablingDualPlane_ShouldPreserveOriginalWeight()
+    {
+        var logicalBlock = new LogicalBlock(Footprint.Get4x4());
+        logicalBlock.SetWeightAt(2, 3, 2);
+        logicalBlock.SetDualPlaneChannel(0);
+
+        logicalBlock.SetDualPlaneWeightAt(0, 2, 3, 1);
+
+        logicalBlock.WeightAt(2, 3).Should().Be(2);
+        logicalBlock.DualPlaneWeightAt(0, 2, 3).Should().Be(1);
+    }
+
+    [Fact]
+    public void DualPlaneWeightAt_ForNonDualPlaneChannel_ShouldReturnOriginalWeight()
+    {
+        var logicalBlock = new LogicalBlock(Footprint.Get4x4());
+        logicalBlock.SetWeightAt(2, 3, 2);
+        logicalBlock.SetDualPlaneChannel(0);
+        logicalBlock.SetDualPlaneWeightAt(0, 2, 3, 1);
+
+        for (int i = 1; i < 4; ++i)
         {
-            int block_index = i / PhysicalBlock.SizeInBytes;
-            int blocks_wide = (width + block_width - 1) / block_width;
-            int block_x = block_index % blocks_wide;
-            int block_y = block_index / blocks_wide;
+            logicalBlock.DualPlaneWeightAt(i, 2, 3).Should().Be(2);
+        }
+    }
 
-            var blkSpan = astc.AsSpan(i, PhysicalBlock.SizeInBytes).ToArray();
-            var pb = PhysicalBlock.Create(new UInt128(BitConverter.ToUInt64(blkSpan, 8), BitConverter.ToUInt64(blkSpan, 0)));
-            LogicalBlock? lb = LogicalBlock.UnpackLogicalBlock(fp, pb);
-            Assert.NotNull(lb);
-            var logical_block = lb!;
+    [Fact]
+    public void DualPlaneWeightAt_WhenNotDualPlane_ShouldReturnWeightAt()
+    {
+        var logicalBlock = new LogicalBlock(Footprint.Get4x4());
+        logicalBlock.SetWeightAt(2, 3, 42);
 
-            for (int y = 0; y < block_height; ++y)
-            for (int x = 0; x < block_width; ++x)
+        var result = logicalBlock.DualPlaneWeightAt(0, 2, 3);
+
+        result.Should().Be(42);
+    }
+
+    [Fact]
+    public void SetDualPlaneWeightAt_ThenDisableDualPlane_ShouldResetToOriginalWeight()
+    {
+        var logicalBlock = new LogicalBlock(Footprint.Get4x4());
+        logicalBlock.SetWeightAt(2, 3, 2);
+        logicalBlock.SetDualPlaneChannel(0);
+        logicalBlock.SetDualPlaneWeightAt(0, 2, 3, 1);
+
+        logicalBlock.SetDualPlaneChannel(-1);
+
+        logicalBlock.IsDualPlane().Should().BeFalse();
+        logicalBlock.WeightAt(2, 3).Should().Be(2);
+        for (int i = 0; i < 4; ++i)
+        {
+            logicalBlock.DualPlaneWeightAt(i, 2, 3).Should().Be(2);
+        }
+    }
+
+    [Fact]
+    public void SetEndpoints_WithValidColors_ShouldStoreCorrectly()
+    {
+        var logicalBlock = new LogicalBlock(Footprint.Get4x4());
+        var color1 = new RgbaColor(byte.MaxValue, byte.MinValue, byte.MinValue, byte.MaxValue);
+        var color2 = new RgbaColor(byte.MinValue, byte.MaxValue, byte.MinValue, byte.MaxValue);
+
+        logicalBlock.SetEndpoints(color1, color2, 0);
+
+        // No direct getter, but we can verify through ColorAt
+        logicalBlock.SetWeightAt(0, 0, 0);
+        logicalBlock.SetWeightAt(1, 1, 64);
+
+        var colorAtMinWeight = logicalBlock.ColorAt(0, 0);
+        var colorAtMaxWeight = logicalBlock.ColorAt(1, 1);
+
+        colorAtMinWeight.R.Should().Be(color1.R);
+        colorAtMaxWeight.R.Should().BeCloseTo(color2.R, 1);
+    }
+
+    [Fact]
+    public void ColorAt_WithCheckerboardWeights_ShouldInterpolateCorrectly()
+    {
+        var logicalBlock = new LogicalBlock(Footprint.Get8x8());
+
+        // Create checkerboard weight pattern
+        for (int j = 0; j < 8; ++j)
+        {
+            for (int i = 0; i < 8; ++i)
             {
-                int px = block_width * block_x + x;
-                int py = block_height * block_y + y;
-                if (px >= width || py >= height) continue;
-
-                var decoded = logical_block.ColorAt(x, y);
-                int row = py * our_decoded_image.Stride();
-                int off = row + px * our_decoded_image.BytesPerPixel();
-                our_decoded_image.Data()[off + 0] = (byte)decoded.R;
-                our_decoded_image.Data()[off + 1] = (byte)decoded.G;
-                our_decoded_image.Data()[off + 2] = (byte)decoded.B;
-                if (has_alpha) our_decoded_image.Data()[off + 3] = (byte)decoded.A;
+                if (((i ^ j) & 1) == 1)
+                    logicalBlock.SetWeightAt(i, j, 0);
+                else
+                    logicalBlock.SetWeightAt(i, j, 64);
             }
         }
 
-        var filePath = Path.Combine("TestData", "Expected", image_name + ".bmp");
-        var decoded_image = FileBasedHelpers.LoadExpectedImage(filePath);
-        ImageUtils.CompareSumOfSquaredDifferences(decoded_image, our_decoded_image, 0.1);
-    }
+        var endpointA = new RgbaColor(123, 45, 67, 89);
+        var endpointB = new RgbaColor(101, 121, 31, 41);
+        logicalBlock.SetEndpoints(endpointA, endpointB, 0);
 
-    private static (string image_name, bool has_alpha, Footprint fp, int width, int height)[] GetRealWorldImageTestParams()
-        => new[] {
-            ("rgb_4x4", false, Footprint.Get4x4(), 224, 288),
-            ("rgb_6x6", false, Footprint.Get6x6(), 224, 288),
-            ("rgb_8x8", false, Footprint.Get8x8(), 224, 288),
-            ("rgb_12x12", false, Footprint.Get12x12(), 224, 288),
-            ("rgb_5x4", false, Footprint.Get5x4(), 224, 288),
-        };
-
-    public static IEnumerable<object[]> RealWorldParams()
-    {
-        foreach (var p in GetRealWorldImageTestParams()) yield return new object[] { p.image_name, p.has_alpha, p.fp, p.width, p.height };
-    }
-
-    [Theory]
-    [MemberData(nameof(RealWorldParams))]
-    public void ImageWithFootprint_RealWorld(string image_name, bool has_alpha, Footprint fp, int width, int height)
-    {
-        // Reuse synthetic test logic since it performs the same decode+compare
-        ImageWithFootprint_Synthetic(image_name, has_alpha, fp, width, height);
-    }
-
-    private static (string image_name, bool has_alpha, Footprint fp, int width, int height)[] GetTransparentImageTestParams()
-        => new[] {
-            ("atlas_small_4x4", true, Footprint.Get4x4(), 256, 256),
-            ("atlas_small_5x5", true, Footprint.Get5x5(), 256, 256),
-            ("atlas_small_6x6", true, Footprint.Get6x6(), 256, 256),
-            ("atlas_small_8x8", true, Footprint.Get8x8(), 256, 256),
-        };
-
-    public static IEnumerable<object[]> TransparentParams()
-    {
-        foreach (var p in GetTransparentImageTestParams()) yield return new object[] { p.image_name, p.has_alpha, p.fp, p.width, p.height };
+        for (int j = 0; j < 8; ++j)
+        {
+            for (int i = 0; i < 8; ++i)
+            {
+                var color = logicalBlock.ColorAt(i, j);
+                if (((i ^ j) & 1) == 1)
+                {
+                    // Weight 0 = first endpoint
+                    color.R.Should().Be(endpointA.R);
+                    color.G.Should().Be(endpointA.G);
+                    color.B.Should().Be(endpointA.B);
+                    color.A.Should().Be(endpointA.A);
+                }
+                else
+                {
+                    // Weight 64 = second endpoint
+                    color.R.Should().Be(endpointB.R);
+                    color.G.Should().Be(endpointB.G);
+                    color.B.Should().Be(endpointB.B);
+                    color.A.Should().Be(endpointB.A);
+                }
+            }
+        }
     }
 
     [Theory]
-    [MemberData(nameof(TransparentParams))]
-    public void ImageWithFootprint_Transparent(string image_name, bool has_alpha, Footprint fp, int width, int height)
+    [InlineData(-1, 0)]
+    [InlineData(0, -1)]
+    [InlineData(4, 0)]
+    [InlineData(0, 4)]
+    public void ColorAt_WithOutOfBoundsCoordinates_ShouldThrowArgumentOutOfRangeException(int x, int y)
     {
-        ImageWithFootprint_Synthetic(image_name, has_alpha, fp, width, height);
+        var logicalBlock = new LogicalBlock(Footprint.Get4x4());
+
+        var action = () => logicalBlock.ColorAt(x, y);
+
+        action.Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    [Fact]
+    public void SetPartition_WithValidPartition_ShouldUpdateCorrectly()
+    {
+        var footprint = Footprint.Get8x8();
+        var logicalBlock = new LogicalBlock(footprint);
+
+        // Create partition with 2 subsets, all pixels assigned to subset 0
+        var newPartition = new Partition(footprint, 2, 5)
+        {
+            assignment = Enumerable.Repeat(0, footprint.PixelCount).ToList()
+        };
+
+        logicalBlock.SetPartition(newPartition);
+
+        // Should be able to set endpoints for both valid partitions (0 and 1)
+        var redEndpoint = new RgbaColor(byte.MaxValue, byte.MinValue, byte.MinValue, byte.MaxValue);
+        var blackEndpoint = new RgbaColor(byte.MinValue, byte.MinValue, byte.MinValue, byte.MaxValue);
+        var greenEndpoint = new RgbaColor(byte.MinValue, byte.MaxValue, byte.MinValue, byte.MaxValue);
+
+        var setEndpoint0 = () => logicalBlock.SetEndpoints(redEndpoint, blackEndpoint, 0);
+        var setEndpoint1 = () => logicalBlock.SetEndpoints(greenEndpoint, blackEndpoint, 1);
+
+        setEndpoint0.Should().NotThrow();
+        setEndpoint1.Should().NotThrow();
+
+        // Should not be able to set endpoints for non-existent partition 2
+        var setEndpoint2 = () => logicalBlock.SetEndpoints(redEndpoint, blackEndpoint, 2);
+        setEndpoint2.Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    [Fact]
+    public void SetPartition_WithDifferentFootprint_ShouldThrowInvalidOperationException()
+    {
+        var logicalBlock = new LogicalBlock(Footprint.Get4x4());
+        var wrongPartition = new Partition(Footprint.Get8x8(), 1, 0)
+        {
+            assignment = Enumerable.Repeat(0, 64).ToList()
+        };
+
+        var action = () => logicalBlock.SetPartition(wrongPartition);
+
+        action.Should()
+            .Throw<InvalidOperationException>()
+            .WithMessage("New partitions may not be for a different footprint");
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(2)]
+    public void SetEndpoints_WithInvalidSubset_ShouldThrowArgumentOutOfRangeException(int subset)
+    {
+        var logicalBlock = new LogicalBlock(Footprint.Get4x4());
+        var color1 = new RgbaColor(byte.MaxValue, byte.MinValue, byte.MinValue, byte.MaxValue);
+        var color2 = new RgbaColor(byte.MinValue, byte.MaxValue, byte.MinValue, byte.MaxValue);
+
+        var action = () => logicalBlock.SetEndpoints(color1, color2, subset);
+
+        action.Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    [Fact]
+    public void UnpackLogicalBlock_WithErrorBlock_ShouldReturnNull()
+    {
+        var errorBlock = PhysicalBlock.Create(UInt128.Zero);
+
+        var result = LogicalBlock.UnpackLogicalBlock(Footprint.Get8x8(), errorBlock);
+
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public void UnpackLogicalBlock_WithVoidExtentBlock_ShouldReturnLogicalBlock()
+    {
+        var voidExtentBlock = PhysicalBlock.Create((UInt128)0xFFFFFFFFFFFFFDFCUL);
+
+        var result = LogicalBlock.UnpackLogicalBlock(Footprint.Get8x8(), voidExtentBlock);
+
+        result.Should().NotBeNull();
+        result!.GetFootprint().Should().Be(Footprint.Get8x8());
+    }
+
+    [Fact]
+    public void UnpackLogicalBlock_WithStandardBlock_ShouldReturnLogicalBlock()
+    {
+        var standardBlock = PhysicalBlock.Create((UInt128)0x0000000001FE000173UL);
+
+        var result = LogicalBlock.UnpackLogicalBlock(Footprint.Get6x5(), standardBlock);
+
+        result.Should().NotBeNull();
+        result!.GetFootprint().Should().Be(Footprint.Get6x5());
+    }
+
+    [Theory]
+    // Synthetic test images
+    [InlineData("footprint_4x4", false, FootprintType.Footprint4x4, 32, 32)]
+    [InlineData("footprint_5x4", false, FootprintType.Footprint5x4, 32, 32)]
+    [InlineData("footprint_5x5", false, FootprintType.Footprint5x5, 32, 32)]
+    [InlineData("footprint_6x5", false, FootprintType.Footprint6x5, 32, 32)]
+    [InlineData("footprint_6x6", false, FootprintType.Footprint6x6, 32, 32)]
+    [InlineData("footprint_8x5", false, FootprintType.Footprint8x5, 32, 32)]
+    [InlineData("footprint_8x6", false, FootprintType.Footprint8x6, 32, 32)]
+    [InlineData("footprint_8x8", false, FootprintType.Footprint8x8, 32, 32)]
+    [InlineData("footprint_10x5", false, FootprintType.Footprint10x5, 32, 32)]
+    [InlineData("footprint_10x6", false, FootprintType.Footprint10x6, 32, 32)]
+    [InlineData("footprint_10x8", false, FootprintType.Footprint10x8, 32, 32)]
+    [InlineData("footprint_10x10", false, FootprintType.Footprint10x10, 32, 32)]
+    [InlineData("footprint_12x10", false, FootprintType.Footprint12x10, 32, 32)]
+    [InlineData("footprint_12x12", false, FootprintType.Footprint12x12, 32, 32)]
+    // RGB without alpha images
+    [InlineData("rgb_4x4", false, FootprintType.Footprint4x4, 224, 288)]
+    [InlineData("rgb_5x4", false, FootprintType.Footprint5x4, 224, 288)]
+    [InlineData("rgb_6x6", false, FootprintType.Footprint6x6, 224, 288)]
+    [InlineData("rgb_8x8", false, FootprintType.Footprint8x8, 224, 288)]
+    [InlineData("rgb_12x12", false, FootprintType.Footprint12x12, 224, 288)]
+    // RGB with alpha images
+    [InlineData("atlas_small_4x4", true, FootprintType.Footprint4x4, 256, 256)]
+    [InlineData("atlas_small_5x5", true, FootprintType.Footprint5x5, 256, 256)]
+    [InlineData("atlas_small_6x6", true, FootprintType.Footprint6x6, 256, 256)]
+    [InlineData("atlas_small_8x8", true, FootprintType.Footprint8x8, 256, 256)]
+    public void UnpackLogicalBlock_FromImage_ShouldDecodeCorrectly(
+        string imageName,
+        bool hasAlpha,
+        FootprintType footprintType,
+        int width,
+        int height)
+    {
+        var footprint = Footprint.FromFootprintType(footprintType);
+        var astcData = FileBasedHelpers.LoadASTCFile(imageName);
+        
+        var decodedImage = ImageBuffer.FromAstcBuffer(footprint, astcData, width, height, hasAlpha);
+
+        var expectedPath = Path.Combine("TestData", "Expected", imageName + ".bmp");
+        var expectedImage = FileBasedHelpers.LoadExpectedImage(expectedPath);
+        ImageUtils.CompareSumOfSquaredDifferences(expectedImage, decodedImage, 0.1);
     }
 }
