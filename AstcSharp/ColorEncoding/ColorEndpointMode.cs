@@ -11,7 +11,7 @@ namespace AstcSharp.ColorEncoding;
 /// <item>The data range. For example, low dynamic range or High Dynamic Range</item>
 /// </list>
 /// </remarks>
-public enum ColorEndpointMode
+internal enum ColorEndpointMode
 {
     LdrLumaDirect = 0,
     LdrLumaBaseOffset,

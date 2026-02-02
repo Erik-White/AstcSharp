@@ -1,6 +1,6 @@
 namespace AstcSharp.Core;
 
-public record RgbaColor : RgbColor
+internal record RgbaColor : RgbColor
 {
     public static new int BytesPerPixel => 4;
 

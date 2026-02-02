@@ -15,7 +15,7 @@ public class EndpointCodecTests
     [InlineData(EndpointEncodingMode.BaseScaleRgba)]
     [InlineData(EndpointEncodingMode.DirectRbg)]
     [InlineData(EndpointEncodingMode.DirectRgba)]
-    public void EncodeColorsForMode_WithVariousRanges_ShouldProduceValidQuantizedValues(EndpointEncodingMode mode)
+    internal void EncodeColorsForMode_WithVariousRanges_ShouldProduceValidQuantizedValues(EndpointEncodingMode mode)
     {
         var low = new RgbaColor(0, 0, 0, 0);
         var high = new RgbaColor(255, 255, 255, 255);
@@ -40,7 +40,7 @@ public class EndpointCodecTests
     [InlineData(EndpointEncodingMode.BaseScaleRgba)]
     [InlineData(EndpointEncodingMode.DirectRbg)]
     [InlineData(EndpointEncodingMode.DirectRgba)]
-    public void EncodeDecodeColors_WithBlackAndWhite_ShouldPreserveColors(EndpointEncodingMode mode)
+    internal void EncodeDecodeColors_WithBlackAndWhite_ShouldPreserveColors(EndpointEncodingMode mode)
     {
         var white = new RgbaColor(255, 255, 255, 255);
         var black = new RgbaColor(0, 0, 0, 255);
@@ -252,7 +252,7 @@ public class EndpointCodecTests
 
     [Theory]
     [MemberData(nameof(RgbBaseOffsetColorPairs))]
-    public void DecodeColorsForMode_WithRgbBaseOffset_AndSpecificColorPairs_ShouldDecodeCorrectly(
+    internal void DecodeColorsForMode_WithRgbBaseOffset_AndSpecificColorPairs_ShouldDecodeCorrectly(
         RgbaColor expectedLow, RgbaColor expectedHigh)
     {
         var values = EncodeRgbBaseOffset(expectedLow, expectedHigh);

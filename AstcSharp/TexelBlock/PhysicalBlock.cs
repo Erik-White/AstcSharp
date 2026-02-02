@@ -7,7 +7,7 @@ namespace AstcSharp.TexelBlock;
 /// <summary>
 /// A physical ASTC texel block (128 bits)
 /// </summary>
-public abstract class PhysicalBlock
+internal abstract class PhysicalBlock
 {
     public const int SizeInBytes = 16;
 

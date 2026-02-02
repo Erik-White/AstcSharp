@@ -1,6 +1,6 @@
 namespace AstcSharp.ColorEncoding;
 
-public static class EndpointEncodingModeExtensions
+internal static class EndpointEncodingModeExtensions
 {
     public static int GetValuesCount(this EndpointEncodingMode mode) => mode switch
     {

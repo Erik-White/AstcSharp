@@ -1,6 +1,6 @@
 namespace AstcSharp.ColorEncoding;
 
-public static class ColorEndpointModeExtensions
+internal static class ColorEndpointModeExtensions
 {
     public static int GetEndpointModeClass(this ColorEndpointMode mode)
         => (int)mode / 4;

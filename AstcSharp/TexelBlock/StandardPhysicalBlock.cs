@@ -7,7 +7,7 @@ namespace AstcSharp.TexelBlock;
 /// <summary>
 /// A standard (non-void-extent) physical ASTC texel block
 /// </summary>
-public sealed class StandardPhysicalBlock : PhysicalBlock
+internal sealed class StandardPhysicalBlock : PhysicalBlock
 {
     public StandardPhysicalBlock(UInt128 bits) : base(bits)
     {

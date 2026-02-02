@@ -6,7 +6,7 @@ namespace AstcSharp.TexelBlock;
 /// <summary>
 /// A physical ASTC void extent block representing a constant color region
 /// </summary>
-public sealed class VoidExtentPhysicalBlock : PhysicalBlock
+internal sealed class VoidExtentPhysicalBlock : PhysicalBlock
 {
     public VoidExtentPhysicalBlock(UInt128 bits) : base(bits)
     {

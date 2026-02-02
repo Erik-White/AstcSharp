@@ -1,6 +1,6 @@
 namespace AstcSharp.ColorEncoding;
 
-public enum EndpointEncodingMode
+internal enum EndpointEncodingMode
 {
     DirectLuma,
     DirectLumaAlpha,

@@ -1,6 +1,6 @@
 namespace AstcSharp.Core;
 
-public static class UInt128Extensions
+internal static class UInt128Extensions
 {
     /// <summary>
     /// The lower 64 bits of the <see cref="UInt128"/> value

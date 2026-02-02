@@ -2,7 +2,7 @@ using AstcSharp.Core;
 
 namespace AstcSharp.ColorEncoding;
 
-public static class RgbaColorExtensions
+internal static class RgbaColorExtensions
 {
     /// <summary>
     /// Uses the value in the blue channel to tint the red and green
