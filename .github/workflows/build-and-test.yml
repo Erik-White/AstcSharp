@@ -33,13 +33,13 @@ jobs:
           dotnet-version: '8.x'
 
       - name: Restore dependencies
-        run: dotnet restore
+        run: dotnet restore AstcSharp.sln
 
       - name: Build
-        run: dotnet build --configuration Release --no-restore
+        run: dotnet build AstcSharp.sln --configuration Release --no-restore
 
       - name: Test
-        run: dotnet test --configuration Release --no-build --verbosity normal --logger "trx;LogFileName=test-results.trx"
+        run: dotnet test AstcSharp.sln --configuration Release --no-build --verbosity normal --logger "trx;LogFileName=test-results.trx"
 
       - name: Export Failed Output Images
         uses: actions/upload-artifact@v4
