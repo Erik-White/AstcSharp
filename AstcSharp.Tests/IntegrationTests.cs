@@ -5,17 +5,16 @@ namespace AstcSharp.Tests;
 
 public class IntegrationTests
 {
+    // TODO: Create proper test cases for this
     [Fact]
     public void DecompressToImage_WithAllTestdataFiles_ShouldDecodeSuccessfully()
     {
-        // Arrange
         string testdataDir = Path.Combine("TestData", "Input");
         Directory.Exists(testdataDir).Should().BeTrue($"Testdata directory should exist: {testdataDir}");
 
         var files = Directory.GetFiles(testdataDir, "*.astc");
         files.Should().NotBeEmpty("testdata directory should contain ASTC files");
 
-        // Act & Assert
         foreach (var file in files)
         {
             var bytes = File.ReadAllBytes(file);

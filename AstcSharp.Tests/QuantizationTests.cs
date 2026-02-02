@@ -5,23 +5,19 @@ namespace AstcSharp.Tests;
 
 public class QuantizationTests
 {
-    #region Range Validation Tests
-
     [Fact]
     public void QuantizeCEValueToRange_WithMaxValue_ShouldNotExceedRange()
     {
-        // Act & Assert
-        for (int range = Quantization.kEndpointRangeMinValue; range < 256; ++range)
+        for (int range = Quantization.kEndpointRangeMinValue; range <= byte.MaxValue; range++)
         {
-            Quantization.QuantizeCEValueToRange(255, range).Should().BeLessOrEqualTo(range);
+            Quantization.QuantizeCEValueToRange(byte.MaxValue, range).Should().BeLessOrEqualTo(range);
         }
     }
 
     [Fact]
     public void QuantizeWeightToRange_WithMaxValue_ShouldNotExceedRange()
     {
-        // Act & Assert
-        for (int range = 1; range < Quantization.kWeightRangeMaxValue; ++range)
+        for (int range = 1; range < Quantization.kWeightRangeMaxValue; range++)
         {
             Quantization.QuantizeWeightToRange(64, range).Should().BeLessOrEqualTo(range);
         }
@@ -30,11 +26,9 @@ public class QuantizationTests
     [Fact]
     public void QuantizeCEValueToRange_WithVariousValues_ShouldNotExceedRange()
     {
-        // Arrange
         var ranges = BoundedIntegerSequenceCodec.MaxRanges;
         var testValues = new[] { 0, 4, 15, 22, 66, 91, 126 };
 
-        // Act & Assert
         foreach (var range in ranges.Where(r => r >= Quantization.kEndpointRangeMinValue))
         {
             foreach (var value in testValues)
@@ -47,11 +41,9 @@ public class QuantizationTests
     [Fact]
     public void QuantizeWeightToRange_WithVariousValues_ShouldNotExceedRange()
     {
-        // Arrange
         var ranges = BoundedIntegerSequenceCodec.MaxRanges;
         var testValues = new[] { 0, 4, 15, 22 };
 
-        // Act & Assert
         foreach (var range in ranges.Where(r => r <= Quantization.kWeightRangeMaxValue))
         {
             foreach (var value in testValues)
@@ -61,17 +53,11 @@ public class QuantizationTests
         }
     }
 
-    #endregion
-
-    #region Reversibility Tests
-
     [Fact]
     public void QuantizeWeight_ThenUnquantize_ShouldReturnOriginalQuantizedValue()
     {
-        // Arrange
         var ranges = BoundedIntegerSequenceCodec.MaxRanges;
 
-        // Act & Assert
         foreach (var range in ranges.Where(r => r <= Quantization.kWeightRangeMaxValue))
         {
             for (int quantizedValue = 0; quantizedValue <= range; ++quantizedValue)
@@ -87,10 +73,8 @@ public class QuantizationTests
     [Fact]
     public void QuantizeCEValue_ThenUnquantize_ShouldReturnOriginalQuantizedValue()
     {
-        // Arrange
         var ranges = BoundedIntegerSequenceCodec.MaxRanges;
 
-        // Act & Assert
         foreach (var range in ranges.Where(r => r >= Quantization.kEndpointRangeMinValue))
         {
             for (int quantizedValue = 0; quantizedValue <= range; ++quantizedValue)
@@ -103,10 +87,6 @@ public class QuantizationTests
         }
     }
 
-    #endregion
-
-    #region Unquantization Output Range Tests
-
     [Theory]
     [InlineData(2, 7)]
     [InlineData(7, 7)]
@@ -117,10 +97,8 @@ public class QuantizationTests
     [InlineData(255, 255)]
     public void UnquantizeCEValueFromRange_ShouldProduceValidByteValue(int quantizedValue, int range)
     {
-        // Act
         var result = Quantization.UnquantizeCEValueFromRange(quantizedValue, range);
 
-        // Assert
         result.Should().BeLessThan(256);
     }
 
@@ -131,26 +109,18 @@ public class QuantizationTests
     [InlineData(29, 31)]
     public void UnquantizeWeightFromRange_ShouldNotExceed64(int quantizedValue, int range)
     {
-        // Act
         var result = Quantization.UnquantizeWeightFromRange(quantizedValue, range);
 
-        // Assert
         result.Should().BeLessOrEqualTo(64);
     }
-
-    #endregion
-
-    #region Upper Bound Range Tests
 
     [Fact]
     public void Quantize_WithDesiredRange_ShouldMatchExpectedRangeOutput()
     {
-        // Arrange
         var ranges = BoundedIntegerSequenceCodec.MaxRanges;
         int rangeIndex = 0;
 
-        // Act & Assert
-        for (int desiredRange = 1; desiredRange < 256; ++desiredRange)
+        for (int desiredRange = 1; desiredRange <= byte.MaxValue; ++desiredRange)
         {
             while (rangeIndex + 1 < ranges.Length && ranges[rangeIndex + 1] <= desiredRange)
                 ++rangeIndex;
@@ -183,34 +153,24 @@ public class QuantizationTests
         rangeIndex.Should().Be(ranges.Length - 1);
     }
 
-    #endregion
-
-    #region Identity Tests
-
     [Fact]
-    public void QuantizeCEValueToRange_WithRange255_ShouldBeIdentity()
+    public void QuantizeCEValueToRange_WithRangeByteMax_ShouldBeIdentity()
     {
-        // Act & Assert
-        for (int value = 0; value < 256; ++value)
+        for (int value = byte.MinValue; value <= byte.MaxValue; value++)
         {
-            Quantization.QuantizeCEValueToRange(value, 255).Should().Be(value);
+            Quantization.QuantizeCEValueToRange(value, byte.MaxValue).Should().Be(value);
         }
     }
-
-    #endregion
-
-    #region Monotonicity Tests
 
     [Fact]
     public void QuantizeCEValueToRange_ShouldBeMonotonicIncreasing()
     {
-        // Act & Assert
-        for (int numBits = 3; numBits < 8; ++numBits)
+        for (int numBits = 3; numBits < 8; numBits++)
         {
             int range = (1 << numBits) - 1;
             int lastQuantizedValue = -1;
 
-            for (int value = 0; value < 256; ++value)
+            for (int value = byte.MinValue; value <= byte.MaxValue; value++)
             {
                 int quantizedValue = Quantization.QuantizeCEValueToRange(value, range);
 
@@ -223,9 +183,8 @@ public class QuantizationTests
     }
 
     [Fact]
-    public void QuantizeWeightToRange_ShouldBeMonotonicIncreasing()
+    public void QuantizeWeightToRange_ShouldBeMonotonicallyIncreasing()
     {
-        // Act & Assert
         for (int numBits = 3; numBits < 8; ++numBits)
         {
             int range = (1 << numBits) - 1;
@@ -247,14 +206,9 @@ public class QuantizationTests
         }
     }
 
-    #endregion
-
-    #region Small Bit Packing Tests
-
     [Fact]
     public void QuantizeCEValueToRange_WithSmallBitRanges_ShouldQuantizeLowValuesToZero()
     {
-        // Act & Assert
         for (int numBits = 1; numBits <= 8; ++numBits)
         {
             int range = (1 << numBits) - 1;
@@ -273,8 +227,7 @@ public class QuantizationTests
     [Fact]
     public void QuantizeWeightToRange_WithSmallBitRanges_ShouldQuantizeLowValuesToZero()
     {
-        // Act & Assert
-        for (int numBits = 1; numBits <= 8; ++numBits)
+        for (int numBits = 1; numBits <= 8; numBits++)
         {
             int range = (1 << numBits) - 1;
 
@@ -289,47 +242,32 @@ public class QuantizationTests
         }
     }
 
-    #endregion
-
-    #region Specific Quint/Trit Packing Tests
-
     [Fact]
     public void UnquantizeWeightFromRange_WithQuintRange_ShouldMatchExpected()
     {
-        // Arrange
         var values = new List<int> { 4, 6, 4, 6, 7, 5, 7, 5 };
         var quintExpected = new List<int> { 14, 21, 14, 21, 43, 50, 43, 50 };
 
-        // Act
         var quantized = values.Select(v => Quantization.UnquantizeWeightFromRange(v, 9)).ToList();
 
-        // Assert
         quantized.Should().Equal(quintExpected);
     }
 
     [Fact]
     public void UnquantizeWeightFromRange_WithTritRange_ShouldMatchExpected()
     {
-        // Arrange
         var values = new List<int> { 4, 6, 4, 6, 7, 5, 7, 5 };
         var tritExpected = new List<int> { 5, 23, 5, 23, 41, 59, 41, 59 };
 
-        // Act
         var quantized = values.Select(v => Quantization.UnquantizeWeightFromRange(v, 11)).ToList();
 
-        // Assert
         quantized.Should().Equal(tritExpected);
     }
-
-    #endregion
-
-    #region Invalid Input Tests
 
     [Fact]
     public void QuantizeCEValueToRange_WithInvalidMinRange_ShouldThrowArgumentOutOfRangeException()
     {
-        // Act & Assert
-        for (int range = 0; range < Quantization.kEndpointRangeMinValue; ++range)
+        for (int range = 0; range < Quantization.kEndpointRangeMinValue; range++)
         {
             var action = () => Quantization.QuantizeCEValueToRange(0, range);
             action.Should().Throw<ArgumentOutOfRangeException>();
@@ -339,8 +277,7 @@ public class QuantizationTests
     [Fact]
     public void UnquantizeCEValueFromRange_WithInvalidMinRange_ShouldThrowArgumentOutOfRangeException()
     {
-        // Act & Assert
-        for (int range = 0; range < Quantization.kEndpointRangeMinValue; ++range)
+        for (int range = 0; range < Quantization.kEndpointRangeMinValue; range++)
         {
             var action = () => Quantization.UnquantizeCEValueFromRange(0, range);
             action.Should().Throw<ArgumentOutOfRangeException>();
@@ -350,20 +287,16 @@ public class QuantizationTests
     [Fact]
     public void QuantizeWeightToRange_WithZeroRange_ShouldThrowArgumentOutOfRangeException()
     {
-        // Act
         var action = () => Quantization.QuantizeWeightToRange(0, 0);
 
-        // Assert
         action.Should().Throw<ArgumentOutOfRangeException>();
     }
 
     [Fact]
     public void UnquantizeWeightFromRange_WithZeroRange_ShouldThrowArgumentOutOfRangeException()
     {
-        // Act
         var action = () => Quantization.UnquantizeWeightFromRange(0, 0);
 
-        // Assert
         action.Should().Throw<ArgumentOutOfRangeException>();
     }
 
@@ -373,10 +306,8 @@ public class QuantizationTests
     [InlineData(10000, 17)]
     public void QuantizeCEValueToRange_WithInvalidValue_ShouldThrowArgumentOutOfRangeException(int value, int range)
     {
-        // Act
         var action = () => Quantization.QuantizeCEValueToRange(value, range);
 
-        // Assert
         action.Should().Throw<ArgumentOutOfRangeException>();
     }
 
@@ -386,10 +317,8 @@ public class QuantizationTests
     [InlineData(-1000, 17)]
     public void UnquantizeCEValueFromRange_WithInvalidValue_ShouldThrowArgumentOutOfRangeException(int value, int range)
     {
-        // Act
         var action = () => Quantization.UnquantizeCEValueFromRange(value, range);
 
-        // Assert
         action.Should().Throw<ArgumentOutOfRangeException>();
     }
 
@@ -398,10 +327,8 @@ public class QuantizationTests
     [InlineData(0, 257)]
     public void QuantizeCEValueToRange_WithInvalidRange_ShouldThrowArgumentOutOfRangeException(int value, int range)
     {
-        // Act
         var action = () => Quantization.QuantizeCEValueToRange(value, range);
 
-        // Assert
         action.Should().Throw<ArgumentOutOfRangeException>();
     }
 
@@ -410,10 +337,8 @@ public class QuantizationTests
     [InlineData(0, 256)]
     public void UnquantizeCEValueFromRange_WithInvalidRange_ShouldThrowArgumentOutOfRangeException(int value, int range)
     {
-        // Act
         var action = () => Quantization.UnquantizeCEValueFromRange(value, range);
 
-        // Assert
         action.Should().Throw<ArgumentOutOfRangeException>();
     }
 
@@ -423,10 +348,8 @@ public class QuantizationTests
     [InlineData(10000, 17)]
     public void QuantizeWeightToRange_WithInvalidValue_ShouldThrowArgumentOutOfRangeException(int value, int range)
     {
-        // Act
         var action = () => Quantization.QuantizeWeightToRange(value, range);
 
-        // Assert
         action.Should().Throw<ArgumentOutOfRangeException>();
     }
 
@@ -436,10 +359,8 @@ public class QuantizationTests
     [InlineData(-1000, 17)]
     public void UnquantizeWeightFromRange_WithInvalidValue_ShouldThrowArgumentOutOfRangeException(int value, int range)
     {
-        // Act
         var action = () => Quantization.UnquantizeWeightFromRange(value, range);
 
-        // Assert
         action.Should().Throw<ArgumentOutOfRangeException>();
     }
 
@@ -448,10 +369,8 @@ public class QuantizationTests
     [InlineData(0, 32)]
     public void QuantizeWeightToRange_WithInvalidRange_ShouldThrowArgumentOutOfRangeException(int value, int range)
     {
-        // Act
         var action = () => Quantization.QuantizeWeightToRange(value, range);
 
-        // Assert
         action.Should().Throw<ArgumentOutOfRangeException>();
     }
 
@@ -460,12 +379,8 @@ public class QuantizationTests
     [InlineData(0, 64)]
     public void UnquantizeWeightFromRange_WithInvalidRange_ShouldThrowArgumentOutOfRangeException(int value, int range)
     {
-        // Act
         var action = () => Quantization.UnquantizeWeightFromRange(value, range);
 
-        // Assert
         action.Should().Throw<ArgumentOutOfRangeException>();
     }
-
-    #endregion
 }

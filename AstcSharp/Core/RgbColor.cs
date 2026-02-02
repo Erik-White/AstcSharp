@@ -3,12 +3,13 @@ namespace AstcSharp.Core;
 public record RgbColor
 {
     public static int BytesPerPixel => 3;
+
     public byte R { get; }
     public byte G { get; }
     public byte B { get; }
 
     /// <summary>
-    /// The average of the R, G, and B channels
+    /// The rounded arithmetic mean of the R, G, and B channels
     /// </summary>
     public byte Average
     {
@@ -33,13 +34,14 @@ public record RgbColor
         B = b;
     }
 
-    public virtual int this[int i] => i switch
-    {
-        0 => R,
-        1 => G,
-        2 => B,
-        _ => throw new IndexOutOfRangeException()
-    };
+    public virtual int this[int i]
+        => i switch
+        {
+            0 => R,
+            1 => G,
+            2 => B,
+            _ => throw new ArgumentOutOfRangeException(nameof(i), $"Index must be between 0 and {BytesPerPixel - 1}. Actual value: {i}.")
+        };
 
     public static int SquaredError(RgbColor a, RgbColor b)
         => SquaredError(a, b, BytesPerPixel);

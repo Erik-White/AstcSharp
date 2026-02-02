@@ -1,5 +1,3 @@
-using Microsoft.VisualStudio.TestPlatform.Utilities;
-
 namespace AstcSharp.Tests;
 
 internal class ImageBuffer

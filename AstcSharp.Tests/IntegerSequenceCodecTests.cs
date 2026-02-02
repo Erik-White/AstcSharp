@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using AstcSharp.BiseEncoding;
 using AstcSharp.IO;
 using FluentAssertions;
@@ -6,12 +7,10 @@ namespace AstcSharp.Tests;
 
 public class IntegerSequenceCodecTests
 {
-    #region GetPackingModeBitCount Tests
-
     [Fact]
-    public void GetPackingModeBitCount_ForRanges1To31_ShouldNotReturnUnknownMode()
+    [Description("1 to 31 are the densest packing of valid encodings and those supported by the codec.")]
+    public void GetPackingModeBitCount_ForValidRange_ShouldNotReturnUnknownMode()
     {
-        // Act & Assert
         for (int i = 1; i < 32; ++i)
         {
             var (mode, _) = BoundedIntegerSequenceCodec.GetPackingModeBitCount(i);
@@ -19,13 +18,11 @@ public class IntegerSequenceCodecTests
         }
     }
 
-
     [Fact]
-    public void GetPackingModeBitCount_ForAllRanges1To31_ShouldMatchExpectedValues()
+    public void GetPackingModeBitCount_ForValidRange_ShouldMatchExpectedValues()
     {
-        // Arrange
-        (BiseEncodingMode Mode, int BitCount)[] expected = new[]
-        {
+        (BiseEncodingMode Mode, int BitCount)[] expected =
+        [
             (BiseEncodingMode.BitEncoding, 1),    // Range 1
             (BiseEncodingMode.TritEncoding, 0),   // Range 2
             (BiseEncodingMode.BitEncoding, 2),    // Range 3
@@ -57,9 +54,8 @@ public class IntegerSequenceCodecTests
             (BiseEncodingMode.BitEncoding, 5),    // Range 29
             (BiseEncodingMode.BitEncoding, 5),    // Range 30
             (BiseEncodingMode.BitEncoding, 5)     // Range 31
-        };
+        ];
 
-        // Act & Assert
         for (int i = 1; i < 32; ++i)
         {
             var (mode, bitCount) = BoundedIntegerSequenceCodec.GetPackingModeBitCount(i);
@@ -75,16 +71,10 @@ public class IntegerSequenceCodecTests
     [InlineData(256)]
     public void GetPackingModeBitCount_WithInvalidRange_ShouldThrowArgumentOutOfRangeException(int range)
     {
-        // Act
         var action = () => BoundedIntegerSequenceCodec.GetPackingModeBitCount(range);
 
-        // Assert
         action.Should().Throw<ArgumentOutOfRangeException>();
     }
-
-    #endregion
-
-    #region GetBitCount Tests
 
     [Theory]
     [InlineData(1)]
@@ -93,11 +83,9 @@ public class IntegerSequenceCodecTests
     [InlineData(63)]
     public void GetBitCount_WithBitEncodingMode1Bit_ShouldReturnValueCount(int valueCount)
     {
-        // Act
         var bitCount = BoundedIntegerSequenceCodec.GetBitCount(BiseEncodingMode.BitEncoding, valueCount, 1);
         var bitCountForRange = BoundedIntegerSequenceCodec.GetBitCountForRange(valueCount, 1);
 
-        // Assert
         bitCount.Should().Be(valueCount);
         bitCountForRange.Should().Be(valueCount);
     }
@@ -109,92 +97,73 @@ public class IntegerSequenceCodecTests
     [InlineData(32, 64)]
     public void GetBitCount_WithBitEncodingMode2Bits_ShouldReturnTwiceValueCount(int valueCount, int expected)
     {
-        // Act
         var bitCount = BoundedIntegerSequenceCodec.GetBitCount(BiseEncodingMode.BitEncoding, valueCount, 2);
         var bitCountForRange = BoundedIntegerSequenceCodec.GetBitCountForRange(valueCount, 3);
 
-        // Assert
         bitCount.Should().Be(expected);
         bitCountForRange.Should().Be(expected);
     }
 
     [Fact]
-    public void GetBitCount_WithTritEncoding15Values_ShouldCalculateCorrectly()
+    public void GetBitCount_WithTritEncoding15Values_ShouldReturnExpectedBitCount()
     {
-        // Arrange
         const int valueCount = 15;
         const int bits = 3;
-        int expected = 8 * 3 + 15 * 3;  // 69 bits
+        int expectedBitCount = 8 * 3 + 15 * 3; // 69 bits
 
-        // Act
         var bitCount = BoundedIntegerSequenceCodec.GetBitCount(BiseEncodingMode.TritEncoding, valueCount, bits);
         var bitCountForRange = BoundedIntegerSequenceCodec.GetBitCountForRange(valueCount, 23);
 
-        // Assert
-        bitCount.Should().Be(expected);
+        bitCount.Should().Be(expectedBitCount);
         bitCountForRange.Should().Be(bitCount);
     }
 
     [Fact]
-    public void GetBitCount_WithTritEncoding13Values_ShouldCalculateCorrectly()
+    public void GetBitCount_WithTritEncoding13Values_ShouldReturnExpectedBitCount()
     {
-        // Arrange
         const int valueCount = 13;
         const int bits = 2;
-        const int expected = 47;
+        const int expectedBitCount = 47;
 
-        // Act
         var bitCount = BoundedIntegerSequenceCodec.GetBitCount(BiseEncodingMode.TritEncoding, valueCount, bits);
         var bitCountForRange = BoundedIntegerSequenceCodec.GetBitCountForRange(valueCount, 11);
 
-        // Assert
-        bitCount.Should().Be(expected);
+        bitCount.Should().Be(expectedBitCount);
         bitCountForRange.Should().Be(bitCount);
     }
 
     [Fact]
-    public void GetBitCount_WithQuintEncoding6Values_ShouldCalculateCorrectly()
+    public void GetBitCount_WithQuintEncoding6Values_ShouldReturnExpectedBitCount()
     {
-        // Arrange
         const int valueCount = 6;
         const int bits = 4;
-        int expected = 7 * 2 + 6 * 4;  // 38 bits
+        int expectedBitCount = 7 * 2 + 6 * 4;  // 38 bits
 
-        // Act
         var bitCount = BoundedIntegerSequenceCodec.GetBitCount(BiseEncodingMode.QuintEncoding, valueCount, bits);
         var bitCountForRange = BoundedIntegerSequenceCodec.GetBitCountForRange(valueCount, 79);
 
-        // Assert
-        bitCount.Should().Be(expected);
+        bitCount.Should().Be(expectedBitCount);
         bitCountForRange.Should().Be(bitCount);
     }
 
     [Fact]
-    public void GetBitCount_WithQuintEncoding7Values_ShouldCalculateCorrectly()
+    public void GetBitCount_WithQuintEncoding7Values_ShouldReturnExpectedBitCount()
     {
-        // Arrange
         const int valueCount = 7;
         const int bits = 3;
-        int expected = 7 * 2 +  // First two quint blocks
+        int expectedBitCount = 7 * 2 +  // First two quint blocks
                        6 * 3 +  // First two blocks of bits
                        3 +      // Last quint block without high order four bits
                        3;       // Last block with one set of three bits
 
-        // Act
         var bitCount = BoundedIntegerSequenceCodec.GetBitCount(BiseEncodingMode.QuintEncoding, valueCount, bits);
 
-        // Assert
-        bitCount.Should().Be(expected);
+        bitCount.Should().Be(expectedBitCount);
     }
 
-    #endregion
-
-    #region Encode/Decode Tests - Quint
-
     [Fact]
-    public void EncodeDecode_WithQuintValues_ShouldRoundTripCorrectly()
+    public void EncodeDecode_WithQuintValues_ShouldEncodeAndDecodeExpectedValues()
     {
-        // Arrange
         const int valueRange = 79;
         var encoder = new BoundedIntegerSequenceEncoder(valueRange);
         var values = new[] { 3, 79, 37 };
@@ -202,62 +171,55 @@ public class IntegerSequenceCodecTests
         foreach (var value in values)
             encoder.AddValue(value);
 
-        // Act - Encode
+        // Encode
         var bitSink = new BitStream();
         encoder.Encode(ref bitSink);
 
-        // Assert - Verify encoded data
+        // Verify encoded data
         bitSink.Bits.Should().Be(19);
         bitSink.TryGetBits<ulong>(19, out var encoded).Should().BeTrue();
         encoded.Should().Be(0x4A7D3UL);
 
-        // Act - Decode
+        // Decode
         var bitSrc = new BitStream(encoded, 19);
         var decoder = new BoundedIntegerSequenceDecoder(valueRange);
         var decoded = decoder.Decode(3, ref bitSrc);
 
-        // Assert
         decoded.Should().Equal(values);
     }
 
     [Fact]
     public void DecodeThenEncode_WithQuintValues_ShouldPreserveEncoding()
     {
-        // Arrange
         var expectedValues = new[] { 16, 18, 17, 4, 7, 14, 10, 0 };
         const ulong encoding = 0x2b9c83dc;
         const int range = 19;
 
-        // Act - Decode
+        // Decode
         var bitSrc = new BitStream(encoding, 64);
         var decoder = new BoundedIntegerSequenceDecoder(range);
         var decoded = decoder.Decode(expectedValues.Length, ref bitSrc);
 
-        // Assert decoded values
+        // Check decoded values
         decoded.Should().HaveCount(expectedValues.Length);
         decoded.Should().Equal(expectedValues);
 
-        // Act - Re-encode
+        // Re-encode
         var bitSink = new BitStream();
         var encoder = new BoundedIntegerSequenceEncoder(range);
         foreach (var value in expectedValues)
             encoder.AddValue(value);
         encoder.Encode(ref bitSink);
 
-        // Assert re-encoded matches original
+        // Re-encoded should match original
         bitSink.Bits.Should().Be(35);
         bitSink.TryGetBits<ulong>(35, out var reencoded).Should().BeTrue();
         reencoded.Should().Be(encoding);
     }
 
-    #endregion
-
-    #region Encode/Decode Tests - Trit
-
     [Fact]
-    public void EncodeDecode_WithTritValues_ShouldRoundTripCorrectly()
+    public void EncodeDecode_WithTritValues_ShouldEncodeAndDecodeExpectedValues()
     {
-        // Arrange
         const int valueRange = 11;
         var encoder = new BoundedIntegerSequenceEncoder(valueRange);
         var values = new[] { 7, 5, 3, 6, 10 };
@@ -265,42 +227,40 @@ public class IntegerSequenceCodecTests
         foreach (var value in values)
             encoder.AddValue(value);
 
-        // Act - Encode
+        // Encode
         var bitSink = new BitStream();
         encoder.Encode(ref bitSink);
 
-        // Assert - Verify encoded data
+        // Verify encoded data
         bitSink.Bits.Should().Be(18);
         bitSink.TryGetBits<ulong>(18, out var encoded).Should().BeTrue();
         encoded.Should().Be(0x37357UL);
 
-        // Act - Decode
+        // Decode
         var bitSrc = new BitStream(encoded, 19);
         var decoder = new BoundedIntegerSequenceDecoder(valueRange);
         var decoded = decoder.Decode(5, ref bitSrc);
 
-        // Assert
         decoded.Should().Equal(values);
     }
 
     [Fact]
     public void DecodeThenEncode_WithTritValues_ShouldPreserveEncoding()
     {
-        // Arrange
         var expectedValues = new[] { 6, 0, 0, 2, 0, 0, 0, 0, 8, 0, 0, 0, 0, 8, 8, 0 };
         const ulong encoding = 0x0004c0100001006UL;
         const int range = 11;
 
-        // Act - Decode
+        // Decode
         var bitSrc = new BitStream(encoding, 64);
         var decoder = new BoundedIntegerSequenceDecoder(range);
         var decoded = decoder.Decode(expectedValues.Length, ref bitSrc);
 
-        // Assert decoded values
+        // Check decoded values
         decoded.Should().HaveCount(expectedValues.Length);
         decoded.Should().Equal(expectedValues);
 
-        // Act - Re-encode
+        // Re-encode
         var bitSink = new BitStream();
         var encoder = new BoundedIntegerSequenceEncoder(range);
         foreach (var value in expectedValues)
@@ -313,19 +273,15 @@ public class IntegerSequenceCodecTests
         reencoded.Should().Be(encoding);
     }
 
-    #endregion
 
-    #region Randomized Round-Trip Tests
 
     [Fact]
     public void EncodeDecode_WithRandomValues_ShouldAlwaysRoundTripCorrectly()
     {
-        // Arrange
-        var random = new Random(unchecked((int)0xbad7357));
+        var random = new Random(unchecked(0xbad7357));
         const int testCount = 1600;
 
-        // Act & Assert
-        for (int test = 0; test < testCount; ++test)
+        for (int test = 0; test < testCount; test++)
         {
             int valueCount = 4 + random.Next(0, 256) % 44;
             int range = 1 + random.Next(0, 256) % 63;
@@ -335,7 +291,7 @@ public class IntegerSequenceCodecTests
 
             // Generate random values
             var generated = new List<int>(valueCount);
-            for (int i = 0; i < valueCount; ++i)
+            for (int i = 0; i < valueCount; i++)
                 generated.Add(random.Next(range + 1));
 
             // Encode
@@ -343,6 +299,7 @@ public class IntegerSequenceCodecTests
             var encoder = new BoundedIntegerSequenceEncoder(range);
             foreach (var value in generated)
                 encoder.AddValue(value);
+
             encoder.Encode(ref bitSink);
 
             bitSink.TryGetBits<ulong>((int)bitSink.Bits, out var encoded).Should().BeTrue();
@@ -352,11 +309,9 @@ public class IntegerSequenceCodecTests
             var decoder = new BoundedIntegerSequenceDecoder(range);
             var decoded = decoder.Decode(valueCount, ref bitSrc);
 
-            // Assert
             decoded.Should().HaveCount(generated.Count);
             decoded.Should().Equal(generated);
         }
     }
 
-    #endregion
 }
