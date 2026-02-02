@@ -1,5 +1,6 @@
 using AstcSharp.ColorEncoding;
 using AstcSharp.Core;
+using AstcSharp.Tests.Utils;
 using AstcSharp.TexelBlock;
 using FluentAssertions;
 
@@ -393,12 +394,12 @@ public class LogicalAstcBlockTests
                     if (px >= width || py >= height) continue;
 
                     var decoded = logicalBlock!.ColorAt(x, y);
-                    int row = py * decodedImage.Stride();
-                    int off = row + px * decodedImage.BytesPerPixel();
-                    decodedImage.Data()[off + 0] = decoded.R;
-                    decodedImage.Data()[off + 1] = decoded.G;
-                    decodedImage.Data()[off + 2] = decoded.B;
-                    if (hasAlpha) decodedImage.Data()[off + 3] = decoded.A;
+                    int row = py * decodedImage.Stride;
+                    int off = row + px * decodedImage.BytesPerPixel;
+                    decodedImage.Data[off + 0] = decoded.R;
+                    decodedImage.Data[off + 1] = decoded.G;
+                    decodedImage.Data[off + 2] = decoded.B;
+                    if (hasAlpha) decodedImage.Data[off + 3] = decoded.A;
                 }
             }
         }

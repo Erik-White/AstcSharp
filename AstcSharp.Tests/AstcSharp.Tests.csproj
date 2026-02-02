@@ -8,6 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="AwesomeAssertions" Version="9.3.0" />
     <PackageReference Include="coverlet.collector" Version="6.0.2" />
     <PackageReference Include="FluentAssertions" Version="6.12.2" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
@@ -31,10 +32,8 @@
     <_ReferenceTestData Include="..\AstcSharp.Reference\astc-codec\**\*.*" />
     <_TestData Include="TestData\**\*.*" />
     </ItemGroup>
-    <Copy SourceFiles="@(_ReferenceTestData)"
-        DestinationFiles="@( _ReferenceTestData -> '$(TargetDir)AstcSharp.Reference\\astc-codec\\%(RecursiveDir)%(Filename)%(Extension)')" />
-          <Copy SourceFiles="@(_TestData)"
-            DestinationFiles="@(_TestData -> '$(TargetDir)TestData\\%(RecursiveDir)%(Filename)%(Extension)')" />
+    <Copy SourceFiles="@(_ReferenceTestData)" DestinationFiles="@( _ReferenceTestData -> '$(TargetDir)AstcSharp.Reference\\astc-codec\\%(RecursiveDir)%(Filename)%(Extension)')" />
+          <Copy SourceFiles="@(_TestData)" DestinationFiles="@(_TestData -> '$(TargetDir)TestData\\%(RecursiveDir)%(Filename)%(Extension)')" />
   </Target>
 
 </Project>

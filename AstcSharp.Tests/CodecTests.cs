@@ -1,5 +1,6 @@
 using AstcSharp.Core;
 using AstcSharp.IO;
+using AstcSharp.Tests.Utils;
 using AstcSharp.TexelBlock;
 using FluentAssertions;
 
