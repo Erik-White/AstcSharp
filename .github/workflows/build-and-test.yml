@@ -41,6 +41,15 @@ jobs:
       - name: Test
         run: dotnet test --configuration Release --no-build --verbosity normal --logger "trx;LogFileName=test-results.trx"
 
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        if: matrix.os == 'ubuntu-latest'
+        with:
+          name: build-output
+          path: |
+            AstcSharp/bin/Release/
+            AstcSharp/obj/Release/
+
       - name: Export Failed Output Images
         uses: actions/upload-artifact@v4
         if: failure()
@@ -77,15 +86,15 @@ jobs:
         with:
           dotnet-version: '10.x'
 
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-output
+          path: AstcSharp/
+
       - name: Extract version from tag
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-
-      - name: Restore dependencies
-        run: dotnet restore
-
-      - name: Build
-        run: dotnet build --configuration Release --no-restore
 
       - name: Pack
         run: dotnet pack AstcSharp/AstcSharp.csproj --configuration Release --no-build --output ./nupkg /p:PackageVersion=${{ steps.version.outputs.VERSION }}
