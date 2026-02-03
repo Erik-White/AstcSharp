@@ -102,5 +102,11 @@ jobs:
       - name: Pack
         run: dotnet pack AstcSharp/AstcSharp.csproj --configuration Release --no-build --output ./nupkg /p:PackageVersion=${{ steps.version.outputs.VERSION }}
 
+      - name: Authenticate with NuGet using OIDC
+        uses: NuGet/login@v1
+        id: nuget-login
+        with:
+          user: Erik-White
+
       - name: Publish to NuGet
-        run: dotnet nuget push ./nupkg/*.nupkg --source https://api.nuget.org/v3/index.json --skip-duplicate
+        run: dotnet nuget push ./nupkg/*.nupkg --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
