@@ -96,6 +96,9 @@ jobs:
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
+      - name: Restore dependencies
+        run: dotnet restore
+
       - name: Pack
         run: dotnet pack AstcSharp/AstcSharp.csproj --configuration Release --no-build --output ./nupkg /p:PackageVersion=${{ steps.version.outputs.VERSION }}
 
