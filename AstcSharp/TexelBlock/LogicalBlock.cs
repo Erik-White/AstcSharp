@@ -9,7 +9,7 @@ namespace AstcSharp.TexelBlock
         // TODO: Consolidate this to RgbaColor class
         private const int ChannelCount = 4; // R, G, B, A
 
-        private List<(RgbaColor first, RgbaColor second)> _endpoints;
+        private List<IColorEndpointPair> _endpoints;
         private List<int> _weights;
         private Partition _partition;
         private DualPlaneData? _dualPlane;
@@ -22,7 +22,7 @@ namespace AstcSharp.TexelBlock
 
         public LogicalBlock(Footprint footprint)
         {
-            _endpoints = [(RgbaColor.Empty, RgbaColor.Empty)];
+            _endpoints = [new LdrEndpointPair(RgbaColor.Empty, RgbaColor.Empty)];
             _weights = [.. new int[footprint.PixelCount]];
             // TODO: Add pixel count to Partition constructor
             _partition = new Partition(footprint, 1, 0)
@@ -48,24 +48,24 @@ namespace AstcSharp.TexelBlock
             CalculateWeights(footprint, block);
         }
 
-        private static List<(RgbaColor, RgbaColor)> DecodeEndpoints(IntermediateBlock.IntermediateBlockData block)
+        private static List<IColorEndpointPair> DecodeEndpoints(IntermediateBlock.IntermediateBlockData block)
         {
             int endpointRange = block.endpointRange.HasValue ? block.endpointRange.Value : IntermediateBlock.EndpointRangeForBlock(block);
             if (endpointRange <= 0) throw new InvalidOperationException("Invalid endpoint range");
-            var eps = new List<(RgbaColor, RgbaColor)>();
+            var eps = new List<IColorEndpointPair>();
             foreach (var ed in block.endpoints)
             {
-                var (d0, d1) = EndpointCodec.DecodeColorsForMode(ed.colors, endpointRange, ed.mode);
-                eps.Add((d0, d1));
+                eps.Add(EndpointCodec.DecodeColorsForModePolymorphic(ed.colors, endpointRange, ed.mode));
             }
             return eps;
         }
 
-        private static List<(RgbaColor, RgbaColor)> DecodeEndpoints(IntermediateBlock.VoidExtentData block)
+        private static List<IColorEndpointPair> DecodeEndpoints(IntermediateBlock.VoidExtentData block)
         {
-            var pair = new RgbaColor(block.r * byte.MaxValue / ushort.MaxValue, block.g * byte.MaxValue / ushort.MaxValue, block.b * byte.MaxValue / ushort.MaxValue, block.a * byte.MaxValue / ushort.MaxValue);
-            
-            return [(pair, pair)];
+            // VoidExtent blocks store HDR values (ushort) - preserve precision for HDR output
+            var hdrColor = new HdrColor(block.r, block.g, block.b, block.a);
+
+            return [new HdrEndpointPair(hdrColor, hdrColor)];
         }
 
         private static Partition GenerateSinglePartition(Footprint footprint)
@@ -162,20 +162,45 @@ namespace AstcSharp.TexelBlock
 
             int index = y * footprint.Width + x;
             int part = _partition.assignment[index];
-            var (firstColor, secondColor) = _endpoints[part];
+            var endpointPair = _endpoints[part];
 
-            var result = new int[ChannelCount];
-            for (int channel = 0; channel < ChannelCount; ++channel)
+            // For LDR output, handle both LDR and HDR endpoints
+            if (endpointPair is LdrEndpointPair ldrPair)
             {
-                int weight = (_dualPlane != null && _dualPlane.Channel == channel) ? _dualPlane.Weights[index] : _weights[index];
-                result[channel] = InterpolateChannel(firstColor, secondColor, channel, weight);
-            }
+                var result = new int[ChannelCount];
+                for (int channel = 0; channel < ChannelCount; ++channel)
+                {
+                    int weight = (_dualPlane != null && _dualPlane.Channel == channel) ? _dualPlane.Weights[index] : _weights[index];
+                    result[channel] = InterpolateChannel(ldrPair.Low, ldrPair.High, channel, weight);
+                }
 
-            return new RgbaColor(
-                r: result[0],
-                g: result[1],
-                b: result[2],
-                a: result[3]);
+                return new RgbaColor(
+                    r: result[0],
+                    g: result[1],
+                    b: result[2],
+                    a: result[3]);
+            }
+            else if (endpointPair is HdrEndpointPair hdrPair)
+            {
+                // HDR endpoints: downscale to LDR for legacy ColorAt() method
+                var result = new int[ChannelCount];
+                for (int channel = 0; channel < ChannelCount; ++channel)
+                {
+                    int weight = (_dualPlane != null && _dualPlane.Channel == channel) ? _dualPlane.Weights[index] : _weights[index];
+                    ushort hdrValue = InterpolateChannelHdr(hdrPair.Low, hdrPair.High, channel, weight);
+                    result[channel] = hdrValue >> 8; // Convert 0-65535 to 0-255
+                }
+
+                return new RgbaColor(
+                    r: result[0],
+                    g: result[1],
+                    b: result[2],
+                    a: result[3]);
+            }
+            else
+            {
+                throw new InvalidOperationException("Unknown endpoint pair type");
+            }
         }
 
         private static int InterpolateChannel(RgbaColor first, RgbaColor second, int channel, int weight)
@@ -195,12 +220,94 @@ namespace AstcSharp.TexelBlock
             return Math.Clamp(quantized, 0, byte.MaxValue);
         }
 
+        /// <summary>
+        /// Interpolates an HDR channel value between two endpoints using the specified weight.
+        /// </summary>
+        /// <remarks>
+        /// Uses the same interpolation algorithm as LDR but operates on ushort values (0-65535).
+        /// </remarks>
+        private static ushort InterpolateChannelHdr(HdrColor first, HdrColor second, int channel, int weight)
+        {
+            ushort p0 = first[channel];
+            ushort p1 = second[channel];
+
+            // Same algorithm as LDR but with ushort (0-65535) values
+            int c0 = (p0 << 8) | (p0 >> 8);
+            int c1 = (p1 << 8) | (p1 >> 8);
+            int c = (c0 * (64 - weight) + c1 * weight + 32) / 64;
+            return (ushort)Math.Clamp(c >> 8, 0, 0xFFFF);
+        }
+
+        /// <summary>
+        /// Returns the HDR color at the specified pixel position.
+        /// </summary>
+        /// <remarks>
+        /// For HDR endpoints, returns full 16-bit precision (0-65535) per channel.
+        /// For LDR endpoints, upscales to HDR range (multiplies by 257).
+        /// </remarks>
+        public HdrColor ColorAtHdr(int x, int y)
+        {
+            var footprint = GetFootprint();
+
+            ArgumentOutOfRangeException.ThrowIfNegative(x);
+            ArgumentOutOfRangeException.ThrowIfNegative(y);
+            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(x, footprint.Width);
+            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(y, footprint.Height);
+
+            int index = y * footprint.Width + x;
+            int part = _partition.assignment[index];
+            var endpointPair = _endpoints[part];
+
+            if (endpointPair is HdrEndpointPair hdrPair)
+            {
+                // Interpolate HDR endpoints
+                var result = new ushort[ChannelCount];
+                for (int channel = 0; channel < ChannelCount; ++channel)
+                {
+                    int weight = GetWeightForPixel(index, channel);
+                    result[channel] = InterpolateChannelHdr(hdrPair.Low, hdrPair.High, channel, weight);
+                }
+                return new HdrColor(result[0], result[1], result[2], result[3]);
+            }
+            else if (endpointPair is LdrEndpointPair ldrPair)
+            {
+                // LDR block: interpolate at LDR precision then upscale to HDR range
+                var result = new int[ChannelCount];
+                for (int channel = 0; channel < ChannelCount; ++channel)
+                {
+                    int weight = GetWeightForPixel(index, channel);
+                    result[channel] = InterpolateChannel(ldrPair.Low, ldrPair.High, channel, weight);
+                }
+
+                // Convert LDR (0-255) to HDR (0-65535) using multiply by 257
+                return new HdrColor(
+                    (ushort)(result[0] * 257),
+                    (ushort)(result[1] * 257),
+                    (ushort)(result[2] * 257),
+                    (ushort)(result[3] * 257));
+            }
+            else
+            {
+                throw new InvalidOperationException("Unknown endpoint pair type");
+            }
+        }
+
+        /// <summary>
+        /// Helper method to get the weight for a specific pixel and channel.
+        /// </summary>
+        private int GetWeightForPixel(int index, int channel)
+        {
+            return (_dualPlane != null && _dualPlane.Channel == channel)
+                ? _dualPlane.Weights[index]
+                : _weights[index];
+        }
+
         public void SetPartition(Partition p)
         {
             if (!p.footprint.Equals(_partition.footprint))
                 throw new InvalidOperationException("New partitions may not be for a different footprint");
             _partition = p;
-            while (_endpoints.Count < p.numParts) _endpoints.Add((RgbaColor.Empty, RgbaColor.Empty));
+            while (_endpoints.Count < p.numParts) _endpoints.Add(new LdrEndpointPair(RgbaColor.Empty, RgbaColor.Empty));
             if (_endpoints.Count > p.numParts) _endpoints.RemoveRange(p.numParts, _endpoints.Count - p.numParts);
         }
 
@@ -208,8 +315,8 @@ namespace AstcSharp.TexelBlock
         {
             ArgumentOutOfRangeException.ThrowIfNegative(subset);
             ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(subset, _partition.numParts);
-            
-            _endpoints[subset] = eps;
+
+            _endpoints[subset] = new LdrEndpointPair(eps.first, eps.second);
         }
 
         public void SetEndpoints(RgbaColor ep1, RgbaColor ep2, int subset)
