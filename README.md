@@ -62,6 +62,12 @@ AstcFile astcFile = AstcFile.FromMemory(fileData);
 Span<byte> rgbaPixels = AstcDecoder.DecompressToImage(astcFile);
 ```
 
+## Future improvements
+
+- Improved performance
+- HDR support
+- Encoding
+
 ## References
 
 This implementation is based on:
