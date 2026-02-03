@@ -1,5 +1,22 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
+  <PropertyGroup>
+    <PackageId>AstcSharp</PackageId>
+    <Authors>Erik White</Authors>
+    <Description>A library for decoding ASTC (Adaptive Scalable Texture Compression) compressed textures. Supports all standard ASTC block footprints and provides a clean API for decompressing ASTC data.</Description>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/Erik-White/AstcSharp</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Erik-White/AstcSharp</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>astc;texture;compression;decompression;graphics;rgba;decoder</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
   <ItemGroup>
     <InternalsVisibleTo Include="$(AssemblyName).Tests" />
     <InternalsVisibleTo Include="$(AssemblyName).Benchmarks" />
