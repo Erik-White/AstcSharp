@@ -35,7 +35,7 @@ public class HdrReferenceTests
         astcFile.Footprint.Height.Should().Be(6);
 
         // Decode using HDR API
-        var hdrResult = AstcDecoder.DecompressToFloat16(
+        var hdrResult = AstcDecoder.DecompressHdrImage(
             astcFile.Blocks,
             astcFile.Width,
             astcFile.Height,
@@ -77,7 +77,7 @@ public class HdrReferenceTests
         var astcFile = AstcFile.FromMemory(astcData);
 
         // Decode using HDR API
-        var hdrResult = AstcDecoder.DecompressToFloat16(
+        var hdrResult = AstcDecoder.DecompressHdrImage(
             astcFile.Blocks,
             astcFile.Width,
             astcFile.Height,
@@ -116,7 +116,7 @@ public class HdrReferenceTests
         var astcFile = AstcFile.FromMemory(astcData);
 
         // Decode using LDR API
-        var ldrResult = AstcDecoder.DecompressToImage(astcFile);
+        var ldrResult = AstcDecoder.DecompressImage(astcFile);
 
         // Should produce 1 pixel with 4 bytes (RGBA)
         ldrResult.Length.Should().Be(4);
@@ -144,9 +144,9 @@ public class HdrReferenceTests
         var astcFile = AstcFile.FromMemory(astcData);
 
         // Decode with both APIs
-        var hdrResult = AstcDecoder.DecompressToFloat16(
+        var hdrResult = AstcDecoder.DecompressHdrImage(
             astcFile.Blocks, astcFile.Width, astcFile.Height, astcFile.Footprint);
-        var ldrResult = AstcDecoder.DecompressToImage(astcFile);
+        var ldrResult = AstcDecoder.DecompressImage(astcFile);
 
         // Both should produce output for 1 pixel
         hdrResult.Length.Should().Be(4);

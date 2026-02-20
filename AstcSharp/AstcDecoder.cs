@@ -6,27 +6,38 @@ using AstcSharp.TexelBlock;
 
 namespace AstcSharp;
 
+/// <summary>
+/// Provides methods to decode ASTC-compressed texture data into uncompressed pixel formats.
+/// </summary>
 public static class AstcDecoder
 {
     private static readonly ArrayPool<byte> _arrayPool = ArrayPool<byte>.Shared;
     private const int BytesPerPixelUnorm8 = 4;
 
-    public static Span<byte> ASTCDecompressToRGBA(ReadOnlySpan<byte> astcData, int width, int height, FootprintType footprint)
-    {
-        var footPrint = Footprint.FromFootprintType(footprint);
-        
-        return DecompressToImage(astcData, width, height, footPrint);
-    }
-
-    public static Span<byte> DecompressToImage(AstcFile file)
+    internal static Span<byte> DecompressImage(AstcFile file)
     {
         ArgumentNullException.ThrowIfNull(file);
         
-        return DecompressToImage(file.Blocks, file.Width, file.Height, file.Footprint);
+        return DecompressImage(file.Blocks, file.Width, file.Height, file.Footprint);
     }
 
-    // TODO: Return a normal array instead of Span<byte>?
-    public static Span<byte> DecompressToImage(ReadOnlySpan<byte> astcData, int width, int height, Footprint footprint)
+    internal static Span<byte> DecompressImage(ReadOnlySpan<byte> astcData, int width, int height, FootprintType footprint)
+    {
+        var footPrint = Footprint.FromFootprintType(footprint);
+        
+        return DecompressImage(astcData, width, height, footPrint);
+    }
+
+    /// <summary>
+    /// Decompresses ASTC-compressed data to uncompressed RGBA8 format (4 bytes per pixel).
+    /// </summary>
+    /// <param name="astcData">The ASTC-compressed texture data</param>
+    /// <param name="width">Image width in pixels</param>
+    /// <param name="height">Image height in pixels</param>
+    /// <param name="footprint">The ASTC block footprint (e.g., 4x4, 5x5)</param>
+    /// <returns>Array of bytes in RGBA8 format (width * height * 4 bytes total)</returns>
+    /// <exception cref="InvalidOperationException">If decompression fails for any block</exception>
+    public static Span<byte> DecompressImage(ReadOnlySpan<byte> astcData, int width, int height, Footprint footprint)
     {
         int blockWidth = footprint.Width;
         int blockHeight = footprint.Height;
@@ -120,8 +131,13 @@ public static class AstcDecoder
         return decodedPixels;
     }
 
-    /// <inheritdoc cref="DecompressBlock(ReadOnlySpan{byte}, Footprint)"/>
+    /// <summary>
+    /// Decompresses a single ASTC block to RGBA8 pixel data
+    /// </summary>
+    /// <param name="blockData">The data to decode</param>
+    /// <param name="footprint">The type of ASTC block footprint e.g. 4x4, 5x5, etc.</param>
     /// <param name="buffer">The buffer to write the decoded pixels into</param>
+    /// <returns>The decoded block of pixels as RGBA values</returns>
     public static void DecompressBlock(ReadOnlySpan<byte> blockData, Footprint footprint, Span<byte> buffer)
     {
         // Read the 16 bytes that make up the ASTC block as a 128-bit value
@@ -152,7 +168,7 @@ public static class AstcDecoder
     }
 
     /// <summary>
-    /// Decompresses ASTC data to HDR Float16 (Half) format with full 16-bit channel precision.
+    /// Decompresses ASTC data with full 16-bit channel precision.
     /// </summary>
     /// <param name="astcData">The ASTC-compressed texture data</param>
     /// <param name="width">Image width in pixels</param>
@@ -162,18 +178,7 @@ public static class AstcDecoder
     /// Array of Half values in RGBA order, normalized to 0.0-1.0+ range.
     /// For HDR content, values may exceed 1.0. Size: width * height * 4 Half values.
     /// </returns>
-    /// <remarks>
-    /// This method is designed for HDR (High Dynamic Range) content where color values
-    /// can exceed the standard 0-255 range. The output uses System.Half (FP16) for each channel,
-    /// providing higher precision and dynamic range compared to RGBA8.
-    /// <para>
-    /// Output format:
-    /// - Each pixel: 4 Half values (R, G, B, A) = 8 bytes total
-    /// - Values normalized to 0.0-1.0 for standard content, >1.0 for HDR highlights
-    /// - LDR content is automatically upscaled to HDR range
-    /// </para>
-    /// </remarks>
-    public static Half[] DecompressToFloat16(ReadOnlySpan<byte> astcData, int width, int height, Footprint footprint)
+    public static Half[] DecompressHdrImage(ReadOnlySpan<byte> astcData, int width, int height, Footprint footprint)
     {
         int blockWidth = footprint.Width;
         int blockHeight = footprint.Height;
@@ -209,7 +214,7 @@ public static class AstcDecoder
                     if (blockDataOffset + PhysicalBlock.SizeInBytes > astcData.Length)
                         continue;
 
-                    DecompressBlockToFloat16(
+                    DecompressHdrBlock(
                         astcData.Slice(blockDataOffset, PhysicalBlock.SizeInBytes),
                         footprint,
                         decodedPixels);
@@ -244,7 +249,7 @@ public static class AstcDecoder
     }
 
     /// <summary>
-    /// Decompresses ASTC data to HDR Float16 (Half) format with full 16-bit channel precision.
+    /// Decompresses ASTC data with full 16-bit channel precision.
     /// </summary>
     /// <param name="astcData">The ASTC-compressed texture data</param>
     /// <param name="width">Image width in pixels</param>
@@ -254,20 +259,19 @@ public static class AstcDecoder
     /// Array of Half values in RGBA order, normalized to 0.0-1.0+ range.
     /// For HDR content, values may exceed 1.0. Size: width * height * 4 Half values.
     /// </returns>
-    /// <seealso cref="DecompressToFloat16(ReadOnlySpan{byte}, int, int, Footprint)"/>
-    public static Half[] ASTCDecompressToFloat16(ReadOnlySpan<byte> astcData, int width, int height, FootprintType footprint)
+    public static Half[] DecompressHdrImage(ReadOnlySpan<byte> astcData, int width, int height, FootprintType footprint)
     {
         var footPrint = Footprint.FromFootprintType(footprint);
-        return DecompressToFloat16(astcData, width, height, footPrint);
+        return DecompressHdrImage(astcData, width, height, footPrint);
     }
 
     /// <summary>
-    /// Decompresses a single ASTC block to HDR Float16 pixel data.
+    /// Decompresses a single ASTC block with full 16-bit channel precision.
     /// </summary>
     /// <param name="blockData">The 16-byte ASTC block to decode</param>
     /// <param name="footprint">The ASTC block footprint</param>
     /// <param name="buffer">The buffer to write decoded Half values into (must be at least footprint.Width * footprint.Height * 4 elements)</param>
-    private static void DecompressBlockToFloat16(ReadOnlySpan<byte> blockData, Footprint footprint, Span<Half> buffer)
+    public static void DecompressHdrBlock(ReadOnlySpan<byte> blockData, Footprint footprint, Span<Half> buffer)
     {
         // Read the 16 bytes that make up the ASTC block as a 128-bit value
         ulong low = BinaryPrimitives.ReadUInt64LittleEndian(blockData);

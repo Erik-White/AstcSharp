@@ -45,7 +45,7 @@ public class IntegrationTests
         var bytes = File.ReadAllBytes(filePath);
         var astc = AstcFile.FromMemory(bytes);
 
-        var result = AstcDecoder.DecompressToImage(astc);
+        var result = AstcDecoder.DecompressImage(astc);
 
         result.Length.Should().BeGreaterThan(0, because: $"decoding should succeed for {basename}");
     }

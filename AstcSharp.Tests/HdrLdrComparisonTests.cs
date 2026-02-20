@@ -22,7 +22,7 @@ public class HdrLdrComparisonTests
         var astcFile = AstcFile.FromMemory(astcData);
 
         // Decode with HDR API
-        var hdrResult = AstcDecoder.DecompressToFloat16(
+        var hdrResult = AstcDecoder.DecompressHdrImage(
             astcFile.Blocks, astcFile.Width, astcFile.Height, astcFile.Footprint);
 
         // Verify we get Float16 output
@@ -50,7 +50,7 @@ public class HdrLdrComparisonTests
         var astcFile = AstcFile.FromMemory(astcData);
 
         // Decode with HDR API
-        var hdrResult = AstcDecoder.DecompressToFloat16(
+        var hdrResult = AstcDecoder.DecompressHdrImage(
             astcFile.Blocks, astcFile.Width, astcFile.Height, astcFile.Footprint);
 
         hdrResult.Length.Should().Be(4);
@@ -77,7 +77,7 @@ public class HdrLdrComparisonTests
         var astcFile = AstcFile.FromMemory(astcData);
 
         // Decode with LDR API
-        var ldrResult = AstcDecoder.DecompressToImage(astcFile);
+        var ldrResult = AstcDecoder.DecompressImage(astcFile);
 
         ldrResult.Length.Should().Be(4);
 
@@ -102,8 +102,8 @@ public class HdrLdrComparisonTests
         var astcFile = AstcFile.FromMemory(astcData);
 
         // Decode with both APIs
-        var ldrResult = AstcDecoder.DecompressToImage(astcFile);
-        var hdrResult = AstcDecoder.DecompressToFloat16(
+        var ldrResult = AstcDecoder.DecompressImage(astcFile);
+        var hdrResult = AstcDecoder.DecompressHdrImage(
             astcFile.Blocks, astcFile.Width, astcFile.Height, astcFile.Footprint);
 
         // Compare results - LDR byte should map to HDR float / 255.0
@@ -132,7 +132,7 @@ public class HdrLdrComparisonTests
         var astcFile = AstcFile.FromMemory(astcData);
 
         // Decode with HDR API
-        var hdrResult = AstcDecoder.DecompressToFloat16(
+        var hdrResult = AstcDecoder.DecompressHdrImage(
             astcFile.Blocks, astcFile.Width, astcFile.Height, astcFile.Footprint);
 
         // Should produce Width * Height * 4 values
@@ -159,8 +159,8 @@ public class HdrLdrComparisonTests
         var astcFile = AstcFile.FromMemory(astcData);
 
         // Decode with both APIs
-        var ldrResult = AstcDecoder.DecompressToImage(astcFile);
-        var hdrResult = AstcDecoder.DecompressToFloat16(
+        var ldrResult = AstcDecoder.DecompressImage(astcFile);
+        var hdrResult = AstcDecoder.DecompressHdrImage(
             astcFile.Blocks, astcFile.Width, astcFile.Height, astcFile.Footprint);
 
         // Both should produce correct output sizes
@@ -191,9 +191,9 @@ public class HdrLdrComparisonTests
         hdrFile.Footprint.Height.Should().Be(ldrFile.Footprint.Height);
 
         // Both should decode successfully with HDR API
-        var hdrDecoded = AstcDecoder.DecompressToFloat16(
+        var hdrDecoded = AstcDecoder.DecompressHdrImage(
             hdrFile.Blocks, hdrFile.Width, hdrFile.Height, hdrFile.Footprint);
-        var ldrDecoded = AstcDecoder.DecompressToFloat16(
+        var ldrDecoded = AstcDecoder.DecompressHdrImage(
             ldrFile.Blocks, ldrFile.Width, ldrFile.Height, ldrFile.Footprint);
 
         hdrDecoded.Length.Should().Be(4);
@@ -213,14 +213,14 @@ public class HdrLdrComparisonTests
         var astcFile = AstcFile.FromMemory(astcData);
 
         // Decode with LDR API to get byte values
-        var ldrBytes = AstcDecoder.DecompressToImage(astcFile);
+        var ldrBytes = AstcDecoder.DecompressImage(astcFile);
 
         // Convert LDR bytes to HDR using HdrColor
         var ldrColor = new RgbaColor(ldrBytes[0], ldrBytes[1], ldrBytes[2], ldrBytes[3]);
         var hdrFromLdr = RgbaHdrColor.FromRgba(ldrColor);
 
         // Decode with HDR API
-        var hdrDirect = AstcDecoder.DecompressToFloat16(
+        var hdrDirect = AstcDecoder.DecompressHdrImage(
             astcFile.Blocks, astcFile.Width, astcFile.Height, astcFile.Footprint);
 
         // Compare: values should be very close (within rounding error)

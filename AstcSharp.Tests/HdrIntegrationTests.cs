@@ -15,7 +15,7 @@ public class HdrIntegrationTests
         var footprint = Footprint.FromFootprintType(FootprintType.Footprint4x4);
 
         // Decompress using HDR API
-        var hdrResult = AstcDecoder.DecompressToFloat16(astcData, 4, 4, footprint);
+        var hdrResult = AstcDecoder.DecompressHdrImage(astcData, 4, 4, footprint);
 
         // Verify output size: 4x4 pixels, 4 Half values (RGBA) per pixel
         hdrResult.Length.Should().Be(4 * 4 * 4); // 64 Half values total
@@ -49,7 +49,7 @@ public class HdrIntegrationTests
             var fp = Footprint.FromFootprintType(footprint);
             var astcData = new byte[16]; // One ASTC block (all zeros = void extent block)
 
-            var result = AstcDecoder.ASTCDecompressToFloat16(astcData, fp.Width, fp.Height, footprint);
+            var result = AstcDecoder.DecompressHdrImage(astcData, fp.Width, fp.Height, footprint);
 
             // Should produce footprint.Width * footprint.Height pixels, each with 4 Half values
             result.Length.Should().Be(fp.Width * fp.Height * 4);
@@ -61,7 +61,7 @@ public class HdrIntegrationTests
     {
         var emptyData = Array.Empty<byte>();
 
-        var result = AstcDecoder.ASTCDecompressToFloat16(emptyData, 64, 64, FootprintType.Footprint4x4);
+        var result = AstcDecoder.DecompressHdrImage(emptyData, 64, 64, FootprintType.Footprint4x4);
 
         result.Length.Should().Be(0);
     }
@@ -72,7 +72,7 @@ public class HdrIntegrationTests
         var astcData = new byte[16];
         var footprint = Footprint.FromFootprintType(FootprintType.Footprint4x4);
 
-        var result = AstcDecoder.DecompressToFloat16(astcData, 0, 0, footprint);
+        var result = AstcDecoder.DecompressHdrImage(astcData, 0, 0, footprint);
 
         result.Length.Should().Be(0);
     }

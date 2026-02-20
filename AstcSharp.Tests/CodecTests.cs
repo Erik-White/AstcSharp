@@ -14,7 +14,7 @@ public class CodecTests
         var data = new byte[256];
         const int height = 16;
 
-        var result = AstcDecoder.ASTCDecompressToRGBA(data, 0, height, FootprintType.Footprint4x4);
+        var result = AstcDecoder.DecompressImage(data, 0, height, FootprintType.Footprint4x4);
 
         result.ToArray().Should().BeEmpty();
     }
@@ -25,7 +25,7 @@ public class CodecTests
         var data = new byte[256];
         const int width = 16;
 
-        var result = AstcDecoder.ASTCDecompressToRGBA(data, width, 0, FootprintType.Footprint4x4);
+        var result = AstcDecoder.DecompressImage(data, width, 0, FootprintType.Footprint4x4);
 
         result.ToArray().Should().BeEmpty();
     }
@@ -38,7 +38,7 @@ public class CodecTests
         const int height = 16;
         var invalidData = data.AsSpan(0, data.Length - 1).ToArray();
 
-        var result = AstcDecoder.ASTCDecompressToRGBA(invalidData, width, height, FootprintType.Footprint4x4);
+        var result = AstcDecoder.DecompressImage(invalidData, width, height, FootprintType.Footprint4x4);
 
         result.ToArray().Should().BeEmpty();
     }
@@ -51,7 +51,7 @@ public class CodecTests
         const int height = 16;
         var mismatchedData = data.AsSpan(0, data.Length - PhysicalBlock.SizeInBytes).ToArray();
 
-        var result = AstcDecoder.ASTCDecompressToRGBA(mismatchedData, width, height, FootprintType.Footprint4x4);
+        var result = AstcDecoder.DecompressImage(mismatchedData, width, height, FootprintType.Footprint4x4);
 
         result.ToArray().Should().BeEmpty();
     }
@@ -89,7 +89,7 @@ public class CodecTests
             logicalBlock.Should().NotBeNull("all blocks should unpack successfully");
         }
 
-        var decodedPixels = AstcDecoder.ASTCDecompressToRGBA(astcData, width, height, footprintType);
+        var decodedPixels = AstcDecoder.DecompressImage(astcData, width, height, footprintType);
         var actualImage = new ImageBuffer(decodedPixels.ToArray(), width, height, 4);
 
         var expectedImagePath = Path.Combine("TestData", "Expected", imageName + ".bmp");
@@ -117,7 +117,7 @@ public class CodecTests
         file.Width.Should().Be(width);
         file.Height.Should().Be(height);
 
-        var decodedPixels = AstcDecoder.DecompressToImage(file);
+        var decodedPixels = AstcDecoder.DecompressImage(file);
         var actualImage = new ImageBuffer(decodedPixels.ToArray(), width, height, 4);
 
         var expectedImagePath = Path.Combine("TestData", "Expected", imageName + ".bmp");
