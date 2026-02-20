@@ -94,7 +94,12 @@ public class HdrReferenceTests
         }
 
         // Verify at least some HDR values exceed 1.0 (typical for HDR content)
-        var valuesAboveOne = hdrResult.Count(v => (float)v > 1.0f);
+        int valuesAboveOne = 0;
+        foreach (var v in hdrResult)
+        {
+            if ((float)v > 1.0f)
+                valuesAboveOne++;
+        }
 
         // HDR content should have some bright values above 1.0
         // (This may or may not be true depending on the specific image,

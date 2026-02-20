@@ -178,7 +178,7 @@ public static class AstcDecoder
     /// Array of Half values in RGBA order, normalized to 0.0-1.0+ range.
     /// For HDR content, values may exceed 1.0. Size: width * height * 4 Half values.
     /// </returns>
-    public static Half[] DecompressHdrImage(ReadOnlySpan<byte> astcData, int width, int height, Footprint footprint)
+    public static Span<Half> DecompressHdrImage(ReadOnlySpan<byte> astcData, int width, int height, Footprint footprint)
     {
         int blockWidth = footprint.Width;
         int blockHeight = footprint.Height;
@@ -259,7 +259,7 @@ public static class AstcDecoder
     /// Array of Half values in RGBA order, normalized to 0.0-1.0+ range.
     /// For HDR content, values may exceed 1.0. Size: width * height * 4 Half values.
     /// </returns>
-    public static Half[] DecompressHdrImage(ReadOnlySpan<byte> astcData, int width, int height, FootprintType footprint)
+    public static Span<Half> DecompressHdrImage(ReadOnlySpan<byte> astcData, int width, int height, FootprintType footprint)
     {
         var footPrint = Footprint.FromFootprintType(footprint);
         return DecompressHdrImage(astcData, width, height, footPrint);
