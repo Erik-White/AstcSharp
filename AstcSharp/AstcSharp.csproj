@@ -11,6 +11,8 @@
     <PackageTags>astc;texture;compression;decompression;graphics;rgba;decoder</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <SignAssembly>true</SignAssembly>
+    <AssemblyOriginatorKeyFile>AstcSharp.snk</AssemblyOriginatorKeyFile>
   </PropertyGroup>
 
   <ItemGroup>
@@ -18,8 +20,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="$(AssemblyName).Tests" />
-    <InternalsVisibleTo Include="$(AssemblyName).Benchmarks" />
+    <InternalsVisibleTo Include="AstcSharp.Tests, PublicKey=002400000480000094000000060200000024000052534131000400000100010079f4be8e8826d9fe6383926fe0e907187c555b79906c681eea1d9fdf9b6f3d1fae25c36af15aba6c1554ede9f58662eab23728e8dac40d0a97c92d5fd6c9befb831f8a6662320e2ce506945c7948420f0636d5ff4605e89dbe304cfcbdcfe28285b90afdabc2203cc5e2b037f4763c4ab182ccbe485778694fd9438e9e7d54c0" />
+    <InternalsVisibleTo Include="AstcSharp.Benchmarks, PublicKey=002400000480000094000000060200000024000052534131000400000100010079f4be8e8826d9fe6383926fe0e907187c555b79906c681eea1d9fdf9b6f3d1fae25c36af15aba6c1554ede9f58662eab23728e8dac40d0a97c92d5fd6c9befb831f8a6662320e2ce506945c7948420f0636d5ff4605e89dbe304cfcbdcfe28285b90afdabc2203cc5e2b037f4763c4ab182ccbe485778694fd9438e9e7d54c0" />
   </ItemGroup>
 
 </Project>

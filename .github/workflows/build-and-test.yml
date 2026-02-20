@@ -44,15 +44,6 @@ jobs:
       - name: Test
         run: dotnet test --configuration Release --no-build --verbosity normal --logger "trx;LogFileName=test-results.trx"
 
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        if: matrix.os == 'ubuntu-latest'
-        with:
-          name: build-output
-          path: |
-            AstcSharp/bin/Release/
-            AstcSharp/obj/Release/
-
       - name: Export Failed Output Images
         uses: actions/upload-artifact@v4
         if: failure()
@@ -83,6 +74,11 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Checkout LFS objects
+        run: git lfs pull
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -92,12 +88,6 @@ jobs:
             9.x
             10.x
 
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: build-output
-          path: AstcSharp/
-
       - name: Extract version from tag
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
@@ -106,13 +96,13 @@ jobs:
         run: dotnet restore
 
       - name: Pack
-        run: dotnet pack AstcSharp/AstcSharp.csproj --configuration Release --no-build --output ./nupkg /p:PackageVersion=${{ steps.version.outputs.VERSION }}
+        run: dotnet pack AstcSharp/AstcSharp.csproj --configuration Release --output ./nupkg /p:Version=${{ steps.version.outputs.VERSION }}
 
       - name: Authenticate with NuGet using OIDC
         uses: NuGet/login@v1
         id: nuget-login
         with:
-          user: scribble
+          user: Erik-White
 
       - name: Publish to NuGet
         run: dotnet nuget push ./nupkg/*.nupkg --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
