@@ -63,7 +63,7 @@ namespace AstcSharp.TexelBlock
         private static List<IColorEndpointPair> DecodeEndpoints(IntermediateBlock.VoidExtentData block)
         {
             // VoidExtent blocks store HDR values (ushort) - preserve precision for HDR output
-            var hdrColor = new HdrColor(block.r, block.g, block.b, block.a);
+            var hdrColor = new RgbaHdrColor(block.r, block.g, block.b, block.a);
 
             return [new HdrEndpointPair(hdrColor, hdrColor)];
         }
@@ -226,7 +226,7 @@ namespace AstcSharp.TexelBlock
         /// <remarks>
         /// Uses the same interpolation algorithm as LDR but operates on ushort values (0-65535).
         /// </remarks>
-        private static ushort InterpolateChannelHdr(HdrColor first, HdrColor second, int channel, int weight)
+        private static ushort InterpolateChannelHdr(RgbaHdrColor first, RgbaHdrColor second, int channel, int weight)
         {
             ushort p0 = first[channel];
             ushort p1 = second[channel];
@@ -245,7 +245,7 @@ namespace AstcSharp.TexelBlock
         /// For HDR endpoints, returns full 16-bit precision (0-65535) per channel.
         /// For LDR endpoints, upscales to HDR range (multiplies by 257).
         /// </remarks>
-        public HdrColor ColorAtHdr(int x, int y)
+        public RgbaHdrColor ColorAtHdr(int x, int y)
         {
             var footprint = GetFootprint();
 
@@ -267,7 +267,7 @@ namespace AstcSharp.TexelBlock
                     int weight = GetWeightForPixel(index, channel);
                     result[channel] = InterpolateChannelHdr(hdrPair.Low, hdrPair.High, channel, weight);
                 }
-                return new HdrColor(result[0], result[1], result[2], result[3]);
+                return new RgbaHdrColor(result[0], result[1], result[2], result[3]);
             }
             else if (endpointPair is LdrEndpointPair ldrPair)
             {
@@ -280,7 +280,7 @@ namespace AstcSharp.TexelBlock
                 }
 
                 // Convert LDR (0-255) to HDR (0-65535) using multiply by 257
-                return new HdrColor(
+                return new RgbaHdrColor(
                     (ushort)(result[0] * 257),
                     (ushort)(result[1] * 257),
                     (ushort)(result[2] * 257),

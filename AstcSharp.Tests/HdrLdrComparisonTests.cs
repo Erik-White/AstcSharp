@@ -5,8 +5,7 @@ using AwesomeAssertions;
 namespace AstcSharp.Tests;
 
 /// <summary>
-/// Comprehensive tests comparing HDR and LDR ASTC decoding behavior using
-/// real reference files from ARM astc-encoder.
+/// Comparing HDR and LDR ASTC decoding behavior using real reference files.
 /// </summary>
 public class HdrLdrComparisonTests
 {
@@ -218,7 +217,7 @@ public class HdrLdrComparisonTests
 
         // Convert LDR bytes to HDR using HdrColor
         var ldrColor = new RgbaColor(ldrBytes[0], ldrBytes[1], ldrBytes[2], ldrBytes[3]);
-        var hdrFromLdr = HdrColor.FromLdr(ldrColor);
+        var hdrFromLdr = RgbaHdrColor.FromRgba(ldrColor);
 
         // Decode with HDR API
         var hdrDirect = AstcDecoder.DecompressToFloat16(
@@ -227,10 +226,10 @@ public class HdrLdrComparisonTests
         // Compare: values should be very close (within rounding error)
         for (int i = 0; i < 4; i++)
         {
-            float fromConversion = (float)HdrColor.UshortToHalf(hdrFromLdr[i]);
+            float fromConversion = (float)RgbaHdrColor.UshortToHalf(hdrFromLdr[i]);
             float fromDirect = (float)hdrDirect[i];
 
-            Math.Abs(fromConversion - fromDirect).Should().BeLessThan(0.01f);
+            Math.Abs(fromConversion - fromDirect).Should().BeLessThan(0.0001f);
         }
     }
 }

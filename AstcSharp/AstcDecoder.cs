@@ -288,10 +288,11 @@ public static class AstcDecoder
                 var hdrColor = logicalBlock.ColorAtHdr(column, row);
 
                 // Convert ushort (0-65535) to Half (0.0-1.0+)
-                buffer[pixelOffset + 0] = HdrColor.UshortToHalf(hdrColor.R);
-                buffer[pixelOffset + 1] = HdrColor.UshortToHalf(hdrColor.G);
-                buffer[pixelOffset + 2] = HdrColor.UshortToHalf(hdrColor.B);
-                buffer[pixelOffset + 3] = HdrColor.UshortToHalf(hdrColor.A);
+                var hdrHalf = hdrColor.ToHalfArray();
+                buffer[pixelOffset + 0] = hdrHalf[0];
+                buffer[pixelOffset + 1] = hdrHalf[1];
+                buffer[pixelOffset + 2] = hdrHalf[2];
+                buffer[pixelOffset + 3] = hdrHalf[3];
             }
         }
     }

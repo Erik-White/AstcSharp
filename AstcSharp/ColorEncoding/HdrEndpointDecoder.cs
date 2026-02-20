@@ -21,7 +21,7 @@ internal static class HdrEndpointDecoder
     /// <param name="maxValue">Maximum quantization value</param>
     /// <param name="mode">The HDR color endpoint mode</param>
     /// <returns>A pair of HDR colors representing the low and high endpoints</returns>
-    public static (HdrColor low, HdrColor high) DecodeHdrMode(List<int> vals, int maxValue, ColorEndpointMode mode)
+    public static (RgbaHdrColor low, RgbaHdrColor high) DecodeHdrMode(List<int> vals, int maxValue, ColorEndpointMode mode)
     {
         return mode switch
         {
@@ -43,7 +43,7 @@ internal static class HdrEndpointDecoder
     /// Produces luminance values with a large dynamic range.
     /// Alpha is set to a fixed HDR value (0x7800).
     /// </remarks>
-    private static (HdrColor low, HdrColor high) UnpackHdrLuminanceLargeRange(List<int> vals, int maxValue)
+    private static (RgbaHdrColor low, RgbaHdrColor high) UnpackHdrLuminanceLargeRange(List<int> vals, int maxValue)
     {
         // Ensure we have at least 2 values
         var v = new int[2];
@@ -68,8 +68,8 @@ internal static class HdrEndpointDecoder
         }
 
         // Luminance is replicated to RGB, alpha is fixed at 0x7800
-        var low = new HdrColor((ushort)y0, (ushort)y0, (ushort)y0, (ushort)0x7800);
-        var high = new HdrColor((ushort)y1, (ushort)y1, (ushort)y1, (ushort)0x7800);
+        var low = new RgbaHdrColor((ushort)y0, (ushort)y0, (ushort)y0, (ushort)0x7800);
+        var high = new RgbaHdrColor((ushort)y1, (ushort)y1, (ushort)y1, (ushort)0x7800);
 
         return (low, high);
     }
@@ -82,7 +82,7 @@ internal static class HdrEndpointDecoder
     /// Produces luminance values with a smaller dynamic range but better precision.
     /// Uses differential encoding.
     /// </remarks>
-    private static (HdrColor low, HdrColor high) UnpackHdrLuminanceSmallRange(List<int> vals, int maxValue)
+    private static (RgbaHdrColor low, RgbaHdrColor high) UnpackHdrLuminanceSmallRange(List<int> vals, int maxValue)
     {
         // Ensure we have at least 2 values
         var v = new int[2];
@@ -120,8 +120,8 @@ internal static class HdrEndpointDecoder
         y1 <<= 4;
 
         // Luminance is replicated to RGB, alpha is fixed at 0x7800
-        var low = new HdrColor((ushort)y0, (ushort)y0, (ushort)y0, (ushort)0x7800);
-        var high = new HdrColor((ushort)y1, (ushort)y1, (ushort)y1, (ushort)0x7800);
+        var low = new RgbaHdrColor((ushort)y0, (ushort)y0, (ushort)y0, (ushort)0x7800);
+        var high = new RgbaHdrColor((ushort)y1, (ushort)y1, (ushort)y1, (ushort)0x7800);
 
         return (low, high);
     }
@@ -133,7 +133,7 @@ internal static class HdrEndpointDecoder
     /// Ported from hdr_rgbo_unpack() in ARM astc-encoder.
     /// One endpoint is a base color, the other is derived by scaling.
     /// </remarks>
-    private static (HdrColor low, HdrColor high) UnpackHdrRgbBaseScale(List<int> vals, int maxValue)
+    private static (RgbaHdrColor low, RgbaHdrColor high) UnpackHdrRgbBaseScale(List<int> vals, int maxValue)
     {
         // Ensure we have at least 4 values
         var v = new int[4];
@@ -290,7 +290,7 @@ internal static class HdrEndpointDecoder
         }
 
         // Shift left by 4 for final 16-bit values
-        var low = new HdrColor((ushort)(c0 << 4), (ushort)(c1 << 4), (ushort)(c2 << 4), (ushort)0xFFFF);
+        var low = new RgbaHdrColor((ushort)(c0 << 4), (ushort)(c1 << 4), (ushort)(c2 << 4), (ushort)0xFFFF);
 
         // High endpoint uses unscaled base color
         int hc0, hc1, hc2;
@@ -313,7 +313,7 @@ internal static class HdrEndpointDecoder
             hc2 = blue;
         }
 
-        var high = new HdrColor((ushort)(hc0 << 4), (ushort)(hc1 << 4), (ushort)(hc2 << 4), (ushort)0xFFFF);
+        var high = new RgbaHdrColor((ushort)(hc0 << 4), (ushort)(hc1 << 4), (ushort)(hc2 << 4), (ushort)0xFFFF);
 
         return (low, high);
     }
@@ -325,7 +325,7 @@ internal static class HdrEndpointDecoder
     /// Ported from hdr_rgb_unpack() in ARM astc-encoder.
     /// Direct encoding of RGB values with high bit depth.
     /// </remarks>
-    private static (HdrColor low, HdrColor high) UnpackHdrRgbDirect(List<int> vals, int maxValue)
+    private static (RgbaHdrColor low, RgbaHdrColor high) UnpackHdrRgbDirect(List<int> vals, int maxValue)
     {
         // Ensure we have at least 6 values
         var v = new int[6];
@@ -353,8 +353,8 @@ internal static class HdrEndpointDecoder
             int pb0 = ((v4 & 0x7F) << 5);
             int pb1 = ((v5 & 0x7F) << 5);
 
-            var lowPassthrough = new HdrColor((ushort)(pr0 << 4), (ushort)(pg0 << 4), (ushort)(pb0 << 4), (ushort)0xFFFF);
-            var highPassthrough = new HdrColor((ushort)(pr1 << 4), (ushort)(pg1 << 4), (ushort)(pb1 << 4), (ushort)0xFFFF);
+            var lowPassthrough = new RgbaHdrColor((ushort)(pr0 << 4), (ushort)(pg0 << 4), (ushort)(pb0 << 4), (ushort)0xFFFF);
+            var highPassthrough = new RgbaHdrColor((ushort)(pr1 << 4), (ushort)(pg1 << 4), (ushort)(pb1 << 4), (ushort)0xFFFF);
             return (lowPassthrough, highPassthrough);
         }
 
@@ -469,8 +469,8 @@ internal static class HdrEndpointDecoder
         }
 
         // Shift left by 4 for final 16-bit values
-        var low = new HdrColor((ushort)(r0 << 4), (ushort)(g0 << 4), (ushort)(b0 << 4), (ushort)0xFFFF);
-        var high = new HdrColor((ushort)(r1 << 4), (ushort)(g1 << 4), (ushort)(b1 << 4), (ushort)0xFFFF);
+        var low = new RgbaHdrColor((ushort)(r0 << 4), (ushort)(g0 << 4), (ushort)(b0 << 4), (ushort)0xFFFF);
+        var high = new RgbaHdrColor((ushort)(r1 << 4), (ushort)(g1 << 4), (ushort)(b1 << 4), (ushort)0xFFFF);
 
         return (low, high);
     }
@@ -481,7 +481,7 @@ internal static class HdrEndpointDecoder
     /// <remarks>
     /// RGB channels use HDR encoding (mode 11 logic), alpha uses LDR (0-255 scaled to 0-65535).
     /// </remarks>
-    private static (HdrColor low, HdrColor high) UnpackHdrRgbDirectLdrAlpha(List<int> vals, int maxValue)
+    private static (RgbaHdrColor low, RgbaHdrColor high) UnpackHdrRgbDirectLdrAlpha(List<int> vals, int maxValue)
     {
         // RGB portion uses mode 11 logic
         var (rgbLow, rgbHigh) = UnpackHdrRgbDirect(vals, maxValue);
@@ -498,8 +498,8 @@ internal static class HdrEndpointDecoder
         ushort alpha0 = (ushort)(a0 * 257);
         ushort alpha1 = (ushort)(a1 * 257);
 
-        var low = new HdrColor(rgbLow.R, rgbLow.G, rgbLow.B, alpha0);
-        var high = new HdrColor(rgbHigh.R, rgbHigh.G, rgbHigh.B, alpha1);
+        var low = new RgbaHdrColor(rgbLow.R, rgbLow.G, rgbLow.B, alpha0);
+        var high = new RgbaHdrColor(rgbHigh.R, rgbHigh.G, rgbHigh.B, alpha1);
 
         return (low, high);
     }
@@ -511,7 +511,7 @@ internal static class HdrEndpointDecoder
     /// Ported from hdr_rgb_hdr_alpha_unpack() in ARM astc-encoder.
     /// Both RGB and alpha use HDR encoding.
     /// </remarks>
-    private static (HdrColor low, HdrColor high) UnpackHdrRgbDirectHdrAlpha(List<int> vals, int maxValue)
+    private static (RgbaHdrColor low, RgbaHdrColor high) UnpackHdrRgbDirectHdrAlpha(List<int> vals, int maxValue)
     {
         // RGB portion uses mode 11 logic (first 6 values)
         var (rgbLow, rgbHigh) = UnpackHdrRgbDirect(vals, maxValue);
@@ -523,8 +523,8 @@ internal static class HdrEndpointDecoder
 
         var (alpha0, alpha1) = UnpackHdrAlpha(alphaVals, maxValue);
 
-        var low = new HdrColor(rgbLow.R, rgbLow.G, rgbLow.B, alpha0);
-        var high = new HdrColor(rgbHigh.R, rgbHigh.G, rgbHigh.B, alpha1);
+        var low = new RgbaHdrColor(rgbLow.R, rgbLow.G, rgbLow.B, alpha0);
+        var high = new RgbaHdrColor(rgbHigh.R, rgbHigh.G, rgbHigh.B, alpha1);
 
         return (low, high);
     }

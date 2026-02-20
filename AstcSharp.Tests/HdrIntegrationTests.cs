@@ -81,7 +81,7 @@ public class HdrIntegrationTests
     public void HdrColor_Conversions_ShouldMaintainPrecision()
     {
         // Test round-trip conversions
-        var hdrColor = new HdrColor(0, 32767, 65535, 16383);
+        var hdrColor = new RgbaHdrColor(0, 32767, 65535, 16383);
 
         // Convert to Half array
         var halfArray = hdrColor.ToHalfArray();
@@ -94,7 +94,7 @@ public class HdrIntegrationTests
         ((float)halfArray[3]).Should().BeApproximately(0.25f, 0.001f);
 
         // Round-trip back
-        var reconstructed = HdrColor.FromHalfArray(halfArray);
+        var reconstructed = RgbaHdrColor.FromHalfArray(halfArray);
         reconstructed.R.Should().Be((ushort)0);
         Math.Abs(reconstructed.G - 32767).Should().BeLessThanOrEqualTo(10);
         reconstructed.B.Should().Be((ushort)65535);
@@ -106,8 +106,8 @@ public class HdrIntegrationTests
     {
         var ldrColor = new RgbaColor(50, 100, 150, 200);
 
-        var hdrColor = HdrColor.FromLdr(ldrColor);
-        var backToLdr = hdrColor.ToLdr();
+        var hdrColor = RgbaHdrColor.FromRgba(ldrColor);
+        var backToLdr = hdrColor.ToLowDynamicRange();
 
         backToLdr.R.Should().Be(ldrColor.R);
         backToLdr.G.Should().Be(ldrColor.G);

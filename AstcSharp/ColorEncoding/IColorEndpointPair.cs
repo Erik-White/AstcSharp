@@ -24,7 +24,7 @@ internal record LdrEndpointPair(RgbaColor Low, RgbaColor High) : IColorEndpointP
 /// <summary>
 /// Represents a pair of HDR (High Dynamic Range) color endpoints using ushort precision (0-65535).
 /// </summary>
-internal record HdrEndpointPair(HdrColor Low, HdrColor High) : IColorEndpointPair
+internal record HdrEndpointPair(RgbaHdrColor Low, RgbaHdrColor High) : IColorEndpointPair
 {
     public bool IsHdr => true;
 }
