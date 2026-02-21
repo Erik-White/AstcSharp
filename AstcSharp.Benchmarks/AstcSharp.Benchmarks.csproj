@@ -12,4 +12,33 @@
     <ProjectReference Include="../AstcSharp/AstcSharp.csproj" />
   </ItemGroup>
 
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
+    <PackageReference Include="AstcEncoderCSharp" Version="5.3.0" />
+  </ItemGroup>
+
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net10.0'">
+    <DefineConstants>$(DefineConstants);HAS_ARM_REFERENCE</DefineConstants>
+  </PropertyGroup>
+
+  <!-- Copy test data from the test project into the output directory
+       so BenchmarkTestDataLocator can find them at runtime. -->
+  <Target Name="CopyBenchmarkTestData" AfterTargets="Build">
+    <ItemGroup>
+      <_TestData Include="..\AstcSharp.Tests\TestData\**\*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_TestData)"
+          DestinationFiles="@(_TestData -> '$(TargetDir)AstcSharp.Tests\TestData\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <!-- Copy AstcEncoderCSharp native runtimes to the output directory. -->
+  <Target Name="CopyAstcEncNativeRuntimes" AfterTargets="Build" Condition="'$(TargetFramework)' == 'net10.0'">
+    <ItemGroup>
+      <_AstcEncNativeFiles Include="$(NuGetPackageRoot)astcencodercsharp\5.3.0\runtimes\**\*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_AstcEncNativeFiles)"
+          DestinationFiles="@(_AstcEncNativeFiles -> '$(TargetDir)runtimes\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
 </Project>
