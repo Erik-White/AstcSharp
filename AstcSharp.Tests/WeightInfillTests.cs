@@ -31,12 +31,12 @@ public class WeightInfillTests
     [Fact]
     public void InfillWeights_With3x3Grid_ShouldBilinearlyInterpolateTo5x5()
     {
-        var weights = new List<int> { 1, 3, 5, 3, 5, 7, 5, 7, 9 };
-        var expected = new List<int> { 1, 2, 3, 4, 5, 2, 3, 4, 5, 6, 3, 4, 5, 6, 7, 4, 5, 6, 7, 8, 5, 6, 7, 8, 9 };
+        int[] weights = [1, 3, 5, 3, 5, 7, 5, 7, 9];
+        int[] expected = [1, 2, 3, 4, 5, 2, 3, 4, 5, 6, 3, 4, 5, 6, 7, 4, 5, 6, 7, 8, 5, 6, 7, 8, 9];
 
         var result = WeightInfill.InfillWeights(weights, Footprint.Get5x5(), 3, 3);
 
-        result.Should().HaveCount(expected.Count);
+        result.Should().HaveCount(expected.Length);
         result.Should().Equal(expected);
     }
 }

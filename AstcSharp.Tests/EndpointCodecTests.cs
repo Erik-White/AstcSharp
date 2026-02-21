@@ -285,7 +285,7 @@ public class EndpointCodecTests
         }
     }
 
-    private static List<int> EncodeRgbBaseOffset(RgbaColor low, RgbaColor high)
+    private static int[] EncodeRgbBaseOffset(RgbaColor low, RgbaColor high)
     {
         var values = new List<int>();
         for (int i = 0; i < 3; ++i)
@@ -296,7 +296,7 @@ public class EndpointCodecTests
             if (isLarge) diff |= 0x80;
             values.Add(diff);
         }
-        return values;
+        return values.ToArray();
     }
 
     [Fact]
@@ -353,7 +353,7 @@ public class EndpointCodecTests
     {
         var values = new List<int>();
         var needsSwap = EndpointCodec.EncodeColorsForMode(low, high, quantRange, mode, out var astcMode, values);
-        var (decLow, decHigh) = EndpointCodec.DecodeColorsForMode(values, quantRange, astcMode);
+        var (decLow, decHigh) = EndpointCodec.DecodeColorsForMode(values.ToArray(), quantRange, astcMode);
 
         return needsSwap ? (decHigh, decLow) : (decLow, decHigh);
     }

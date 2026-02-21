@@ -257,7 +257,7 @@ public class LogicalAstcBlockTests
         // Create partition with 2 subsets, all pixels assigned to subset 0
         var newPartition = new Partition(footprint, 2, 5)
         {
-            assignment = Enumerable.Repeat(0, footprint.PixelCount).ToList()
+            assignment = new int[footprint.PixelCount]
         };
 
         logicalBlock.SetPartition(newPartition);
@@ -284,7 +284,7 @@ public class LogicalAstcBlockTests
         var logicalBlock = new LogicalBlock(Footprint.Get4x4());
         var wrongPartition = new Partition(Footprint.Get8x8(), 1, 0)
         {
-            assignment = Enumerable.Repeat(0, 64).ToList()
+            assignment = new int[64]
         };
 
         var action = () => logicalBlock.SetPartition(wrongPartition);

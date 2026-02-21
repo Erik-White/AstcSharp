@@ -23,7 +23,7 @@ internal static class IntermediateBlock
     internal class IntermediateEndpointData
     {
         public ColorEndpointMode mode;
-        public List<int> colors = new List<int>();
+        public int[] colors = [];
     }
 
     internal class IntermediateBlockData
@@ -308,11 +308,14 @@ internal static class IntermediateBlock
             if (!endpointModeOpt.HasValue)
                 return null;
             endpoint.mode = endpointModeOpt.Value;
-            
-            for (int j = 0; j < endpoint.mode.GetColorValuesCount(); ++j)
+
+            int colorCount = endpoint.mode.GetColorValuesCount();
+            var epColors = new int[colorCount];
+            for (int j = 0; j < colorCount; ++j)
             {
-                endpoint.colors.Add(colors[colorIndex++]);
+                epColors[j] = colors[colorIndex++];
             }
+            endpoint.colors = epColors;
             data.endpoints.Add(endpoint);
         }
 

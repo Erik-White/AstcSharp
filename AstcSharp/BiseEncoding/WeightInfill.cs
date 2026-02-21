@@ -70,26 +70,49 @@ namespace AstcSharp.BiseEncoding
         // weights are fit using the algorithm laid out in Section C.2.18 of the ASTC
         // specification. Weights are expected to be passed unquantized and the returned
         // grid will be unquantized as well (i.e. each weight within the range [0, 64]).
-        public static List<int> InfillWeights(IReadOnlyList<int> weights, Footprint footprint, int dim_x, int dim_y)
+        public static int[] InfillWeights(int[] weights, Footprint footprint, int dim_x, int dim_y)
         {
-            var result = new List<int>(footprint.PixelCount);
+            var result = new int[footprint.PixelCount];
+            int idx = 0;
+            int ds = GetScaleFactorD(footprint.Width);
+            int dt = GetScaleFactorD(footprint.Height);
+            int gridLimit = dim_x * dim_y;
+            int wdxm1 = dim_x - 1;
+            int wdym1 = dim_y - 1;
+
             for (int t = 0; t < footprint.Height; ++t)
             {
+                int ct = dt * t;
+                int gt = (ct * wdym1 + 32) >> 6;
+                int jt = gt >> 4;
+                int ft = gt & 0xF;
+
                 for (int s = 0; s < footprint.Width; ++s)
                 {
-                    var gridSpaceCoords = GetGridSpaceCoordinates(footprint, s, t, dim_x, dim_y);
-                    var gridPts = BilerpGridPointsForWeight(gridSpaceCoords, dim_x);
-                    var gridFactors = BilerpGridPointFactorsForWeight(gridSpaceCoords);
+                    int cs = ds * s;
+                    int gs = (cs * wdxm1 + 32) >> 6;
+                    int js = gs >> 4;
+                    int fs = gs & 0xF;
+
+                    // Inline bilinear grid points
+                    int gp0 = js + dim_x * jt;
+                    int gp1 = gp0 + 1;
+                    int gp2 = js + dim_x * (jt + 1);
+                    int gp3 = gp2 + 1;
+
+                    // Inline bilinear factors
+                    int f3 = (fs * ft + 8) >> 4;
+                    int f2 = ft - f3;
+                    int f1 = fs - f3;
+                    int f0 = 16 - fs - ft + f3;
 
                     int weight = 0;
-                    for (int i = 0; i < 4; ++i)
-                    {
-                        if (gridPts[i] < dim_x * dim_y)
-                        {
-                            weight += weights[gridPts[i]] * gridFactors[i];
-                        }
-                    }
-                    result.Add((weight + 8) >> 4);
+                    if (gp0 < gridLimit) weight += weights[gp0] * f0;
+                    if (gp1 < gridLimit) weight += weights[gp1] * f1;
+                    if (gp2 < gridLimit) weight += weights[gp2] * f2;
+                    if (gp3 < gridLimit) weight += weights[gp3] * f3;
+
+                    result[idx++] = (weight + 8) >> 4;
                 }
             }
 

@@ -311,11 +311,11 @@ internal static class EndpointCodec
 
         vals[0] = quantOffLow;
         vals[1] = quantOffHigh;
-        var (decLowOff, decHighOff) = DecodeColorsForMode(vals, maxValue, ColorEndpointMode.LdrLumaBaseOffset);
+        var (decLowOff, decHighOff) = DecodeColorsForMode(vals.ToArray(), maxValue, ColorEndpointMode.LdrLumaBaseOffset);
 
         vals[0] = quantLow;
         vals[1] = quantHigh;
-        var (decLowDir, decHighDir) = DecodeColorsForMode(vals, maxValue, ColorEndpointMode.LdrLumaDirect);
+        var (decLowDir, decHighDir) = DecodeColorsForMode(vals.ToArray(), maxValue, ColorEndpointMode.LdrLumaDirect);
 
         int calculateErrorOff = 0;
         int calculateErrorDir = 0;
@@ -510,7 +510,7 @@ internal static class EndpointCodec
     /// <param name="maxValue">Maximum quantization value</param>
     /// <param name="mode">The color endpoint mode</param>
     /// <returns>An IColorEndpointPair representing either LDR or HDR endpoints</returns>
-    public static IColorEndpointPair DecodeColorsForModePolymorphic(List<int> vals, int maxValue, ColorEndpointMode mode)
+    public static IColorEndpointPair DecodeColorsForModePolymorphic(int[] vals, int maxValue, ColorEndpointMode mode)
     {
         if (mode.IsHdr())
         {
@@ -525,7 +525,7 @@ internal static class EndpointCodec
         }
     }
 
-    public static (RgbaColor endpointLowRgba, RgbaColor endpointHighRgba) DecodeColorsForMode(List<int> vals, int maxValue, ColorEndpointMode mode)
+    public static (RgbaColor endpointLowRgba, RgbaColor endpointHighRgba) DecodeColorsForMode(int[] vals, int maxValue, ColorEndpointMode mode)
     {
         var endpointLowRgba = RgbaColor.Empty;
         var endpointHighRgba = RgbaColor.Empty;
@@ -553,7 +553,7 @@ internal static class EndpointCodec
             case ColorEndpointMode.LdrLumaAlphaDirect:
                 {
                     var v = new int[4];
-                    for (int i = 0; i < 4; ++i) v[i] = i < vals.Count ? vals[i] : 0;
+                    for (int i = 0; i < 4; ++i) v[i] = i < vals.Length ? vals[i] : 0;
                     var uv = UnquantizeArray(v, maxValue);
                     endpointLowRgba = new RgbaColor(uv[0], uv[0], uv[0], uv[2]);
                     endpointHighRgba = new RgbaColor(uv[1], uv[1], uv[1], uv[3]);
@@ -561,7 +561,7 @@ internal static class EndpointCodec
                 break;
             case ColorEndpointMode.LdrLumaAlphaBaseOffset:
                 {
-                    var v = new int[4]; for (int i=0;i<4;i++) v[i] = i<vals.Count?vals[i]:0;
+                    var v = new int[4]; for (int i=0;i<4;i++) v[i] = i<vals.Length?vals[i]:0;
                     var uv = UnquantizeArray(v, maxValue);
                     var (b0, a0) = BitOperations.TransferPrecision(uv[1], uv[0]);
                     var (b2, a2) = BitOperations.TransferPrecision(uv[3], uv[2]);
@@ -573,7 +573,7 @@ internal static class EndpointCodec
             case ColorEndpointMode.LdrRgbBaseScale:
                 {
                     int kNumVals = ColorEndpointMode.LdrRgbBaseScale.GetColorValuesCount();
-                    var v = new int[kNumVals]; for (int i=0;i<kNumVals;++i) v[i] = i<vals.Count?vals[i]:0;
+                    var v = new int[kNumVals]; for (int i=0;i<kNumVals;++i) v[i] = i<vals.Length?vals[i]:0;
                     var uv = UnquantizeArray(v, maxValue);
 
                     endpointLowRgba = new RgbaColor(
@@ -589,7 +589,7 @@ internal static class EndpointCodec
             case ColorEndpointMode.LdrRgbDirect:
                 {
                     int kNumVals = ColorEndpointMode.LdrRgbDirect.GetColorValuesCount();
-                    var v = new int[kNumVals]; for (int i=0;i<kNumVals;++i) v[i] = i<vals.Count?vals[i]:0;
+                    var v = new int[kNumVals]; for (int i=0;i<kNumVals;++i) v[i] = i<vals.Length?vals[i]:0;
                     var uv = UnquantizeArray(v, maxValue);
                     int s0 = uv[0] + uv[2] + uv[4];
                     int s1 = uv[1] + uv[3] + uv[5];
@@ -615,7 +615,7 @@ internal static class EndpointCodec
             case ColorEndpointMode.LdrRgbBaseOffset:
                 {
                     int kNumVals = ColorEndpointMode.LdrRgbBaseOffset.GetColorValuesCount();
-                    var v = new int[kNumVals]; for (int i=0;i<kNumVals;++i) v[i] = i<vals.Count?vals[i]:0;
+                    var v = new int[kNumVals]; for (int i=0;i<kNumVals;++i) v[i] = i<vals.Length?vals[i]:0;
                     var uv = UnquantizeArray(v, maxValue);
                     var (b0, a0) = BitOperations.TransferPrecision(uv[1], uv[0]);
                     var (b1, a1) = BitOperations.TransferPrecision(uv[3], uv[2]);
@@ -642,7 +642,7 @@ internal static class EndpointCodec
             case ColorEndpointMode.LdrRgbBaseScaleTwoA:
                 {
                     int kNumVals = ColorEndpointMode.LdrRgbBaseScaleTwoA.GetColorValuesCount();
-                    var v = new int[kNumVals]; for (int i=0;i<kNumVals;++i) v[i] = i<vals.Count?vals[i]:0;
+                    var v = new int[kNumVals]; for (int i=0;i<kNumVals;++i) v[i] = i<vals.Length?vals[i]:0;
                     var uv = UnquantizeArray(v, maxValue);
                     endpointLowRgba = new RgbaColor(
                         r: (uv[0] * uv[3]) >> 8,
@@ -655,7 +655,7 @@ internal static class EndpointCodec
             case ColorEndpointMode.LdrRgbaDirect:
                 {
                     int kNumVals = ColorEndpointMode.LdrRgbaDirect.GetColorValuesCount();
-                    var v = new int[kNumVals]; for (int i=0;i<kNumVals;++i) v[i] = i<vals.Count?vals[i]:0;
+                    var v = new int[kNumVals]; for (int i=0;i<kNumVals;++i) v[i] = i<vals.Length?vals[i]:0;
                     var uv = UnquantizeArray(v, maxValue);
                     int s0 = uv[0] + uv[2] + uv[4];
                     int s1 = uv[1] + uv[3] + uv[5];
@@ -683,7 +683,7 @@ internal static class EndpointCodec
             case ColorEndpointMode.LdrRgbaBaseOffset:
                 {
                     int kNumVals = ColorEndpointMode.LdrRgbaBaseOffset.GetColorValuesCount();
-                    var v = new int[kNumVals]; for (int i=0;i<kNumVals;++i) v[i] = i<vals.Count?vals[i]:0;
+                    var v = new int[kNumVals]; for (int i=0;i<kNumVals;++i) v[i] = i<vals.Length?vals[i]:0;
                     var uv = UnquantizeArray(v, maxValue);
                     var (b0, a0) = BitOperations.TransferPrecision(uv[1], uv[0]);
                     var (b1, a1) = BitOperations.TransferPrecision(uv[3], uv[2]);

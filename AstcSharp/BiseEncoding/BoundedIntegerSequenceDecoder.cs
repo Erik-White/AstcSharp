@@ -22,8 +22,9 @@ internal class BoundedIntegerSequenceDecoder : BoundedIntegerSequenceCodec
         int bitsPerBlock = GetEncodedBlockSize();
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(bitsPerBlock, 64);
 
+        var result = new int[valuesCount];
+        int resultIndex = 0;
         int bitsRemaining = totalBitCount;
-        var result = new List<int>();
 
         while (bitsRemaining > 0)
         {
@@ -31,27 +32,25 @@ internal class BoundedIntegerSequenceDecoder : BoundedIntegerSequenceCodec
             if (!bitSource.TryGetBits<ulong>(bitsToRead, out var blockBits))
                 throw new InvalidOperationException("Not enough bits in BitStream to decode BISE block");
 
-            var decodedValues = _encoding switch
+            if (_encoding == BiseEncodingMode.BitEncoding)
             {
-                BiseEncodingMode.TritEncoding or BiseEncodingMode.QuintEncoding
-                    => DecodeISEBlock(_encoding, blockBits, _bitCount),
-                BiseEncodingMode.BitEncoding
-                    => [(int)blockBits],
-                _ => throw new NotSupportedException("Unsupported BISE encoding mode")
-            };
+                if (resultIndex < valuesCount)
+                    result[resultIndex++] = (int)blockBits;
+            }
+            else
+            {
+                var decodedValues = DecodeISEBlock(_encoding, blockBits, _bitCount);
+                for (int i = 0; i < decodedValues.Length && resultIndex < valuesCount; ++i)
+                    result[resultIndex++] = decodedValues[i];
+            }
 
-            result.AddRange(decodedValues);
             bitsRemaining -= bitsPerBlock;
         }
 
-        // Sanity check - did we get the expected number of values?
-        if (result.Count < valuesCount)
+        if (resultIndex < valuesCount)
             throw new InvalidOperationException("Decoded fewer values than expected from BISE block");
 
-        if (result.Count > valuesCount)
-            result.RemoveRange(valuesCount, result.Count - valuesCount);
-
-        return result.ToArray();
+        return result;
     }
 
     /// <summary>

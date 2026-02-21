@@ -152,7 +152,7 @@ public class IntermediateAstcBlockTests
         data.Should().NotBeNull();
         data!.endpoints.Should().ContainSingle();
         data.endpoints[0].mode.Should().Be(ColorEndpointMode.LdrLumaDirect);
-        data.endpoints[0].colors.Should().Equal(new List<int> { byte.MinValue, byte.MaxValue });
+        data.endpoints[0].colors.Should().Equal(new int[] { byte.MinValue, byte.MaxValue });
         data.endpointRange.Should().Be(byte.MaxValue);
     }
 
@@ -198,10 +198,9 @@ public class IntermediateAstcBlockTests
 
         var endpoint = new IntermediateBlock.IntermediateEndpointData
         {
-            mode = ColorEndpointMode.LdrLumaDirect
+            mode = ColorEndpointMode.LdrLumaDirect,
+            colors = [byte.MinValue, byte.MaxValue]
         };
-        endpoint.colors.Add(byte.MinValue);
-        endpoint.colors.Add(byte.MaxValue);
         data.endpoints.Add(endpoint);
 
         var (error, packed) = IntermediateBlock.Pack(data);
@@ -228,7 +227,7 @@ public class IntermediateAstcBlockTests
         intermediate.dualPlaneChannel.Should().BeNull();
         intermediate.endpoints.Should().ContainSingle();
         intermediate.endpoints[0].mode.Should().Be(ColorEndpointMode.LdrLumaDirect);
-        intermediate.endpoints[0].colors.Should().Equal(new List<int> { 255, 0 });
+        intermediate.endpoints[0].colors.Should().Equal(new int[] { 255, 0 });
 
         // Repack
         var (error, repacked) = IntermediateBlock.Pack(intermediate);
