@@ -18,17 +18,6 @@
     <PackageReference Include="AstcEncoderCSharp" Version="5.3.0" />
   </ItemGroup>
 
-  <!-- Copy test data from the test project into the output directory
-       so BenchmarkTestDataLocator can find them at runtime. -->
-  <Target Name="CopyBenchmarkTestData" AfterTargets="Build">
-    <ItemGroup>
-      <_TestData Include="..\AstcSharp.Tests\TestData\**\*.*" />
-    </ItemGroup>
-    <Copy SourceFiles="@(_TestData)"
-          DestinationFiles="@(_TestData -> '$(TargetDir)AstcSharp.Tests\TestData\%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true" />
-  </Target>
-
   <!-- Copy AstcEncoderCSharp native runtimes to the output directory. -->
   <Target Name="CopyAstcEncNativeRuntimes" AfterTargets="Build">
     <ItemGroup>
