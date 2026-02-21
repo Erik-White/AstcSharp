@@ -64,9 +64,9 @@ namespace AstcSharp.TexelBlock
         {
             if (block.isHdr)
             {
-                // HDR void extent: ushort values are FP16 bit patterns
+                // HDR void extent: ushort values are FP16 bit patterns (not LNS)
                 var hdrColor = new RgbaHdrColor(block.r, block.g, block.b, block.a);
-                return [new HdrEndpointPair(hdrColor, hdrColor)];
+                return [new HdrEndpointPair(hdrColor, hdrColor, ValuesAreLns: false)];
             }
             else
             {
@@ -251,18 +251,17 @@ namespace AstcSharp.TexelBlock
         /// Interpolates an HDR channel value between two endpoints using the specified weight.
         /// </summary>
         /// <remarks>
-        /// Uses the same interpolation algorithm as LDR but operates on ushort values (0-65535).
+        /// HDR endpoints are already 16-bit values (FP16 bit patterns). Unlike LDR interpolation
+        /// which expands 8-bit to 16-bit before interpolating, HDR interpolation operates directly
+        /// on the 16-bit values: result = (e0 * (64 - w) + e1 * w + 32) / 64.
         /// </remarks>
         private static ushort InterpolateChannelHdr(RgbaHdrColor first, RgbaHdrColor second, int channel, int weight)
         {
-            ushort p0 = first[channel];
-            ushort p1 = second[channel];
+            int p0 = first[channel];
+            int p1 = second[channel];
 
-            // Same algorithm as LDR but with ushort (0-65535) values
-            int c0 = (p0 << 8) | (p0 >> 8);
-            int c1 = (p1 << 8) | (p1 >> 8);
-            int c = (c0 * (64 - weight) + c1 * weight + 32) / 64;
-            return (ushort)Math.Clamp(c >> 8, 0, 0xFFFF);
+            int c = (p0 * (64 - weight) + p1 * weight + 32) / 64;
+            return (ushort)Math.Clamp(c, 0, 0xFFFF);
         }
 
         /// <summary>
@@ -323,8 +322,9 @@ namespace AstcSharp.TexelBlock
         /// Writes the HDR float values for the pixel at (x, y) into the output span.
         /// </summary>
         /// <remarks>
-        /// For HDR endpoints, the interpolated ushort is an FP16 bit pattern and is
-        /// bit-cast via <see cref="BitConverter.UInt16BitsToHalf"/> then widened to float.
+        /// For HDR endpoints, values are in LNS (Log-Normalized Space). After interpolation
+        /// in LNS, the result is converted to FP16 via <see cref="LnsToSf16"/> then widened to float.
+        /// For Mode 14 (HDR RGB + LDR Alpha), the alpha channel is UNORM16 instead of LNS.
         /// For LDR endpoints, the interpolated UNORM16 value is normalized to 0.0-1.0.
         /// </remarks>
         public void WriteHdrPixel(int x, int y, Span<float> output)
@@ -345,8 +345,24 @@ namespace AstcSharp.TexelBlock
                 for (int channel = 0; channel < ChannelCount; ++channel)
                 {
                     int weight = GetWeightForPixel(index, channel);
-                    ushort hdrValue = InterpolateChannelHdr(hdrPair.Low, hdrPair.High, channel, weight);
-                    output[channel] = (float)BitConverter.UInt16BitsToHalf(hdrValue);
+                    ushort interpolated = InterpolateChannelHdr(hdrPair.Low, hdrPair.High, channel, weight);
+
+                    if (channel == 3 && hdrPair.AlphaIsLdr)
+                    {
+                        // Mode 14: alpha is UNORM16, normalize directly
+                        output[channel] = interpolated / 65535.0f;
+                    }
+                    else if (hdrPair.ValuesAreLns)
+                    {
+                        // Normal HDR block: convert from LNS to FP16, then to float
+                        ushort sf16 = LnsToSf16(interpolated);
+                        output[channel] = (float)BitConverter.UInt16BitsToHalf(sf16);
+                    }
+                    else
+                    {
+                        // Void extent HDR: values are already FP16 bit patterns
+                        output[channel] = (float)BitConverter.UInt16BitsToHalf(interpolated);
+                    }
                 }
             }
             else if (endpointPair is LdrEndpointPair ldrPair)
@@ -362,6 +378,31 @@ namespace AstcSharp.TexelBlock
             {
                 throw new InvalidOperationException("Unknown endpoint pair type");
             }
+        }
+
+        /// <summary>
+        /// Converts a 16-bit LNS (Log-Normalized Space) value to a 16-bit SF16 (FP16) bit pattern.
+        /// </summary>
+        /// <remarks>
+        /// The LNS value encodes a 5-bit exponent in the upper bits and an 11-bit mantissa
+        /// in the lower bits. The mantissa is transformed using a piecewise linear function
+        /// before being combined with the exponent to form the FP16 result.
+        /// </remarks>
+        private static ushort LnsToSf16(int lns)
+        {
+            int mc = lns & 0x7FF;       // Lower 11 bits: mantissa component
+            int ec = (lns >> 11) & 0x1F; // Upper 5 bits: exponent component
+
+            int mt;
+            if (mc < 512)
+                mt = mc * 3;
+            else if (mc < 1536)
+                mt = mc * 4 - 512;
+            else
+                mt = mc * 5 - 2048;
+
+            int result = (ec << 10) | (mt >> 3);
+            return (ushort)Math.Min(result, 0x7BFF); // Clamp to max finite FP16
         }
 
         /// <summary>

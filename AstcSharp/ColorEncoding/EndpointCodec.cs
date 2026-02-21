@@ -515,7 +515,8 @@ internal static class EndpointCodec
         if (mode.IsHdr())
         {
             var (low, high) = HdrEndpointDecoder.DecodeHdrMode(vals, maxValue, mode);
-            return new HdrEndpointPair(low, high);
+            bool alphaIsLdr = mode == ColorEndpointMode.HdrRgbDirectLdrAlpha;
+            return new HdrEndpointPair(low, high, alphaIsLdr);
         }
         else
         {
