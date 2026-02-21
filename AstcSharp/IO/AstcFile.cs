@@ -8,7 +8,7 @@ namespace AstcSharp.IO;
 /// </summary>
 /// <remarks>
 /// See https://github.com/ARM-software/astc-encoder/blob/main/Docs/FileFormat.md
-// </remarks>
+/// </remarks>
 internal record AstcFile
 {
     private readonly AstcFileHeader _header;
