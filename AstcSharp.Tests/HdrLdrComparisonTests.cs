@@ -31,9 +31,9 @@ public class HdrLdrComparisonTests
         // HDR content can have values > 1.0 (this file may or may not, but should allow it)
         foreach (var value in hdrResult)
         {
-            Half.IsNaN(value).Should().BeFalse();
-            Half.IsInfinity(value).Should().BeFalse();
-            ((float)value).Should().BeGreaterThanOrEqualTo(0.0f);
+            float.IsNaN(value).Should().BeFalse();
+            float.IsInfinity(value).Should().BeFalse();
+            value.Should().BeGreaterThanOrEqualTo(0.0f);
         }
     }
 
@@ -58,9 +58,8 @@ public class HdrLdrComparisonTests
         // LDR content should map to 0.0-1.0 range when decoded with HDR API
         foreach (var value in hdrResult)
         {
-            float fval = (float)value;
-            fval.Should().BeGreaterThanOrEqualTo(0.0f);
-            fval.Should().BeLessThanOrEqualTo(1.0f);
+            value.Should().BeGreaterThanOrEqualTo(0.0f);
+            value.Should().BeLessThanOrEqualTo(1.0f);
         }
     }
 
@@ -110,7 +109,7 @@ public class HdrLdrComparisonTests
         for (int i = 0; i < 4; i++)
         {
             byte ldrValue = ldrResult[i];
-            float hdrValue = (float)hdrResult[i];
+            float hdrValue = hdrResult[i];
 
             float expectedHdr = ldrValue / 255.0f;
 
@@ -141,8 +140,8 @@ public class HdrLdrComparisonTests
         // All values should be valid
         foreach (var value in hdrResult)
         {
-            Half.IsNaN(value).Should().BeFalse();
-            Half.IsInfinity(value).Should().BeFalse();
+            float.IsNaN(value).Should().BeFalse();
+            float.IsInfinity(value).Should().BeFalse();
         }
     }
 
@@ -203,7 +202,7 @@ public class HdrLdrComparisonTests
     [Fact]
     public void HdrColor_FromLdr_ShouldMatchLdrToHdrApiConversion()
     {
-        // Verify that HdrColor.FromLdr() produces same results as decoding LDR with HDR API
+        // Verify that HdrColor.FromRgba() produces same results as decoding LDR with HDR API
         var astcPath = Path.Combine("TestData", "HDR", "LDR-A-1x1.astc");
 
         if (!File.Exists(astcPath))
@@ -223,11 +222,11 @@ public class HdrLdrComparisonTests
         var hdrDirect = AstcDecoder.DecompressHdrImage(
             astcFile.Blocks, astcFile.Width, astcFile.Height, astcFile.Footprint);
 
-        // Compare: values should be very close (within rounding error)
+        // Compare: UNORM16 normalized values should match HDR API output
         for (int i = 0; i < 4; i++)
         {
-            float fromConversion = (float)RgbaHdrColor.UshortToHalf(hdrFromLdr[i]);
-            float fromDirect = (float)hdrDirect[i];
+            float fromConversion = hdrFromLdr[i] / 65535.0f;
+            float fromDirect = hdrDirect[i];
 
             Math.Abs(fromConversion - fromDirect).Should().BeLessThan(0.0001f);
         }

@@ -62,10 +62,22 @@ namespace AstcSharp.TexelBlock
 
         private static List<IColorEndpointPair> DecodeEndpoints(IntermediateBlock.VoidExtentData block)
         {
-            // VoidExtent blocks store HDR values (ushort) - preserve precision for HDR output
-            var hdrColor = new RgbaHdrColor(block.r, block.g, block.b, block.a);
-
-            return [new HdrEndpointPair(hdrColor, hdrColor)];
+            if (block.isHdr)
+            {
+                // HDR void extent: ushort values are FP16 bit patterns
+                var hdrColor = new RgbaHdrColor(block.r, block.g, block.b, block.a);
+                return [new HdrEndpointPair(hdrColor, hdrColor)];
+            }
+            else
+            {
+                // LDR void extent: ushort values are UNORM16, convert to byte range
+                var ldrColor = new RgbaColor(
+                    (byte)(block.r >> 8),
+                    (byte)(block.g >> 8),
+                    (byte)(block.b >> 8),
+                    (byte)(block.a >> 8));
+                return [new LdrEndpointPair(ldrColor, ldrColor)];
+            }
         }
 
         private static Partition GenerateSinglePartition(Footprint footprint)
@@ -221,6 +233,21 @@ namespace AstcSharp.TexelBlock
         }
 
         /// <summary>
+        /// Interpolates an LDR channel value and returns the full 16-bit UNORM result
+        /// (before reduction to byte). Used by the HDR output path for LDR endpoints.
+        /// </summary>
+        private static ushort InterpolateLdrAsUnorm16(RgbaColor first, RgbaColor second, int channel, int weight)
+        {
+            int p0 = channel switch { 0 => first.R, 1 => first.G, 2 => first.B, _ => first.A };
+            int p1 = channel switch { 0 => second.R, 1 => second.G, 2 => second.B, _ => second.A };
+
+            int c0 = (p0 << 8) | p0;
+            int c1 = (p1 << 8) | p1;
+            int c = (c0 * (64 - weight) + c1 * weight + 32) / 64;
+            return (ushort)Math.Clamp(c, 0, 0xFFFF);
+        }
+
+        /// <summary>
         /// Interpolates an HDR channel value between two endpoints using the specified weight.
         /// </summary>
         /// <remarks>
@@ -285,6 +312,51 @@ namespace AstcSharp.TexelBlock
                     (ushort)(result[1] * 257),
                     (ushort)(result[2] * 257),
                     (ushort)(result[3] * 257));
+            }
+            else
+            {
+                throw new InvalidOperationException("Unknown endpoint pair type");
+            }
+        }
+
+        /// <summary>
+        /// Writes the HDR float values for the pixel at (x, y) into the output span.
+        /// </summary>
+        /// <remarks>
+        /// For HDR endpoints, the interpolated ushort is an FP16 bit pattern and is
+        /// bit-cast via <see cref="BitConverter.UInt16BitsToHalf"/> then widened to float.
+        /// For LDR endpoints, the interpolated UNORM16 value is normalized to 0.0-1.0.
+        /// </remarks>
+        public void WriteHdrPixel(int x, int y, Span<float> output)
+        {
+            var footprint = GetFootprint();
+
+            ArgumentOutOfRangeException.ThrowIfNegative(x);
+            ArgumentOutOfRangeException.ThrowIfNegative(y);
+            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(x, footprint.Width);
+            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(y, footprint.Height);
+
+            int index = y * footprint.Width + x;
+            int part = _partition.assignment[index];
+            var endpointPair = _endpoints[part];
+
+            if (endpointPair is HdrEndpointPair hdrPair)
+            {
+                for (int channel = 0; channel < ChannelCount; ++channel)
+                {
+                    int weight = GetWeightForPixel(index, channel);
+                    ushort hdrValue = InterpolateChannelHdr(hdrPair.Low, hdrPair.High, channel, weight);
+                    output[channel] = (float)BitConverter.UInt16BitsToHalf(hdrValue);
+                }
+            }
+            else if (endpointPair is LdrEndpointPair ldrPair)
+            {
+                for (int channel = 0; channel < ChannelCount; ++channel)
+                {
+                    int weight = GetWeightForPixel(index, channel);
+                    ushort unorm16 = InterpolateLdrAsUnorm16(ldrPair.Low, ldrPair.High, channel, weight);
+                    output[channel] = unorm16 / 65535.0f;
+                }
             }
             else
             {

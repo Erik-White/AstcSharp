@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using AstcSharp.Core;
 using AstcSharp.IO;
 using AstcSharp.Reference.Tests.Utils;
@@ -133,6 +134,8 @@ public class ReferenceDecoderHdrTests
 
     [Theory]
     [MemberData(nameof(AllFootprintTypes))]
+    [Description("In ASTC, the encoder picks the best endpoint mode per block. A single image can have some blocks" +
+        " encoded with LDR modes and others with HDR modes, the encoder optimizes each block independently.")]
     public void DecompressHdr_MixedLdrHdr_ShouldMatch(FootprintType footprintType)
     {
         var (blockX, blockY) = ReferenceDecoder.ToBlockDimensions(footprintType);
@@ -177,17 +180,14 @@ public class ReferenceDecoderHdrTests
     }
 
     /// <summary>
-    /// Compare FP16 output from both decoders.
-    /// The ARM reference with AstcencTypeF16 outputs raw FP16 values (bit-cast from uint16).
-    /// AstcSharp normalizes ushort→Half via value/65535.0f.
-    /// Per ASTC spec (Section C.2.19), HDR output should be bit-cast from uint16 to FP16.
-    /// This comparison checks for exact bit-level match, which will likely reveal the
-    /// normalization vs bit-cast difference in AstcSharp's HDR path.
+    /// Compare float output from AstcSharp against FP16 output from the ARM reference decoder.
+    /// AstcSharp outputs float values (bit-cast from FP16 for HDR, normalized for LDR).
+    /// The ARM reference outputs raw FP16 Half values which are converted to float for comparison.
     /// </summary>
-    private static void CompareF16(Span<Half> actual, Half[] expected, int width, int height, string label)
+    private static void CompareF16(Span<float> actual, Half[] expected, int width, int height, string label)
     {
         int channelCount = width * height * RgbaColor.BytesPerPixel;
-        actual.Length.Should().Be(channelCount, because: $"actual F16 output size should match for {label}");
+        actual.Length.Should().Be(channelCount, because: $"actual float output size should match for {label}");
         expected.Length.Should().Be(channelCount, because: $"expected F16 output size should match for {label}");
 
         int mismatches = 0;
@@ -197,7 +197,7 @@ public class ReferenceDecoderHdrTests
 
         for (int index = 0; index < channelCount; index++)
         {
-            float actualValue = (float)actual[index];
+            float actualValue = actual[index];
             float expectedValue = (float)expected[index];
 
             // Both NaN == match; one NaN == mismatch
@@ -234,7 +234,7 @@ public class ReferenceDecoderHdrTests
             Assert.Fail(
                 $"[{label}] {mismatches}/{channelCount} F16 channel mismatches. " +
                 $"Worst: pixel ({pixelX},{pixelY}) channel {channelName}, " +
-                $"actual={(float)actual[worstPixel * 4 + worstChannel]:G5} vs " +
+                $"actual={actual[worstPixel * 4 + worstChannel]:G5} vs " +
                 $"expected={(float)expected[worstPixel * 4 + worstChannel]:G5} " +
                 $"(relDiff={worstRelDiff:P2}).");
         }

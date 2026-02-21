@@ -47,16 +47,16 @@ public class HdrReferenceTests
         // Verify all values are valid (not NaN or infinity)
         foreach (var value in hdrResult)
         {
-            Half.IsNaN(value).Should().BeFalse();
-            Half.IsInfinity(value).Should().BeFalse();
+            float.IsNaN(value).Should().BeFalse();
+            float.IsInfinity(value).Should().BeFalse();
         }
 
         // HDR values can exceed 1.0
         // Just verify they're in a reasonable range (0.0 to 10.0)
         foreach (var value in hdrResult)
         {
-            ((float)value).Should().BeGreaterThanOrEqualTo(0.0f);
-            ((float)value).Should().BeLessThan(10.0f);
+            value.Should().BeGreaterThanOrEqualTo(0.0f);
+            value.Should().BeLessThan(10.0f);
         }
     }
 
@@ -86,18 +86,17 @@ public class HdrReferenceTests
         // Should produce Width * Height pixels, each with 4 Half values
         hdrResult.Length.Should().Be(astcFile.Width * astcFile.Height * 4);
 
-        // Verify all values are valid
         foreach (var value in hdrResult)
         {
-            Half.IsNaN(value).Should().BeFalse();
-            Half.IsInfinity(value).Should().BeFalse();
+            float.IsNaN(value).Should().BeFalse();
+            float.IsInfinity(value).Should().BeFalse();
         }
 
         // Verify at least some HDR values exceed 1.0 (typical for HDR content)
         int valuesAboveOne = 0;
         foreach (var v in hdrResult)
         {
-            if ((float)v > 1.0f)
+            if (v > 1.0f)
                 valuesAboveOne++;
         }
 
@@ -161,7 +160,7 @@ public class HdrReferenceTests
         // If HDR R > G, then LDR R should be >= G (accounting for clamping)
         for (int i = 0; i < 3; i++)
         {
-            float hdrVal = (float)hdrResult[i];
+            float hdrVal = hdrResult[i];
             byte ldrVal = ldrResult[i];
 
             // Both should be valid

@@ -20,14 +20,13 @@ public class HdrIntegrationTests
         // Verify output size: 4x4 pixels, 4 Half values (RGBA) per pixel
         hdrResult.Length.Should().Be(4 * 4 * 4); // 64 Half values total
 
-        // Verify all values are valid Half numbers (not NaN or infinity)
         foreach (var value in hdrResult)
         {
-            Half.IsNaN(value).Should().BeFalse();
-            Half.IsInfinity(value).Should().BeFalse();
+            float.IsNaN(value).Should().BeFalse();
+            float.IsInfinity(value).Should().BeFalse();
             // Values should be in reasonable range for normalized colors
-            ((float)value).Should().BeGreaterThanOrEqualTo(0.0f);
-            ((float)value).Should().BeLessThanOrEqualTo(1.1f); // Allow slight overshoot for HDR
+            value.Should().BeGreaterThanOrEqualTo(0.0f);
+            value.Should().BeLessThanOrEqualTo(1.1f); // Allow slight overshoot for HDR
         }
     }
 
@@ -75,30 +74,6 @@ public class HdrIntegrationTests
         var result = AstcDecoder.DecompressHdrImage(astcData, 0, 0, footprint);
 
         result.Length.Should().Be(0);
-    }
-
-    [Fact]
-    public void HdrColor_Conversions_ShouldMaintainPrecision()
-    {
-        // Test round-trip conversions
-        var hdrColor = new RgbaHdrColor(0, 32767, 65535, 16383);
-
-        // Convert to Half array
-        var halfArray = hdrColor.ToHalfArray();
-        halfArray.Length.Should().Be(4);
-
-        // Verify normalized values
-        ((float)halfArray[0]).Should().BeApproximately(0.0f, 0.001f);
-        ((float)halfArray[1]).Should().BeApproximately(0.5f, 0.001f);
-        ((float)halfArray[2]).Should().BeApproximately(1.0f, 0.001f);
-        ((float)halfArray[3]).Should().BeApproximately(0.25f, 0.001f);
-
-        // Round-trip back
-        var reconstructed = RgbaHdrColor.FromHalfArray(halfArray);
-        reconstructed.R.Should().Be((ushort)0);
-        Math.Abs(reconstructed.G - 32767).Should().BeLessThanOrEqualTo(10);
-        reconstructed.B.Should().Be((ushort)65535);
-        Math.Abs(reconstructed.A - 16383).Should().BeLessThanOrEqualTo(10);
     }
 
     [Fact]

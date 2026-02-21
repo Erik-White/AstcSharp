@@ -12,6 +12,7 @@ internal static class IntermediateBlock
 
     internal struct VoidExtentData
     {
+        public bool isHdr;
         public ushort r;
         public ushort g;
         public ushort b;
@@ -369,6 +370,8 @@ internal static class IntermediateBlock
         var low = colorBits.Low();
 
         var data = new VoidExtentData();
+        // Bit 9 of the block mode indicates HDR (1) vs LDR (0) void extent
+        data.isHdr = (physicalBlock.BlockBits.Low() & (1UL << 9)) != 0;
         data.r = (ushort)((low >> 0) & 0xFFFF);
         data.g = (ushort)((low >> 16) & 0xFFFF);
         data.b = (ushort)((low >> 32) & 0xFFFF);

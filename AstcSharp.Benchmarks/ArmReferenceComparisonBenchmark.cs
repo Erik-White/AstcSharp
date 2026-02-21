@@ -84,7 +84,7 @@ public class ArmReferenceComparisonBenchmark
     }
 
     [Benchmark]
-    public Span<Half> AstcSharp_DecompressHdr()
+    public Span<float> AstcSharp_DecompressHdr()
     {
         var file = _astcFile!;
         return AstcDecoder.DecompressHdrImage(file.Blocks, file.Width, file.Height, file.Footprint);

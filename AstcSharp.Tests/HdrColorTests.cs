@@ -78,44 +78,6 @@ public class HdrColorTests
     }
 
     [Fact]
-    public void UshortToHalf_WithValidRange_ShouldNormalizeCorrectly()
-    {
-        var half0 = RgbaHdrColor.UshortToHalf(0);
-        var halfMid = RgbaHdrColor.UshortToHalf(32767);
-        var halfMax = RgbaHdrColor.UshortToHalf(65535);
-
-        ((float)half0).Should().BeApproximately(0.0f, 0.001f);
-        ((float)halfMid).Should().BeApproximately(0.5f, 0.001f);
-        ((float)halfMax).Should().BeApproximately(1.0f, 0.001f);
-    }
-
-    [Fact]
-    public void HalfToUshort_WithValidRange_ShouldScaleCorrectly()
-    {
-        var ushort0 = RgbaHdrColor.HalfToUshort(Half.CreateSaturating(0.0f));
-        var ushortMid = RgbaHdrColor.HalfToUshort(Half.CreateSaturating(0.5f));
-        var ushortMax = RgbaHdrColor.HalfToUshort(Half.CreateSaturating(1.0f));
-
-        ushort0.Should().Be(0);
-        Math.Abs(ushortMid - 32767).Should().BeLessThanOrEqualTo(10);
-        ushortMax.Should().Be(65535);
-    }
-
-    [Fact]
-    public void ToHalfArray_ShouldReturnCorrectValues()
-    {
-        var hdrColor = new RgbaHdrColor(0, 32767, 65535, 16383);
-
-        var halfArray = hdrColor.ToHalfArray();
-
-        halfArray.Length.Should().Be(4);
-        ((float)halfArray[0]).Should().BeApproximately(0.0f, 0.001f);
-        ((float)halfArray[1]).Should().BeApproximately(0.5f, 0.001f);
-        ((float)halfArray[2]).Should().BeApproximately(1.0f, 0.001f);
-        ((float)halfArray[3]).Should().BeApproximately(0.25f, 0.001f);
-    }
-
-    [Fact]
     public void IsCloseTo_WithSimilarColors_ShouldReturnTrue()
     {
         var color1 = new RgbaHdrColor(1000, 2000, 3000, 4000);
@@ -148,9 +110,4 @@ public class HdrColorTests
         empty.A.Should().Be(0);
     }
 
-    [Fact]
-    public void BytesPerPixel_ShouldBe8()
-    {
-        RgbaHdrColor.BytesPerPixel.Should().Be(8);
-    }
 }
