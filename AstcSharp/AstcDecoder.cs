@@ -80,20 +80,18 @@ public static class AstcDecoder
                     if (decodedPixels.Length == 0)
                         throw new InvalidOperationException("Failed to decompress ASTC block.");
 
-                    for (int pixelY = 0; pixelY < footprint.Height && (blockY * footprint.Height + pixelY) < height; pixelY++)
-                    {
-                        for (int pixelX = 0; pixelX < footprint.Width && (blockX * footprint.Width + pixelX) < width; pixelX++)
-                        {
-                            int srcIndex = (pixelY * footprint.Width + pixelX) * 4;
-                            int dstX = blockX * footprint.Width + pixelX;
-                            int dstY = blockY * footprint.Height + pixelY;
-                            int dstIndex = (dstY * width + dstX) * 4;
+                    int dstBaseX = blockX * footprint.Width;
+                    int dstBaseY = blockY * footprint.Height;
+                    int copyWidth = Math.Min(footprint.Width, width - dstBaseX);
+                    int copyHeight = Math.Min(footprint.Height, height - dstBaseY);
+                    int copyBytes = copyWidth * BytesPerPixelUnorm8;
 
-                            imageBuffer[dstIndex] = decodedPixels[srcIndex];
-                            imageBuffer[dstIndex + 1] = decodedPixels[srcIndex + 1];
-                            imageBuffer[dstIndex + 2] = decodedPixels[srcIndex + 2];
-                            imageBuffer[dstIndex + 3] = decodedPixels[srcIndex + 3];
-                        }
+                    for (int pixelY = 0; pixelY < copyHeight; pixelY++)
+                    {
+                        int srcOffset = pixelY * footprint.Width * BytesPerPixelUnorm8;
+                        int dstOffset = ((dstBaseY + pixelY) * width + dstBaseX) * BytesPerPixelUnorm8;
+                        decodedPixels.Slice(srcOffset, copyBytes)
+                            .CopyTo(imageBuffer.AsSpan(dstOffset, copyBytes));
                     }
                 }
             }
@@ -150,21 +148,7 @@ public static class AstcDecoder
         if (logicalBlock is null)
             return;
 
-        for (int row = 0; row < footprint.Height; row++)
-        {
-            for (int column = 0; column < footprint.Width; ++column)
-            {
-                var pixelOffset = (footprint.Width * row * BytesPerPixelUnorm8) + (column * BytesPerPixelUnorm8);
-                var decoded = logicalBlock.ColorAt(column, row);
-
-                buffer[pixelOffset + 0] = decoded.R;
-                buffer[pixelOffset + 1] = decoded.G;
-                buffer[pixelOffset + 2] = decoded.B;
-                buffer[pixelOffset + 3] = decoded.A;
-            }
-        }
-
-        return;
+        logicalBlock.WriteAllPixelsLdr(footprint, buffer);
     }
 
     /// <summary>
@@ -221,20 +205,18 @@ public static class AstcDecoder
                     if (decodedPixels.Length == 0)
                         throw new InvalidOperationException("Failed to decompress ASTC block.");
 
-                    for (int pixelY = 0; pixelY < footprint.Height && (blockY * footprint.Height + pixelY) < height; pixelY++)
-                    {
-                        for (int pixelX = 0; pixelX < footprint.Width && (blockX * footprint.Width + pixelX) < width; pixelX++)
-                        {
-                            int srcIndex = (pixelY * footprint.Width + pixelX) * channelsPerPixel;
-                            int dstX = blockX * footprint.Width + pixelX;
-                            int dstY = blockY * footprint.Height + pixelY;
-                            int dstIndex = (dstY * width + dstX) * channelsPerPixel;
+                    int dstBaseX = blockX * footprint.Width;
+                    int dstBaseY = blockY * footprint.Height;
+                    int copyWidth = Math.Min(footprint.Width, width - dstBaseX);
+                    int copyHeight = Math.Min(footprint.Height, height - dstBaseY);
+                    int copyFloats = copyWidth * channelsPerPixel;
 
-                            imageBuffer[dstIndex] = decodedPixels[srcIndex];
-                            imageBuffer[dstIndex + 1] = decodedPixels[srcIndex + 1];
-                            imageBuffer[dstIndex + 2] = decodedPixels[srcIndex + 2];
-                            imageBuffer[dstIndex + 3] = decodedPixels[srcIndex + 3];
-                        }
+                    for (int pixelY = 0; pixelY < copyHeight; pixelY++)
+                    {
+                        int srcOffset = pixelY * footprint.Width * channelsPerPixel;
+                        int dstOffset = ((dstBaseY + pixelY) * width + dstBaseX) * channelsPerPixel;
+                        decodedPixels.Slice(srcOffset, copyFloats)
+                            .CopyTo(imageBuffer.AsSpan(dstOffset, copyFloats));
                     }
                 }
             }

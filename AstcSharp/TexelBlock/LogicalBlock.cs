@@ -1,3 +1,4 @@
+using System.Runtime.Intrinsics;
 using AstcSharp.BiseEncoding;
 using AstcSharp.ColorEncoding;
 using AstcSharp.Core;
@@ -178,20 +179,9 @@ namespace AstcSharp.TexelBlock
             {
                 int w = _weights[index];
                 if (_dualPlane != null)
-                {
-                    int dpCh = _dualPlane.Channel;
-                    int dpW = _dualPlane.Weights[index];
-                    return new RgbaColor(
-                        r: InterpolateChannel(ldrPair.Low.R, ldrPair.High.R, dpCh == 0 ? dpW : w),
-                        g: InterpolateChannel(ldrPair.Low.G, ldrPair.High.G, dpCh == 1 ? dpW : w),
-                        b: InterpolateChannel(ldrPair.Low.B, ldrPair.High.B, dpCh == 2 ? dpW : w),
-                        a: InterpolateChannel(ldrPair.Low.A, ldrPair.High.A, dpCh == 3 ? dpW : w));
-                }
-                return new RgbaColor(
-                    r: InterpolateChannel(ldrPair.Low.R, ldrPair.High.R, w),
-                    g: InterpolateChannel(ldrPair.Low.G, ldrPair.High.G, w),
-                    b: InterpolateChannel(ldrPair.Low.B, ldrPair.High.B, w),
-                    a: InterpolateChannel(ldrPair.Low.A, ldrPair.High.A, w));
+                    return SimdHelpers.InterpolateColorLdrDualPlane(
+                        ldrPair.Low, ldrPair.High, w, _dualPlane.Channel, _dualPlane.Weights[index]);
+                return SimdHelpers.InterpolateColorLdr(ldrPair.Low, ldrPair.High, w);
             }
             else if (endpointPair is HdrEndpointPair hdrPair)
             {
@@ -423,6 +413,125 @@ namespace AstcSharp.TexelBlock
             return (_dualPlane != null && _dualPlane.Channel == channel)
                 ? _dualPlane.Weights[index]
                 : _weights[index];
+        }
+
+        /// <summary>
+        /// Writes all pixels in the block directly to the output buffer in RGBA byte format.
+        /// Avoids per-pixel method call overhead, type dispatch, and RgbaColor allocation.
+        /// </summary>
+        public void WriteAllPixelsLdr(Footprint footprint, Span<byte> buffer)
+        {
+            var ep0 = _endpoints[0];
+
+            if (ep0 is LdrEndpointPair ldrPair && _partition.numParts == 1)
+            {
+                // Fast path: single-partition LDR block (most common case)
+                int lowR = ldrPair.Low.R, lowG = ldrPair.Low.G, lowB = ldrPair.Low.B, lowA = ldrPair.Low.A;
+                int highR = ldrPair.High.R, highG = ldrPair.High.G, highB = ldrPair.High.B, highA = ldrPair.High.A;
+
+                if (_dualPlane == null)
+                {
+                    WriteLdrSinglePartition(buffer, footprint, lowR, lowG, lowB, lowA, highR, highG, highB, highA);
+                }
+                else
+                {
+                    int dpCh = _dualPlane.Channel;
+                    var dpWeights = _dualPlane.Weights;
+                    int pixelCount = footprint.PixelCount;
+                    for (int i = 0; i < pixelCount; i++)
+                    {
+                        SimdHelpers.WritePixel1LdrDualPlane(
+                            buffer, i * 4,
+                            lowR, lowG, lowB, lowA, highR, highG, highB, highA,
+                            _weights[i], dpCh, dpWeights[i]);
+                    }
+                }
+            }
+            else
+            {
+                // General path: multi-partition or HDR blocks
+                WriteAllPixelsGeneral(footprint, buffer);
+            }
+        }
+
+        private void WriteLdrSinglePartition(
+            Span<byte> buffer,
+            Footprint footprint,
+            int lowR,
+            int lowG,
+            int lowB,
+            int lowA,
+            int highR,
+            int highG,
+            int highB,
+            int highA)
+        {
+            int pixelCount = footprint.PixelCount;
+            int i = 0;
+
+            if (Vector128.IsHardwareAccelerated)
+            {
+                // Process 4 pixels at a time: 4 different weights × same endpoints
+                int limit = pixelCount - 3;
+                for (; i < limit; i += 4)
+                {
+                    var weights = Vector128.Create(_weights[i], _weights[i + 1], _weights[i + 2], _weights[i + 3]);
+                    SimdHelpers.WritePixels4Ldr(
+                        buffer, i * 4,
+                        lowR, lowG, lowB, lowA, highR, highG, highB, highA,
+                        weights);
+                }
+            }
+
+            // Scalar remainder
+            for (; i < pixelCount; i++)
+            {
+                SimdHelpers.WritePixel1Ldr(
+                    buffer, i * 4,
+                    lowR, lowG, lowB, lowA, highR, highG, highB, highA,
+                    _weights[i]);
+            }
+        }
+
+        private void WriteAllPixelsGeneral(Footprint footprint, Span<byte> buffer)
+        {
+            int pixelCount = footprint.PixelCount;
+            for (int i = 0; i < pixelCount; i++)
+            {
+                int part = _partition.assignment[i];
+                var endpointPair = _endpoints[part];
+
+                if (endpointPair is LdrEndpointPair ldrPair)
+                {
+                    int w = _weights[i];
+                    if (_dualPlane != null)
+                    {
+                        SimdHelpers.WritePixel1LdrDualPlane(
+                            buffer, i * 4,
+                            ldrPair.Low.R, ldrPair.Low.G, ldrPair.Low.B, ldrPair.Low.A,
+                            ldrPair.High.R, ldrPair.High.G, ldrPair.High.B, ldrPair.High.A,
+                            w, _dualPlane.Channel, _dualPlane.Weights[i]);
+                    }
+                    else
+                    {
+                        SimdHelpers.WritePixel1Ldr(
+                            buffer, i * 4,
+                            ldrPair.Low.R, ldrPair.Low.G, ldrPair.Low.B, ldrPair.Low.A,
+                            ldrPair.High.R, ldrPair.High.G, ldrPair.High.B, ldrPair.High.A,
+                            w);
+                    }
+                }
+                else if (endpointPair is HdrEndpointPair hdrPair)
+                {
+                    int w = _weights[i];
+                    int dpCh = _dualPlane?.Channel ?? -1;
+                    int dpW = _dualPlane?.Weights[i] ?? w;
+                    buffer[i * 4 + 0] = (byte)(InterpolateChannelHdr(hdrPair.Low[0], hdrPair.High[0], dpCh == 0 ? dpW : w) >> 8);
+                    buffer[i * 4 + 1] = (byte)(InterpolateChannelHdr(hdrPair.Low[1], hdrPair.High[1], dpCh == 1 ? dpW : w) >> 8);
+                    buffer[i * 4 + 2] = (byte)(InterpolateChannelHdr(hdrPair.Low[2], hdrPair.High[2], dpCh == 2 ? dpW : w) >> 8);
+                    buffer[i * 4 + 3] = (byte)(InterpolateChannelHdr(hdrPair.Low[3], hdrPair.High[3], dpCh == 3 ? dpW : w) >> 8);
+                }
+            }
         }
 
         public void SetPartition(Partition p)

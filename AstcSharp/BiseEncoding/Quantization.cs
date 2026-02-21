@@ -148,34 +148,49 @@ internal static class Quantization
     // QuantizationMap and derived classes
     private class QuantizationMap
     {
-        protected List<int> quantization_map_ = new List<int>();
-        protected List<int> unquantization_map_ = new List<int>();
+        protected List<int> quantization_map_builder = new List<int>();
+        protected List<int> unquantization_map_builder = new List<int>();
+
+        // Flat arrays for O(1) lookup on the hot path (set by Freeze)
+        private int[] quantization_map_ = [];
+        private int[] unquantization_map_ = [];
 
         public int Quantize(int x)
         {
-            return x < quantization_map_.Count ? quantization_map_[x] : 0;
+            return (uint)x < (uint)quantization_map_.Length ? quantization_map_[x] : 0;
         }
 
         public int Unquantize(int x)
         {
-            return x < unquantization_map_.Count ? unquantization_map_[x] : 0;
+            return (uint)x < (uint)unquantization_map_.Length ? unquantization_map_[x] : 0;
+        }
+
+        /// <summary>
+        /// Converts builder lists to flat arrays. Called after construction is complete.
+        /// </summary>
+        protected void Freeze()
+        {
+            unquantization_map_ = unquantization_map_builder.ToArray();
+            quantization_map_ = quantization_map_builder.ToArray();
+            unquantization_map_builder = null!;
+            quantization_map_builder = null!;
         }
 
         protected void GenerateQuantizationMap()
         {
-            if (unquantization_map_.Count <= 1) return;
-            quantization_map_.Clear();
+            if (unquantization_map_builder.Count <= 1) return;
+            quantization_map_builder.Clear();
             for (int i = 0; i < 256; ++i)
             {
                 int bestIdx = 0;
                 int bestScore = int.MaxValue;
-                for (int idx = 0; idx < unquantization_map_.Count; ++idx)
+                for (int idx = 0; idx < unquantization_map_builder.Count; ++idx)
                 {
-                    int diff = i - unquantization_map_[idx];
+                    int diff = i - unquantization_map_builder[idx];
                     int score = diff * diff;
                     if (score < bestScore) { bestIdx = idx; bestScore = score; }
                 }
-                quantization_map_.Add(bestIdx);
+                quantization_map_builder.Add(bestIdx);
             }
         }
     }
@@ -185,15 +200,16 @@ internal static class Quantization
         public TritQuantizationMap(int range, Func<int,int,int,int> unquantFunc)
         {
             ArgumentOutOfRangeException.ThrowIfNotEqual((range + 1) % 3, 0);
-            
+
             int num_bits_pow_2 = (range + 1) / 3;
             int num_bits = num_bits_pow_2 == 0 ? 0 : Log2Floor(num_bits_pow_2);
 
             for (int trit = 0; trit < 3; ++trit)
                 for (int bits = 0; bits < (1 << num_bits); ++bits)
-                    unquantization_map_.Add(unquantFunc(trit, bits, range));
+                    unquantization_map_builder.Add(unquantFunc(trit, bits, range));
 
             GenerateQuantizationMap();
+            Freeze();
         }
     }
 
@@ -208,9 +224,10 @@ internal static class Quantization
 
             for (int quint = 0; quint < 5; ++quint)
                 for (int bits = 0; bits < (1 << num_bits); ++bits)
-                    unquantization_map_.Add(unquantFunc(quint, bits, range));
+                    unquantization_map_builder.Add(unquantFunc(quint, bits, range));
 
             GenerateQuantizationMap();
+            Freeze();
         }
     }
 
@@ -221,7 +238,7 @@ internal static class Quantization
         {
             // ensure range+1 is power of two
             ArgumentOutOfRangeException.ThrowIfNotEqual(CountOnes(range + 1), 1);
-            
+
             int num_bits = Log2Floor(range + 1);
 
             for (int bits = 0; bits <= range; bits++)
@@ -237,22 +254,18 @@ internal static class Quantization
                     num_unquantized_bits += num_dst_bits_to_shift_up;
                 }
                 if (num_unquantized_bits != totalUnquantizedBits) throw new InvalidOperationException();
-                unquantization_map_.Add(unquantized);
+                unquantization_map_builder.Add(unquantized);
 
                 if (bits > 0)
                 {
-                    int prev_unquant = unquantization_map_[bits - 1];
-                    while (quantization_map_.Count <= (prev_unquant + unquantized) / 2)
-                        quantization_map_.Add(bits - 1);
+                    int prev_unquant = unquantization_map_builder[bits - 1];
+                    while (quantization_map_builder.Count <= (prev_unquant + unquantized) / 2)
+                        quantization_map_builder.Add(bits - 1);
                 }
-                while (quantization_map_.Count <= unquantized) quantization_map_.Add(bits);
+                while (quantization_map_builder.Count <= unquantized) quantization_map_builder.Add(bits);
             }
 
-            // expected size
-            if (quantization_map_.Count != (1 << totalUnquantizedBits))
-            {
-                // fine, but try to keep consistent
-            }
+            Freeze();
         }
     }
 
@@ -270,7 +283,11 @@ internal static class Quantization
         return c;
     }
 
-    // Caches for quantization maps
+    // Flat lookup tables indexed by range value for O(1) access.
+    // Each slot maps to the QuantizationMap for the greatest supported range <= that index.
+    private static readonly QuantizationMap?[] endpointMapByRange = InitEndpointMapFlat();
+    private static readonly QuantizationMap?[] weightMapByRange = InitWeightMapFlat();
+
     private static readonly SortedDictionary<int, QuantizationMap> endpointMaps = InitEndpointMaps();
     private static readonly SortedDictionary<int, QuantizationMap> weightMaps = InitWeightMaps();
 
@@ -319,25 +336,35 @@ internal static class Quantization
         return d;
     }
 
+    private static QuantizationMap?[] BuildFlatLookup(SortedDictionary<int, QuantizationMap> maps, int size)
+    {
+        var flat = new QuantizationMap?[size];
+        QuantizationMap? current = null;
+        for (int i = 0; i < size; i++)
+        {
+            if (maps.TryGetValue(i, out var map))
+                current = map;
+            flat[i] = current;
+        }
+        return flat;
+    }
+
+    private static QuantizationMap?[] InitEndpointMapFlat()
+        => BuildFlatLookup(InitEndpointMaps(), 256);
+
+    private static QuantizationMap?[] InitWeightMapFlat()
+        => BuildFlatLookup(InitWeightMaps(), 32);
+
     private static QuantizationMap? GetQuantMapForValueRange(int r)
     {
-        if (r < 0 || r >= 256) return null;
-        // find greatest key <= r
-        foreach (var kv in endpointMaps.Reverse())
-        {
-            if (kv.Key <= r) return kv.Value;
-        }
-        return null;
+        if ((uint)r >= (uint)endpointMapByRange.Length) return null;
+        return endpointMapByRange[r];
     }
 
     private static QuantizationMap? GetQuantMapForWeightRange(int r)
     {
-        if (r < 0 || r >= 32) return null;
-        foreach (var kv in weightMaps.Reverse())
-        {
-            if (kv.Key <= r) return kv.Value;
-        }
-        return null;
+        if ((uint)r >= (uint)weightMapByRange.Length) return null;
+        return weightMapByRange[r];
     }
 
     public static int QuantizeCEValueToRange(int value, int range_max_value)

@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using AstcSharp.Core;
+using static AstcSharp.Core.SimdHelpers;
 
 namespace AstcSharp.BiseEncoding
 {
@@ -106,13 +107,22 @@ namespace AstcSharp.BiseEncoding
                     int f1 = fs - f3;
                     int f0 = 16 - fs - ft + f3;
 
-                    int weight = 0;
-                    if (gp0 < gridLimit) weight += weights[gp0] * f0;
-                    if (gp1 < gridLimit) weight += weights[gp1] * f1;
-                    if (gp2 < gridLimit) weight += weights[gp2] * f2;
-                    if (gp3 < gridLimit) weight += weights[gp3] * f3;
-
-                    result[idx++] = (weight + 8) >> 4;
+                    if (gp3 < gridLimit)
+                    {
+                        // All 4 grid points valid (common case) - use vectorized path
+                        result[idx++] = BilinearWeight(
+                            weights[gp0], weights[gp1], weights[gp2], weights[gp3],
+                            f0, f1, f2, f3);
+                    }
+                    else
+                    {
+                        // Edge case: some grid points out of bounds
+                        int weight = 0;
+                        if (gp0 < gridLimit) weight += weights[gp0] * f0;
+                        if (gp1 < gridLimit) weight += weights[gp1] * f1;
+                        if (gp2 < gridLimit) weight += weights[gp2] * f2;
+                        result[idx++] = (weight + 8) >> 4;
+                    }
                 }
             }
 
