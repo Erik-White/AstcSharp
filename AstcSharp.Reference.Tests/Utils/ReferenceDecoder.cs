@@ -8,7 +8,7 @@ namespace AstcSharp.Reference.Tests.Utils;
 /// Wrapper around the ARM reference ASTC encoder/decoder (AstcEncoderCSharp package)
 /// for use as a comparison baseline in tests.
 /// </summary>
-internal static class ArmReferenceDecoder
+internal static class ReferenceDecoder
 {
     private static readonly AstcencSwizzle IdentitySwizzle = new()
     {
