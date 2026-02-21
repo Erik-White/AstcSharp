@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <IsPackable>false</IsPackable>
@@ -22,14 +22,6 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
-  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
-    <PackageReference Include="AstcEncoderCSharp" Version="5.3.0" />
-  </ItemGroup>
-
-  <PropertyGroup Condition="'$(TargetFramework)' == 'net10.0'">
-    <DefineConstants>$(DefineConstants);HAS_ARM_REFERENCE</DefineConstants>
-  </PropertyGroup>
-
   <!-- Copy the reference testdata (astc-codec testdata) into the test output
        so the runtime path used by the tests (Path.Combine("AstcSharp.Reference", ...))
        resolves correctly regardless of the test runner's working directory. -->
@@ -40,18 +32,6 @@
     </ItemGroup>
     <Copy SourceFiles="@(_ReferenceTestData)" DestinationFiles="@( _ReferenceTestData -> '$(TargetDir)AstcSharp.Reference\\astc-codec\\%(RecursiveDir)%(Filename)%(Extension)')" />
           <Copy SourceFiles="@(_TestData)" DestinationFiles="@(_TestData -> '$(TargetDir)TestData\\%(RecursiveDir)%(Filename)%(Extension)')" />
-  </Target>
-
-  <!-- Copy AstcEncoderCSharp native runtimes to the output directory.
-       The package uses a custom DLL import resolver that expects native libs
-       under runtimes/<os>/<arch>/ relative to the assembly directory. -->
-  <Target Name="CopyAstcEncNativeRuntimes" AfterTargets="Build" Condition="'$(TargetFramework)' == 'net10.0'">
-    <ItemGroup>
-      <_AstcEncNativeFiles Include="$(NuGetPackageRoot)astcencodercsharp\5.3.0\runtimes\**\*.*" />
-    </ItemGroup>
-    <Copy SourceFiles="@(_AstcEncNativeFiles)"
-          DestinationFiles="@(_AstcEncNativeFiles -> '$(TargetDir)runtimes\%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true" />
   </Target>
 
 </Project>

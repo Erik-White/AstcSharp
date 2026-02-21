@@ -1,5 +1,6 @@
 <Solution>
   <Project Path="AstcSharp.Tests/AstcSharp.Tests.csproj" />
+  <Project Path="AstcSharp.Reference.Tests/AstcSharp.Reference.Tests.csproj" />
   <Project Path="AstcSharp/AstcSharp.csproj" />
   <Project Path="AstcSharp.Benchmarks/AstcSharp.Benchmarks.csproj" />
 </Solution>

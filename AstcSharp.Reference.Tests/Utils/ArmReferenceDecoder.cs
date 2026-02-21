@@ -1,9 +1,8 @@
-#if HAS_ARM_REFERENCE
 using System.Runtime.InteropServices;
 using AstcEncoder;
 using AstcSharp.Core;
 
-namespace AstcSharp.Tests.Utils;
+namespace AstcSharp.Reference.Tests.Utils;
 
 /// <summary>
 /// Wrapper around the ARM reference ASTC encoder/decoder (AstcEncoderCSharp package)
@@ -226,4 +225,3 @@ internal static class ArmReferenceDecoder
         }
     }
 }
-#endif

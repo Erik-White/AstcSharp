@@ -1,11 +1,6 @@
+using AstcEncoder;
 using AstcSharp.IO;
 using BenchmarkDotNet.Attributes;
-using BenchmarkDotNet.Configs;
-using BenchmarkDotNet.Jobs;
-using BenchmarkDotNet.Toolchains.InProcess.Emit;
-#if HAS_ARM_REFERENCE
-using AstcEncoder;
-#endif
 
 namespace AstcSharp.Benchmarks;
 
@@ -13,10 +8,8 @@ namespace AstcSharp.Benchmarks;
 [Config(typeof(InProcessConfig))]
 public class ArmReferenceComparisonBenchmark
 {
-    private byte[]? _rawFile;
     private AstcFile? _astcFile;
 
-#if HAS_ARM_REFERENCE
     private static readonly AstcencSwizzle IdentitySwizzle = new()
     {
         r = AstcencSwz.AstcencSwzR,
@@ -30,19 +23,17 @@ public class ArmReferenceComparisonBenchmark
     private byte[]? _armLdrOutput;
     private byte[]? _armHdrOutput;
     private byte[]? _armBlocksCopy;
-#endif
 
     [Params("atlas_small_4x4", "atlas_small_8x8", "footprint_4x4", "footprint_12x12")]
-    public string FileName { get; set; } = null!;
+    public string FileName { get; set; } = string.Empty;
 
     [GlobalSetup]
     public void Setup()
     {
         var path = BenchmarkTestDataLocator.FindTestData(Path.Combine("Input", FileName + ".astc"));
-        _rawFile = File.ReadAllBytes(path);
-        _astcFile = AstcFile.FromMemory(_rawFile);
+        var rawFile = File.ReadAllBytes(path);
+        _astcFile = AstcFile.FromMemory(rawFile);
 
-#if HAS_ARM_REFERENCE
         var footprint = _astcFile.Footprint;
         int w = _astcFile.Width;
         int h = _astcFile.Height;
@@ -56,36 +47,33 @@ public class ArmReferenceComparisonBenchmark
         // Pre-allocate LDR context
         var error = Astcenc.AstcencConfigInit(
             AstcencProfile.AstcencPrfLdr,
-            (uint)footprint.Width, (uint)footprint.Height, 1,
+            (uint)footprint.Width, (uint)footprint.Height, blockZ: 1,
             Astcenc.AstcencPreFastest,
             AstcencFlags.DecompressOnly,
             out var ldrConfig);
         ThrowOnError(error, "ConfigInit(LDR)");
 
-        error = Astcenc.AstcencContextAlloc(ref ldrConfig, 1, out _armLdrContext);
+        error = Astcenc.AstcencContextAlloc(ref ldrConfig, threadCount: 1, out _armLdrContext);
         ThrowOnError(error, "ContextAlloc(LDR)");
 
         // Pre-allocate HDR context
         error = Astcenc.AstcencConfigInit(
             AstcencProfile.AstcencPrfHdr,
-            (uint)footprint.Width, (uint)footprint.Height, 1,
+            (uint)footprint.Width, (uint)footprint.Height, blockZ: 1,
             Astcenc.AstcencPreFastest,
             AstcencFlags.DecompressOnly,
             out var hdrConfig);
         ThrowOnError(error, "ConfigInit(HDR)");
 
-        error = Astcenc.AstcencContextAlloc(ref hdrConfig, 1, out _armHdrContext);
+        error = Astcenc.AstcencContextAlloc(ref hdrConfig, threadCount: 1, out _armHdrContext);
         ThrowOnError(error, "ContextAlloc(HDR)");
-#endif
     }
 
     [GlobalCleanup]
     public void Cleanup()
     {
-#if HAS_ARM_REFERENCE
         Astcenc.AstcencContextFree(_armLdrContext);
         Astcenc.AstcencContextFree(_armHdrContext);
-#endif
     }
 
     [Benchmark]
@@ -102,7 +90,6 @@ public class ArmReferenceComparisonBenchmark
         return AstcDecoder.DecompressHdrImage(file.Blocks, file.Width, file.Height, file.Footprint);
     }
 
-#if HAS_ARM_REFERENCE
     [Benchmark]
     public byte[] ArmReference_DecompressLdr()
     {
@@ -154,14 +141,5 @@ public class ArmReferenceComparisonBenchmark
             var message = Astcenc.GetErrorString(error) ?? error.ToString();
             throw new InvalidOperationException($"ARM ASTC encoder {operation} failed: {message}");
         }
-    }
-#endif
-}
-
-internal class InProcessConfig : ManualConfig
-{
-    public InProcessConfig()
-    {
-        AddJob(Job.Default.WithToolchain(InProcessEmitToolchain.Instance));
     }
 }

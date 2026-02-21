@@ -1,10 +1,9 @@
-#if HAS_ARM_REFERENCE
 using AstcSharp.Core;
 using AstcSharp.IO;
-using AstcSharp.Tests.Utils;
+using AstcSharp.Reference.Tests.Utils;
 using AwesomeAssertions;
 
-namespace AstcSharp.Tests;
+namespace AstcSharp.Reference.Tests;
 
 /// <summary>
 /// HDR comparison tests between AstcSharp and the ARM reference ASTC decoder.
@@ -244,4 +243,3 @@ public class ArmReferenceHdrComparisonTests
         FootprintType.Footprint12x12,
     };
 }
-#endif

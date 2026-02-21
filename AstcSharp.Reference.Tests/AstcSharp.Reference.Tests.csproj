@@ -3,33 +3,41 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <TargetFrameworks></TargetFrameworks>
-    <OutputType>Exe</OutputType>
     <IsPackable>false</IsPackable>
     <SignAssembly>true</SignAssembly>
     <AssemblyOriginatorKeyFile>..\AstcSharp\AstcSharp.snk</AssemblyOriginatorKeyFile>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="BenchmarkDotNet" Version="0.13.12" />
-    <ProjectReference Include="../AstcSharp/AstcSharp.csproj" />
+    <PackageReference Include="AstcEncoderCSharp" Version="5.3.0" />
+    <PackageReference Include="AwesomeAssertions" Version="9.3.0" />
+    <PackageReference Include="coverlet.collector" Version="6.0.2" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="AstcEncoderCSharp" Version="5.3.0" />
+    <ProjectReference Include="..\AstcSharp\AstcSharp.csproj" />
   </ItemGroup>
 
-  <!-- Copy test data from the test project into the output directory
-       so BenchmarkTestDataLocator can find them at runtime. -->
-  <Target Name="CopyBenchmarkTestData" AfterTargets="Build">
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <!-- Copy test data into the output directory. -->
+  <Target Name="CopyTestData" AfterTargets="Build">
     <ItemGroup>
       <_TestData Include="..\AstcSharp.Tests\TestData\**\*.*" />
     </ItemGroup>
     <Copy SourceFiles="@(_TestData)"
-          DestinationFiles="@(_TestData -> '$(TargetDir)AstcSharp.Tests\TestData\%(RecursiveDir)%(Filename)%(Extension)')"
+          DestinationFiles="@(_TestData -> '$(TargetDir)TestData\%(RecursiveDir)%(Filename)%(Extension)')"
           SkipUnchangedFiles="true" />
   </Target>
 
-  <!-- Copy AstcEncoderCSharp native runtimes to the output directory. -->
+  <!-- Copy AstcEncoderCSharp native runtimes to the output directory.
+       The package uses a custom DLL import resolver that expects native libs
+       under runtimes/<os>/<arch>/ relative to the assembly directory. -->
   <Target Name="CopyAstcEncNativeRuntimes" AfterTargets="Build">
     <ItemGroup>
       <_AstcEncNativeFiles Include="$(NuGetPackageRoot)astcencodercsharp\5.3.0\runtimes\**\*.*" />
