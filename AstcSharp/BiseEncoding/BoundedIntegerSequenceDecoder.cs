@@ -4,7 +4,63 @@ namespace AstcSharp.BiseEncoding;
 
 internal class BoundedIntegerSequenceDecoder : BoundedIntegerSequenceCodec
 {
+    private static readonly BoundedIntegerSequenceDecoder?[] _cache = new BoundedIntegerSequenceDecoder?[256];
+
+    public static BoundedIntegerSequenceDecoder GetCached(int range)
+    {
+        var d = _cache[range];
+        if (d is null)
+        {
+            d = new BoundedIntegerSequenceDecoder(range);
+            _cache[range] = d;
+        }
+        return d;
+    }
+
     public BoundedIntegerSequenceDecoder(int range) : base(range) { }
+
+    /// <summary>
+    /// Decode a sequence of bounded integers into a caller-provided span.
+    /// </summary>
+    /// <param name="valuesCount">The number of values to decode.</param>
+    /// <param name="bitSource">The source of values to decode from.</param>
+    /// <param name="result">The span to write decoded values into.</param>
+    /// <exception cref="ArgumentOutOfRangeException"></exception>
+    /// <exception cref="InvalidOperationException"></exception>
+    public void Decode(int valuesCount, ref BitStream bitSource, Span<int> result)
+    {
+        int totalBitCount = GetBitCount(_encoding, valuesCount, _bitCount);
+        int bitsPerBlock = GetEncodedBlockSize();
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(bitsPerBlock, 64);
+
+        Span<int> blockResult = stackalloc int[5];
+        int resultIndex = 0;
+        int bitsRemaining = totalBitCount;
+
+        while (bitsRemaining > 0)
+        {
+            int bitsToRead = Math.Min(bitsRemaining, bitsPerBlock);
+            if (!bitSource.TryGetBits(bitsToRead, out ulong blockBits))
+                throw new InvalidOperationException("Not enough bits in BitStream to decode BISE block");
+
+            if (_encoding == BiseEncodingMode.BitEncoding)
+            {
+                if (resultIndex < valuesCount)
+                    result[resultIndex++] = (int)blockBits;
+            }
+            else
+            {
+                int decoded = DecodeISEBlock(_encoding, blockBits, _bitCount, blockResult);
+                for (int i = 0; i < decoded && resultIndex < valuesCount; ++i)
+                    result[resultIndex++] = blockResult[i];
+            }
+
+            bitsRemaining -= bitsPerBlock;
+        }
+
+        if (resultIndex < valuesCount)
+            throw new InvalidOperationException("Decoded fewer values than expected from BISE block");
+    }
 
     /// <summary>
     /// Decode a sequence of bounded integers. The number of bits read is dependent on the number
@@ -18,51 +74,23 @@ internal class BoundedIntegerSequenceDecoder : BoundedIntegerSequenceCodec
     /// <exception cref="InvalidOperationException"></exception>
     public int[] Decode(int valuesCount, ref BitStream bitSource)
     {
-        int totalBitCount = GetBitCount(_encoding, valuesCount, _bitCount);
-        int bitsPerBlock = GetEncodedBlockSize();
-        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(bitsPerBlock, 64);
-
         var result = new int[valuesCount];
-        int resultIndex = 0;
-        int bitsRemaining = totalBitCount;
-
-        while (bitsRemaining > 0)
-        {
-            int bitsToRead = Math.Min(bitsRemaining, bitsPerBlock);
-            if (!bitSource.TryGetBits<ulong>(bitsToRead, out var blockBits))
-                throw new InvalidOperationException("Not enough bits in BitStream to decode BISE block");
-
-            if (_encoding == BiseEncodingMode.BitEncoding)
-            {
-                if (resultIndex < valuesCount)
-                    result[resultIndex++] = (int)blockBits;
-            }
-            else
-            {
-                var decodedValues = DecodeISEBlock(_encoding, blockBits, _bitCount);
-                for (int i = 0; i < decodedValues.Length && resultIndex < valuesCount; ++i)
-                    result[resultIndex++] = decodedValues[i];
-            }
-
-            bitsRemaining -= bitsPerBlock;
-        }
-
-        if (resultIndex < valuesCount)
-            throw new InvalidOperationException("Decoded fewer values than expected from BISE block");
-
+        Decode(valuesCount, ref bitSource, result);
         return result;
     }
 
     /// <summary>
-    /// Decode a trit/quint block
+    /// Decode a trit/quint block into a caller-provided span.
+    /// Returns the number of values written.
     /// </summary>
-    /// <param name="valRange">The range of values, either 3 for trits or 5 for quints.</param>
+    /// <param name="mode">The encoding mode (trit or quint).</param>
     /// <param name="encodedBlock">The bits representing the encoded block.</param>
     /// <param name="encodedBitCount">The number of bits used for each value.</param>
-    /// <returns>An array of decoded integer values.</returns>
+    /// <param name="result">The span to write decoded values into.</param>
+    /// <returns>The number of values written to the result span.</returns>
     /// <exception cref="ArgumentException"></exception>
     /// <exception cref="InvalidOperationException"></exception>
-    public static int[] DecodeISEBlock(BiseEncodingMode mode, ulong encodedBlock, int encodedBitCount)
+    public static int DecodeISEBlock(BiseEncodingMode mode, ulong encodedBlock, int encodedBitCount, Span<int> result)
     {
         int[] interleavedBits = mode switch
         {
@@ -73,19 +101,18 @@ internal class BoundedIntegerSequenceDecoder : BoundedIntegerSequenceCodec
 
         var valuesCount = mode == BiseEncodingMode.TritEncoding ? 5 : 3;
         var bitSource = new BitStream(encodedBlock, dataSize: sizeof(ulong) * 8);
-        var result = new int[valuesCount];
-        var m = new int[valuesCount];
+        Span<int> m = stackalloc int[5];
         ulong encodedBits = 0;
         int encodedBitsRead = 0;
 
         for (int i = 0; i < valuesCount; i++)
         {
-            if (!bitSource.TryGetBits<ulong>(encodedBitCount, out var bits))
+            if (!bitSource.TryGetBits(encodedBitCount, out ulong bits))
                 throw new InvalidOperationException();
 
             m[i] = (int)bits;
 
-            if (!bitSource.TryGetBits<ulong>(interleavedBits[i], out var encoded_bits))
+            if (!bitSource.TryGetBits(interleavedBits[i], out ulong encoded_bits))
                 throw new InvalidOperationException();
 
             encodedBits |= encoded_bits << encodedBitsRead;
@@ -101,6 +128,23 @@ internal class BoundedIntegerSequenceDecoder : BoundedIntegerSequenceCodec
             result[i] = (encodings[i] << encodedBitCount) | m[i];
         }
 
+        return valuesCount;
+    }
+
+    /// <summary>
+    /// Decode a trit/quint block, returning the result as an array.
+    /// </summary>
+    /// <param name="mode">The encoding mode (trit or quint).</param>
+    /// <param name="encodedBlock">The bits representing the encoded block.</param>
+    /// <param name="encodedBitCount">The number of bits used for each value.</param>
+    /// <returns>An array of decoded integer values.</returns>
+    /// <exception cref="ArgumentException"></exception>
+    /// <exception cref="InvalidOperationException"></exception>
+    public static int[] DecodeISEBlock(BiseEncodingMode mode, ulong encodedBlock, int encodedBitCount)
+    {
+        int valuesCount = mode == BiseEncodingMode.TritEncoding ? 5 : 3;
+        var result = new int[valuesCount];
+        DecodeISEBlock(mode, encodedBlock, encodedBitCount, result);
         return result;
     }
 }

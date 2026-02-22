@@ -324,10 +324,12 @@ public class EndpointCodecTests
             colorRange.Should().BeGreaterThan(0, "color range should be valid");
 
             // Check all endpoint pairs decode successfully to grayscale colors
-            foreach (var endpoints in intermediateBlock.endpoints)
+            for (int ep = 0; ep < intermediateBlock.endpointCount; ep++)
             {
+                ref var endpoints = ref intermediateBlock.endpoints[ep];
+                ReadOnlySpan<int> colorSpan = ((ReadOnlySpan<int>)endpoints.colors)[..endpoints.colorCount];
                 var (low, high) = EndpointCodec.DecodeColorsForMode(
-                    endpoints.colors,
+                    colorSpan,
                     colorRange,
                     endpoints.mode);
 

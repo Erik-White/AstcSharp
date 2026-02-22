@@ -149,6 +149,7 @@ public static class AstcDecoder
             return;
 
         logicalBlock.WriteAllPixelsLdr(footprint, buffer);
+        logicalBlock.ReturnPooledArrays();
     }
 
     /// <summary>
@@ -272,5 +273,6 @@ public static class AstcDecoder
                 logicalBlock.WriteHdrPixel(column, row, buffer.Slice(pixelOffset, channelsPerPixel));
             }
         }
+        logicalBlock.ReturnPooledArrays();
     }
 }

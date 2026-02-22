@@ -69,9 +69,15 @@ namespace AstcSharp.ColorEncoding
             return w * h - pixelsMatched;
         }
 
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<(Footprint, int, int), Partition> _partitionCache = new();
+
         // Basic GetASTCPartition implementation using selection function from C++
         public static Partition GetASTCPartition(Footprint footprint, int numParts, int partitionId)
         {
+            var key = (footprint, numParts, partitionId);
+            if (_partitionCache.TryGetValue(key, out var cached))
+                return cached;
+
             var part = new Partition(footprint, numParts, partitionId);
             int w = footprint.Width;
             int h = footprint.Height;
@@ -81,6 +87,7 @@ namespace AstcSharp.ColorEncoding
                 for (int x = 0; x < w; ++x)
                     assignment[idx++] = SelectASTCPartition(partitionId, x, y, 0, numParts, footprint.PixelCount);
             part.assignment = assignment;
+            _partitionCache.TryAdd(key, part);
             return part;
         }
 

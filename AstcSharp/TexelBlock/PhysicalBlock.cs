@@ -11,12 +11,28 @@ internal abstract class PhysicalBlock
 {
     public const int SizeInBytes = 16;
 
+    private static readonly int[] s_weightRanges = [-1, -1, 1, 2, 3, 4, 5, 7, -1, -1, 9, 11, 15, 19, 23, 31];
+    private static readonly int[] s_extraCemBitsForPartition = [0, 2, 5, 8];
+
     public UInt128 BlockBits { get; init; }
 
     public abstract bool IsDualPlane { get; }
 
+    private bool _isIllegalEncodingCached;
+    private bool _isIllegalEncoding;
+
     public bool IsIllegalEncoding
-        => IdentifyInvalidEncodingIssues() is not null;
+    {
+        get
+        {
+            if (!_isIllegalEncodingCached)
+            {
+                _isIllegalEncoding = IdentifyInvalidEncodingIssues() is not null;
+                _isIllegalEncodingCached = true;
+            }
+            return _isIllegalEncoding;
+        }
+    }
 
     public abstract bool IsVoidExtent { get; }
 
@@ -240,7 +256,7 @@ internal abstract class PhysicalBlock
         uint h = (uint)BitOperations.GetBits(low32, 9, 1);
         if (blockMode.Value == PhysicalBlockMode.WidthA6HeightB6) h = 0;
 
-        int[] kWeightRanges = new int[] { -1, -1, 1, 2, 3, 4, 5, 7, -1, -1, 9, 11, 15, 19, 23, 31 };
+        int[] kWeightRanges = s_weightRanges;
         int idx = (int)((h << 3) | r);
         if (idx < 0 || idx >= kWeightRanges.Length)
         {
@@ -352,8 +368,7 @@ internal abstract class PhysicalBlock
         const int kSharedCEMBitLength = 2;
         var shared_cem = BitOperations.GetBits(astcBits, kSharedCEMBitPosition, kSharedCEMBitLength);
             if (shared_cem.Low() == 0UL) return 0;
-        int[] extra_cem_bits_for_partition = new int[] { 0, 2, 5, 8 };
-        return extra_cem_bits_for_partition[num_partitions - 1];
+        return s_extraCemBitsForPartition[num_partitions - 1];
     }
 
     internal static int DecodeDualPlaneBitStartPosition(UInt128 astcBits)

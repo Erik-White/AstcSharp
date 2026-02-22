@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Runtime.Intrinsics;
 using AstcSharp.BiseEncoding;
 using AstcSharp.ColorEncoding;
@@ -10,8 +11,12 @@ namespace AstcSharp.TexelBlock
         // TODO: Consolidate this to RgbaColor class
         private const int ChannelCount = 4; // R, G, B, A
 
-        private List<IColorEndpointPair> _endpoints;
+        private static readonly ArrayPool<int> _intPool = ArrayPool<int>.Shared;
+
+        private ColorEndpointPair[] _endpoints;
+        private int _endpointCount;
         private int[] _weights;
+        private bool _weightsPooled;
         private Partition _partition;
         private DualPlaneData? _dualPlane;
 
@@ -19,11 +24,13 @@ namespace AstcSharp.TexelBlock
         {
             public int Channel;
             public int[] Weights = [];
+            public bool WeightsPooled;
         }
 
         public LogicalBlock(Footprint footprint)
         {
-            _endpoints = [new LdrEndpointPair(RgbaColor.Empty, RgbaColor.Empty)];
+            _endpoints = [ColorEndpointPair.Ldr(RgbaColor.Empty, RgbaColor.Empty)];
+            _endpointCount = 1;
             _weights = new int[footprint.PixelCount];
             _partition = new Partition(footprint, 1, 0)
             {
@@ -33,39 +40,43 @@ namespace AstcSharp.TexelBlock
 
         public LogicalBlock(Footprint footprint, IntermediateBlock.IntermediateBlockData block)
         {
-            _endpoints = DecodeEndpoints(block);
+            (_endpoints, _endpointCount) = DecodeEndpoints(block);
             _partition = ComputePartition(footprint, block);
-            _weights = new int[footprint.PixelCount];
+            _weights = _intPool.Rent(footprint.PixelCount);
+            _weightsPooled = true;
             CalculateWeights(footprint, block);
         }
 
         public LogicalBlock(Footprint footprint, IntermediateBlock.VoidExtentData block)
         {
-            _endpoints = DecodeEndpoints(block);
+            (_endpoints, _endpointCount) = DecodeEndpoints(block);
             _partition = ComputePartition(footprint, block);
-            _weights = new int[footprint.PixelCount];
-            CalculateWeights(footprint, block);
+            _weights = _intPool.Rent(footprint.PixelCount);
+            _weightsPooled = true;
+            Array.Clear(_weights, 0, footprint.PixelCount);
         }
 
-        private static List<IColorEndpointPair> DecodeEndpoints(IntermediateBlock.IntermediateBlockData block)
+        private static (ColorEndpointPair[] eps, int count) DecodeEndpoints(IntermediateBlock.IntermediateBlockData block)
         {
             int endpointRange = block.endpointRange.HasValue ? block.endpointRange.Value : IntermediateBlock.EndpointRangeForBlock(block);
             if (endpointRange <= 0) throw new InvalidOperationException("Invalid endpoint range");
-            var eps = new List<IColorEndpointPair>();
-            foreach (var ed in block.endpoints)
+            var eps = new ColorEndpointPair[block.endpointCount];
+            for (int i = 0; i < block.endpointCount; i++)
             {
-                eps.Add(EndpointCodec.DecodeColorsForModePolymorphic(ed.colors, endpointRange, ed.mode));
+                ref var ed = ref block.endpoints[i];
+                ReadOnlySpan<int> colorSpan = ((ReadOnlySpan<int>)ed.colors)[..ed.colorCount];
+                eps[i] = EndpointCodec.DecodeColorsForModePolymorphic(colorSpan, endpointRange, ed.mode);
             }
-            return eps;
+            return (eps, block.endpointCount);
         }
 
-        private static List<IColorEndpointPair> DecodeEndpoints(IntermediateBlock.VoidExtentData block)
+        private static (ColorEndpointPair[] eps, int count) DecodeEndpoints(IntermediateBlock.VoidExtentData block)
         {
             if (block.isHdr)
             {
                 // HDR void extent: ushort values are FP16 bit patterns (not LNS)
                 var hdrColor = new RgbaHdrColor(block.r, block.g, block.b, block.a);
-                return [new HdrEndpointPair(hdrColor, hdrColor, ValuesAreLns: false)];
+                return ([ColorEndpointPair.Hdr(hdrColor, hdrColor, valuesAreLns: false)], 1);
             }
             else
             {
@@ -75,20 +86,23 @@ namespace AstcSharp.TexelBlock
                     (byte)(block.g >> 8),
                     (byte)(block.b >> 8),
                     (byte)(block.a >> 8));
-                return [new LdrEndpointPair(ldrColor, ldrColor)];
+                return ([ColorEndpointPair.Ldr(ldrColor, ldrColor)], 1);
             }
         }
 
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<Footprint, Partition> _singlePartitionCache = new();
+
         private static Partition GenerateSinglePartition(Footprint footprint)
         {
-            var p = new Partition(footprint, 1, 0);
-            p.assignment = new int[footprint.PixelCount];
-            return p;
+            return _singlePartitionCache.GetOrAdd(footprint, static f => new Partition(f, 1, 0)
+            {
+                assignment = new int[f.PixelCount]
+            });
         }
 
         private static Partition ComputePartition(Footprint footprint, IntermediateBlock.IntermediateBlockData block)
             => block.partitionId.HasValue
-                ? Partition.GetASTCPartition(footprint, block.endpoints.Count, block.partitionId.Value)
+                ? Partition.GetASTCPartition(footprint, block.endpointCount, block.partitionId.Value)
                 : GenerateSinglePartition(footprint);
 
         private static Partition ComputePartition(Footprint footprint, IntermediateBlock.VoidExtentData block)
@@ -99,30 +113,38 @@ namespace AstcSharp.TexelBlock
             int gridSize = block.weightGridX * block.weightGridY;
             int weightFrequency = block.dualPlaneChannel.HasValue ? 2 : 1;
 
-            var unquantized = new int[gridSize];
+            // Get decimation info once for both planes
+            var di = DecimationTable.Get(footprint, block.weightGridX, block.weightGridY);
+
+            // stackalloc avoids per-block heap allocation (max 12×12 = 144 ints = 576 bytes)
+            Span<int> unquantized = stackalloc int[gridSize];
             for (int i = 0; i < gridSize; ++i)
             {
-                int weight = block.weights[i * weightFrequency];
-                unquantized[i] = Quantization.UnquantizeWeightFromRange(weight, block.weightRange);
+                unquantized[i] = Quantization.UnquantizeWeightFromRange(
+                    block.weights[i * weightFrequency], block.weightRange);
             }
-            _weights = WeightInfill.InfillWeights(unquantized, footprint, block.weightGridX, block.weightGridY);
+            DecimationTable.InfillWeights(unquantized, di, _weights);
 
             if (block.dualPlaneChannel.HasValue)
             {
-                SetDualPlaneChannel(block.dualPlaneChannel.Value);
+                _dualPlane = new DualPlaneData
+                {
+                    Channel = block.dualPlaneChannel.Value,
+                    Weights = _intPool.Rent(footprint.PixelCount),
+                    WeightsPooled = true
+                };
                 for (int i = 0; i < gridSize; ++i)
                 {
-                    int weight = block.weights[i * weightFrequency + 1];
-                    unquantized[i] = Quantization.UnquantizeWeightFromRange(weight, block.weightRange);
+                    unquantized[i] = Quantization.UnquantizeWeightFromRange(
+                        block.weights[i * weightFrequency + 1], block.weightRange);
                 }
-                if (_dualPlane is not null)
-                    _dualPlane.Weights = WeightInfill.InfillWeights(unquantized, footprint, block.weightGridX, block.weightGridY);
+                DecimationTable.InfillWeights(unquantized, di, _dualPlane.Weights);
             }
         }
 
         private void CalculateWeights(Footprint footprint, IntermediateBlock.VoidExtentData block)
         {
-            _weights = new int[footprint.PixelCount];
+            // _weights already allocated and cleared in constructor
         }
 
         public Footprint GetFootprint() => _partition.footprint;
@@ -172,40 +194,33 @@ namespace AstcSharp.TexelBlock
 
             int index = y * footprint.Width + x;
             int part = _partition.assignment[index];
-            var endpointPair = _endpoints[part];
+            ref var ep = ref _endpoints[part];
 
-            // For LDR output, handle both LDR and HDR endpoints
-            if (endpointPair is LdrEndpointPair ldrPair)
+            int w = _weights[index];
+            if (!ep.IsHdr)
             {
-                int w = _weights[index];
                 if (_dualPlane != null)
                     return SimdHelpers.InterpolateColorLdrDualPlane(
-                        ldrPair.Low, ldrPair.High, w, _dualPlane.Channel, _dualPlane.Weights[index]);
-                return SimdHelpers.InterpolateColorLdr(ldrPair.Low, ldrPair.High, w);
+                        ep.LdrLow, ep.LdrHigh, w, _dualPlane.Channel, _dualPlane.Weights[index]);
+                return SimdHelpers.InterpolateColorLdr(ep.LdrLow, ep.LdrHigh, w);
             }
-            else if (endpointPair is HdrEndpointPair hdrPair)
+            else
             {
-                // HDR endpoints: downscale to LDR for legacy ColorAt() method
-                int w = _weights[index];
                 if (_dualPlane != null)
                 {
                     int dpCh = _dualPlane.Channel;
                     int dpW = _dualPlane.Weights[index];
                     return new RgbaColor(
-                        r: InterpolateChannelHdr(hdrPair.Low[0], hdrPair.High[0], dpCh == 0 ? dpW : w) >> 8,
-                        g: InterpolateChannelHdr(hdrPair.Low[1], hdrPair.High[1], dpCh == 1 ? dpW : w) >> 8,
-                        b: InterpolateChannelHdr(hdrPair.Low[2], hdrPair.High[2], dpCh == 2 ? dpW : w) >> 8,
-                        a: InterpolateChannelHdr(hdrPair.Low[3], hdrPair.High[3], dpCh == 3 ? dpW : w) >> 8);
+                        r: InterpolateChannelHdr(ep.HdrLow[0], ep.HdrHigh[0], dpCh == 0 ? dpW : w) >> 8,
+                        g: InterpolateChannelHdr(ep.HdrLow[1], ep.HdrHigh[1], dpCh == 1 ? dpW : w) >> 8,
+                        b: InterpolateChannelHdr(ep.HdrLow[2], ep.HdrHigh[2], dpCh == 2 ? dpW : w) >> 8,
+                        a: InterpolateChannelHdr(ep.HdrLow[3], ep.HdrHigh[3], dpCh == 3 ? dpW : w) >> 8);
                 }
                 return new RgbaColor(
-                    r: InterpolateChannelHdr(hdrPair.Low[0], hdrPair.High[0], w) >> 8,
-                    g: InterpolateChannelHdr(hdrPair.Low[1], hdrPair.High[1], w) >> 8,
-                    b: InterpolateChannelHdr(hdrPair.Low[2], hdrPair.High[2], w) >> 8,
-                    a: InterpolateChannelHdr(hdrPair.Low[3], hdrPair.High[3], w) >> 8);
-            }
-            else
-            {
-                throw new InvalidOperationException("Unknown endpoint pair type");
+                    r: InterpolateChannelHdr(ep.HdrLow[0], ep.HdrHigh[0], w) >> 8,
+                    g: InterpolateChannelHdr(ep.HdrLow[1], ep.HdrHigh[1], w) >> 8,
+                    b: InterpolateChannelHdr(ep.HdrLow[2], ep.HdrHigh[2], w) >> 8,
+                    a: InterpolateChannelHdr(ep.HdrLow[3], ep.HdrHigh[3], w) >> 8);
             }
         }
 
@@ -262,49 +277,44 @@ namespace AstcSharp.TexelBlock
 
             int index = y * footprint.Width + x;
             int part = _partition.assignment[index];
-            var endpointPair = _endpoints[part];
+            ref var ep = ref _endpoints[part];
 
-            if (endpointPair is HdrEndpointPair hdrPair)
+            int w = _weights[index];
+            if (ep.IsHdr)
             {
-                int w = _weights[index];
                 if (_dualPlane != null)
                 {
                     int dpCh = _dualPlane.Channel;
                     int dpW = _dualPlane.Weights[index];
                     return new RgbaHdrColor(
-                        InterpolateChannelHdr(hdrPair.Low[0], hdrPair.High[0], dpCh == 0 ? dpW : w),
-                        InterpolateChannelHdr(hdrPair.Low[1], hdrPair.High[1], dpCh == 1 ? dpW : w),
-                        InterpolateChannelHdr(hdrPair.Low[2], hdrPair.High[2], dpCh == 2 ? dpW : w),
-                        InterpolateChannelHdr(hdrPair.Low[3], hdrPair.High[3], dpCh == 3 ? dpW : w));
+                        InterpolateChannelHdr(ep.HdrLow[0], ep.HdrHigh[0], dpCh == 0 ? dpW : w),
+                        InterpolateChannelHdr(ep.HdrLow[1], ep.HdrHigh[1], dpCh == 1 ? dpW : w),
+                        InterpolateChannelHdr(ep.HdrLow[2], ep.HdrHigh[2], dpCh == 2 ? dpW : w),
+                        InterpolateChannelHdr(ep.HdrLow[3], ep.HdrHigh[3], dpCh == 3 ? dpW : w));
                 }
                 return new RgbaHdrColor(
-                    InterpolateChannelHdr(hdrPair.Low[0], hdrPair.High[0], w),
-                    InterpolateChannelHdr(hdrPair.Low[1], hdrPair.High[1], w),
-                    InterpolateChannelHdr(hdrPair.Low[2], hdrPair.High[2], w),
-                    InterpolateChannelHdr(hdrPair.Low[3], hdrPair.High[3], w));
-            }
-            else if (endpointPair is LdrEndpointPair ldrPair)
-            {
-                int w = _weights[index];
-                if (_dualPlane != null)
-                {
-                    int dpCh = _dualPlane.Channel;
-                    int dpW = _dualPlane.Weights[index];
-                    return new RgbaHdrColor(
-                        (ushort)(InterpolateChannel(ldrPair.Low.R, ldrPair.High.R, dpCh == 0 ? dpW : w) * 257),
-                        (ushort)(InterpolateChannel(ldrPair.Low.G, ldrPair.High.G, dpCh == 1 ? dpW : w) * 257),
-                        (ushort)(InterpolateChannel(ldrPair.Low.B, ldrPair.High.B, dpCh == 2 ? dpW : w) * 257),
-                        (ushort)(InterpolateChannel(ldrPair.Low.A, ldrPair.High.A, dpCh == 3 ? dpW : w) * 257));
-                }
-                return new RgbaHdrColor(
-                    (ushort)(InterpolateChannel(ldrPair.Low.R, ldrPair.High.R, w) * 257),
-                    (ushort)(InterpolateChannel(ldrPair.Low.G, ldrPair.High.G, w) * 257),
-                    (ushort)(InterpolateChannel(ldrPair.Low.B, ldrPair.High.B, w) * 257),
-                    (ushort)(InterpolateChannel(ldrPair.Low.A, ldrPair.High.A, w) * 257));
+                    InterpolateChannelHdr(ep.HdrLow[0], ep.HdrHigh[0], w),
+                    InterpolateChannelHdr(ep.HdrLow[1], ep.HdrHigh[1], w),
+                    InterpolateChannelHdr(ep.HdrLow[2], ep.HdrHigh[2], w),
+                    InterpolateChannelHdr(ep.HdrLow[3], ep.HdrHigh[3], w));
             }
             else
             {
-                throw new InvalidOperationException("Unknown endpoint pair type");
+                if (_dualPlane != null)
+                {
+                    int dpCh = _dualPlane.Channel;
+                    int dpW = _dualPlane.Weights[index];
+                    return new RgbaHdrColor(
+                        (ushort)(InterpolateChannel(ep.LdrLow.R, ep.LdrHigh.R, dpCh == 0 ? dpW : w) * 257),
+                        (ushort)(InterpolateChannel(ep.LdrLow.G, ep.LdrHigh.G, dpCh == 1 ? dpW : w) * 257),
+                        (ushort)(InterpolateChannel(ep.LdrLow.B, ep.LdrHigh.B, dpCh == 2 ? dpW : w) * 257),
+                        (ushort)(InterpolateChannel(ep.LdrLow.A, ep.LdrHigh.A, dpCh == 3 ? dpW : w) * 257));
+                }
+                return new RgbaHdrColor(
+                    (ushort)(InterpolateChannel(ep.LdrLow.R, ep.LdrHigh.R, w) * 257),
+                    (ushort)(InterpolateChannel(ep.LdrLow.G, ep.LdrHigh.G, w) * 257),
+                    (ushort)(InterpolateChannel(ep.LdrLow.B, ep.LdrHigh.B, w) * 257),
+                    (ushort)(InterpolateChannel(ep.LdrLow.A, ep.LdrHigh.A, w) * 257));
             }
         }
 
@@ -328,25 +338,25 @@ namespace AstcSharp.TexelBlock
 
             int index = y * footprint.Width + x;
             int part = _partition.assignment[index];
-            var endpointPair = _endpoints[part];
+            ref var ep = ref _endpoints[part];
 
-            if (endpointPair is HdrEndpointPair hdrPair)
+            int w = _weights[index];
+            int dpCh = _dualPlane?.Channel ?? -1;
+            int dpW = _dualPlane?.Weights[index] ?? w;
+
+            if (ep.IsHdr)
             {
-                int w = _weights[index];
-                int dpCh = _dualPlane?.Channel ?? -1;
-                int dpW = _dualPlane?.Weights[index] ?? w;
-
                 for (int channel = 0; channel < ChannelCount; ++channel)
                 {
                     int cw = (channel == dpCh) ? dpW : w;
-                    ushort interpolated = InterpolateChannelHdr(hdrPair.Low[channel], hdrPair.High[channel], cw);
+                    ushort interpolated = InterpolateChannelHdr(ep.HdrLow[channel], ep.HdrHigh[channel], cw);
 
-                    if (channel == 3 && hdrPair.AlphaIsLdr)
+                    if (channel == 3 && ep.AlphaIsLdr)
                     {
                         // Mode 14: alpha is UNORM16, normalize directly
                         output[channel] = interpolated / 65535.0f;
                     }
-                    else if (hdrPair.ValuesAreLns)
+                    else if (ep.ValuesAreLns)
                     {
                         // Normal HDR block: convert from LNS to FP16, then to float
                         ushort sf16 = LnsToSf16(interpolated);
@@ -359,24 +369,16 @@ namespace AstcSharp.TexelBlock
                     }
                 }
             }
-            else if (endpointPair is LdrEndpointPair ldrPair)
+            else
             {
-                int w = _weights[index];
-                int dpCh = _dualPlane?.Channel ?? -1;
-                int dpW = _dualPlane?.Weights[index] ?? w;
-
                 for (int channel = 0; channel < ChannelCount; ++channel)
                 {
                     int cw = (channel == dpCh) ? dpW : w;
-                    int p0 = channel switch { 0 => ldrPair.Low.R, 1 => ldrPair.Low.G, 2 => ldrPair.Low.B, _ => ldrPair.Low.A };
-                    int p1 = channel switch { 0 => ldrPair.High.R, 1 => ldrPair.High.G, 2 => ldrPair.High.B, _ => ldrPair.High.A };
+                    int p0 = channel switch { 0 => ep.LdrLow.R, 1 => ep.LdrLow.G, 2 => ep.LdrLow.B, _ => ep.LdrLow.A };
+                    int p1 = channel switch { 0 => ep.LdrHigh.R, 1 => ep.LdrHigh.G, 2 => ep.LdrHigh.B, _ => ep.LdrHigh.A };
                     ushort unorm16 = InterpolateLdrAsUnorm16(p0, p1, cw);
                     output[channel] = unorm16 / 65535.0f;
                 }
-            }
-            else
-            {
-                throw new InvalidOperationException("Unknown endpoint pair type");
             }
         }
 
@@ -421,13 +423,13 @@ namespace AstcSharp.TexelBlock
         /// </summary>
         public void WriteAllPixelsLdr(Footprint footprint, Span<byte> buffer)
         {
-            var ep0 = _endpoints[0];
+            ref var ep0 = ref _endpoints[0];
 
-            if (ep0 is LdrEndpointPair ldrPair && _partition.numParts == 1)
+            if (!ep0.IsHdr && _partition.numParts == 1)
             {
                 // Fast path: single-partition LDR block (most common case)
-                int lowR = ldrPair.Low.R, lowG = ldrPair.Low.G, lowB = ldrPair.Low.B, lowA = ldrPair.Low.A;
-                int highR = ldrPair.High.R, highG = ldrPair.High.G, highB = ldrPair.High.B, highA = ldrPair.High.A;
+                int lowR = ep0.LdrLow.R, lowG = ep0.LdrLow.G, lowB = ep0.LdrLow.B, lowA = ep0.LdrLow.A;
+                int highR = ep0.LdrHigh.R, highG = ep0.LdrHigh.G, highB = ep0.LdrHigh.B, highA = ep0.LdrHigh.A;
 
                 if (_dualPlane == null)
                 {
@@ -499,37 +501,36 @@ namespace AstcSharp.TexelBlock
             for (int i = 0; i < pixelCount; i++)
             {
                 int part = _partition.assignment[i];
-                var endpointPair = _endpoints[part];
+                ref var ep = ref _endpoints[part];
 
-                if (endpointPair is LdrEndpointPair ldrPair)
+                int w = _weights[i];
+                if (!ep.IsHdr)
                 {
-                    int w = _weights[i];
                     if (_dualPlane != null)
                     {
                         SimdHelpers.WritePixel1LdrDualPlane(
                             buffer, i * 4,
-                            ldrPair.Low.R, ldrPair.Low.G, ldrPair.Low.B, ldrPair.Low.A,
-                            ldrPair.High.R, ldrPair.High.G, ldrPair.High.B, ldrPair.High.A,
+                            ep.LdrLow.R, ep.LdrLow.G, ep.LdrLow.B, ep.LdrLow.A,
+                            ep.LdrHigh.R, ep.LdrHigh.G, ep.LdrHigh.B, ep.LdrHigh.A,
                             w, _dualPlane.Channel, _dualPlane.Weights[i]);
                     }
                     else
                     {
                         SimdHelpers.WritePixel1Ldr(
                             buffer, i * 4,
-                            ldrPair.Low.R, ldrPair.Low.G, ldrPair.Low.B, ldrPair.Low.A,
-                            ldrPair.High.R, ldrPair.High.G, ldrPair.High.B, ldrPair.High.A,
+                            ep.LdrLow.R, ep.LdrLow.G, ep.LdrLow.B, ep.LdrLow.A,
+                            ep.LdrHigh.R, ep.LdrHigh.G, ep.LdrHigh.B, ep.LdrHigh.A,
                             w);
                     }
                 }
-                else if (endpointPair is HdrEndpointPair hdrPair)
+                else
                 {
-                    int w = _weights[i];
                     int dpCh = _dualPlane?.Channel ?? -1;
                     int dpW = _dualPlane?.Weights[i] ?? w;
-                    buffer[i * 4 + 0] = (byte)(InterpolateChannelHdr(hdrPair.Low[0], hdrPair.High[0], dpCh == 0 ? dpW : w) >> 8);
-                    buffer[i * 4 + 1] = (byte)(InterpolateChannelHdr(hdrPair.Low[1], hdrPair.High[1], dpCh == 1 ? dpW : w) >> 8);
-                    buffer[i * 4 + 2] = (byte)(InterpolateChannelHdr(hdrPair.Low[2], hdrPair.High[2], dpCh == 2 ? dpW : w) >> 8);
-                    buffer[i * 4 + 3] = (byte)(InterpolateChannelHdr(hdrPair.Low[3], hdrPair.High[3], dpCh == 3 ? dpW : w) >> 8);
+                    buffer[i * 4 + 0] = (byte)(InterpolateChannelHdr(ep.HdrLow[0], ep.HdrHigh[0], dpCh == 0 ? dpW : w) >> 8);
+                    buffer[i * 4 + 1] = (byte)(InterpolateChannelHdr(ep.HdrLow[1], ep.HdrHigh[1], dpCh == 1 ? dpW : w) >> 8);
+                    buffer[i * 4 + 2] = (byte)(InterpolateChannelHdr(ep.HdrLow[2], ep.HdrHigh[2], dpCh == 2 ? dpW : w) >> 8);
+                    buffer[i * 4 + 3] = (byte)(InterpolateChannelHdr(ep.HdrLow[3], ep.HdrHigh[3], dpCh == 3 ? dpW : w) >> 8);
                 }
             }
         }
@@ -539,8 +540,15 @@ namespace AstcSharp.TexelBlock
             if (!p.footprint.Equals(_partition.footprint))
                 throw new InvalidOperationException("New partitions may not be for a different footprint");
             _partition = p;
-            while (_endpoints.Count < p.numParts) _endpoints.Add(new LdrEndpointPair(RgbaColor.Empty, RgbaColor.Empty));
-            if (_endpoints.Count > p.numParts) _endpoints.RemoveRange(p.numParts, _endpoints.Count - p.numParts);
+            if (_endpointCount < p.numParts)
+            {
+                var newEndpoints = new ColorEndpointPair[p.numParts];
+                Array.Copy(_endpoints, newEndpoints, _endpointCount);
+                for (int i = _endpointCount; i < p.numParts; i++)
+                    newEndpoints[i] = ColorEndpointPair.Ldr(RgbaColor.Empty, RgbaColor.Empty);
+                _endpoints = newEndpoints;
+            }
+            _endpointCount = p.numParts;
         }
 
         public void SetEndpoints((RgbaColor first, RgbaColor second) eps, int subset)
@@ -548,7 +556,7 @@ namespace AstcSharp.TexelBlock
             ArgumentOutOfRangeException.ThrowIfNegative(subset);
             ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(subset, _partition.numParts);
 
-            _endpoints[subset] = new LdrEndpointPair(eps.first, eps.second);
+            _endpoints[subset] = ColorEndpointPair.Ldr(eps.first, eps.second);
         }
 
         public void SetEndpoints(RgbaColor ep1, RgbaColor ep2, int subset)
@@ -563,12 +571,32 @@ namespace AstcSharp.TexelBlock
 
         public bool IsDualPlane() => _dualPlane is not null;
 
+        /// <summary>
+        /// Returns any pooled arrays to the shared ArrayPool.
+        /// Must be called after the block is no longer needed.
+        /// </summary>
+        internal void ReturnPooledArrays()
+        {
+            if (_weightsPooled)
+            {
+                _intPool.Return(_weights);
+                _weights = [];
+                _weightsPooled = false;
+            }
+            if (_dualPlane is { WeightsPooled: true })
+            {
+                _intPool.Return(_dualPlane.Weights);
+                _dualPlane.Weights = [];
+                _dualPlane.WeightsPooled = false;
+            }
+        }
+
         public static LogicalBlock? UnpackLogicalBlock(Footprint footprint, PhysicalBlock physicalBlock)
         {
             if (physicalBlock.IsVoidExtent)
             {
                 var voidExtantIntermediateBlock = IntermediateBlock.UnpackVoidExtent(physicalBlock);
-                
+
                 return voidExtantIntermediateBlock is null
                     ? null
                     : new LogicalBlock(footprint, voidExtantIntermediateBlock.Value);
@@ -576,10 +604,11 @@ namespace AstcSharp.TexelBlock
             else
             {
                 var intermediateBlock = IntermediateBlock.UnpackIntermediateBlock(physicalBlock);
-                
-                return intermediateBlock is null
-                    ? null
-                    : new LogicalBlock(footprint, intermediateBlock);
+                if (intermediateBlock is null) return null;
+
+                var result = new LogicalBlock(footprint, intermediateBlock);
+                intermediateBlock.ReturnPooledArrays();
+                return result;
             }
         }
     }

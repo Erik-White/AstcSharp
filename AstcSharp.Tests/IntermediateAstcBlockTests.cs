@@ -69,12 +69,13 @@ public class IntermediateAstcBlockTests
             partitionId = 0,
             weightGridX = 8,
             weightGridY = 8,
-            endpoints = new List<IntermediateBlock.IntermediateEndpointData>
+            endpoints = new IntermediateBlock.IntermediateEndpointData[]
             {
                 new() { mode = ColorEndpointMode.LdrRgbDirect },
                 new() { mode = ColorEndpointMode.LdrRgbDirect },
                 new() { mode = ColorEndpointMode.LdrRgbDirect }
-            }
+            },
+            endpointCount = 3
         };
 
         var result = IntermediateBlock.EndpointRangeForBlock(data);
@@ -92,12 +93,13 @@ public class IntermediateAstcBlockTests
             weightGridX = 8,
             weightGridY = 8,
             weights = new int[64],
-            endpoints = new List<IntermediateBlock.IntermediateEndpointData>
+            endpoints = new IntermediateBlock.IntermediateEndpointData[]
             {
                 new() { mode = ColorEndpointMode.LdrRgbDirect },
                 new() { mode = ColorEndpointMode.LdrRgbDirect },
                 new() { mode = ColorEndpointMode.LdrRgbDirect }
-            }
+            },
+            endpointCount = 3
         };
 
         var (error, _) = IntermediateBlock.Pack(data);
@@ -113,11 +115,12 @@ public class IntermediateAstcBlockTests
         {
             weightRange = 2,
             dualPlaneChannel = null,
-            endpoints = new List<IntermediateBlock.IntermediateEndpointData>
+            endpoints = new IntermediateBlock.IntermediateEndpointData[]
             {
                 new() { mode = ColorEndpointMode.LdrRgbDirect },
                 new() { mode = ColorEndpointMode.LdrRgbDirect }
-            }
+            },
+            endpointCount = 2
         };
 
         var weightParams = new List<(int w, int h)>();
@@ -152,7 +155,9 @@ public class IntermediateAstcBlockTests
         data.Should().NotBeNull();
         data!.endpoints.Should().ContainSingle();
         data.endpoints[0].mode.Should().Be(ColorEndpointMode.LdrLumaDirect);
-        data.endpoints[0].colors.Should().Equal(new int[] { byte.MinValue, byte.MaxValue });
+        data.endpoints[0].colors[0].Should().Be(byte.MinValue);
+        data.endpoints[0].colors[1].Should().Be(byte.MaxValue);
+        data.endpoints[0].colorCount.Should().Be(2);
         data.endpointRange.Should().Be(byte.MaxValue);
     }
 
@@ -172,13 +177,13 @@ public class IntermediateAstcBlockTests
         data.partitionId.Should().BeNull();
         data.dualPlaneChannel.Should().BeNull();
 
-        data.weights.Should().HaveCount(30);
-        data.weights.Should().AllBeEquivalentTo(0);
+        data.weightsCount.Should().Be(30);
+        data.weights.AsSpan(0, data.weightsCount).ToArray().Should().AllBeEquivalentTo(0);
 
         data.endpoints.Should().ContainSingle();
         var endpoint = data.endpoints[0];
         endpoint.mode.Should().Be(ColorEndpointMode.LdrLumaDirect);
-        endpoint.colors.Should().HaveCount(2);
+        endpoint.colorCount.Should().Be(2);
         endpoint.colors[0].Should().Be(byte.MinValue);
         endpoint.colors[1].Should().Be(byte.MaxValue);
     }
@@ -199,9 +204,12 @@ public class IntermediateAstcBlockTests
         var endpoint = new IntermediateBlock.IntermediateEndpointData
         {
             mode = ColorEndpointMode.LdrLumaDirect,
-            colors = [byte.MinValue, byte.MaxValue]
+            colorCount = 2
         };
-        data.endpoints.Add(endpoint);
+        endpoint.colors[0] = byte.MinValue;
+        endpoint.colors[1] = byte.MaxValue;
+        data.endpoints = [endpoint];
+        data.endpointCount = 1;
 
         var (error, packed) = IntermediateBlock.Pack(data);
 
@@ -227,7 +235,9 @@ public class IntermediateAstcBlockTests
         intermediate.dualPlaneChannel.Should().BeNull();
         intermediate.endpoints.Should().ContainSingle();
         intermediate.endpoints[0].mode.Should().Be(ColorEndpointMode.LdrLumaDirect);
-        intermediate.endpoints[0].colors.Should().Equal(new int[] { 255, 0 });
+        intermediate.endpoints[0].colorCount.Should().Be(2);
+        intermediate.endpoints[0].colors[0].Should().Be(255);
+        intermediate.endpoints[0].colors[1].Should().Be(0);
 
         // Repack
         var (error, repacked) = IntermediateBlock.Pack(intermediate);

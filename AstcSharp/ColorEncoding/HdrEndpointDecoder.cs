@@ -12,7 +12,7 @@ namespace AstcSharp.ColorEncoding;
 /// </remarks>
 internal static class HdrEndpointDecoder
 {
-    public static (RgbaHdrColor low, RgbaHdrColor high) DecodeHdrMode(int[] vals, int maxValue, ColorEndpointMode mode)
+    public static (RgbaHdrColor low, RgbaHdrColor high) DecodeHdrMode(ReadOnlySpan<int> vals, int maxValue, ColorEndpointMode mode)
     {
         return mode switch
         {
@@ -36,7 +36,7 @@ internal static class HdrEndpointDecoder
     /// Mode 2: HDR Luminance, Large Range.
     /// Ported from hdr_luminance_large_range_unpack() in ARM astc-encoder.
     /// </summary>
-    private static (RgbaHdrColor low, RgbaHdrColor high) UnpackHdrLuminanceLargeRange(int[] vals, int maxValue)
+    private static (RgbaHdrColor low, RgbaHdrColor high) UnpackHdrLuminanceLargeRange(ReadOnlySpan<int> vals, int maxValue)
     {
         int v0 = vals.Length > 0 ? Quantization.UnquantizeCEValueFromRange(vals[0], maxValue) : 0;
         int v1 = vals.Length > 1 ? Quantization.UnquantizeCEValueFromRange(vals[1], maxValue) : 0;
@@ -61,7 +61,7 @@ internal static class HdrEndpointDecoder
     /// <summary>
     /// Mode 3: HDR Luminance, Small Range.
     /// </summary>
-    private static (RgbaHdrColor low, RgbaHdrColor high) UnpackHdrLuminanceSmallRange(int[] vals, int maxValue)
+    private static (RgbaHdrColor low, RgbaHdrColor high) UnpackHdrLuminanceSmallRange(ReadOnlySpan<int> vals, int maxValue)
     {
         int v0 = vals.Length > 0 ? Quantization.UnquantizeCEValueFromRange(vals[0], maxValue) : 0;
         int v1 = vals.Length > 1 ? Quantization.UnquantizeCEValueFromRange(vals[1], maxValue) : 0;
@@ -90,7 +90,7 @@ internal static class HdrEndpointDecoder
     /// <summary>
     /// Mode 7: HDR RGB, Base+Scale
     /// </summary>
-    private static (RgbaHdrColor low, RgbaHdrColor high) UnpackHdrRgbBaseScale(int[] vals, int maxValue)
+    private static (RgbaHdrColor low, RgbaHdrColor high) UnpackHdrRgbBaseScale(ReadOnlySpan<int> vals, int maxValue)
     {
         int v0 = vals.Length > 0 ? Quantization.UnquantizeCEValueFromRange(vals[0], maxValue) : 0;
         int v1 = vals.Length > 1 ? Quantization.UnquantizeCEValueFromRange(vals[1], maxValue) : 0;
@@ -203,7 +203,7 @@ internal static class HdrEndpointDecoder
     /// <summary>
     /// Mode 11: HDR RGB Direct
     /// </summary>
-    private static (RgbaHdrColor low, RgbaHdrColor high) UnpackHdrRgbDirect(int[] vals, int maxValue)
+    private static (RgbaHdrColor low, RgbaHdrColor high) UnpackHdrRgbDirect(ReadOnlySpan<int> vals, int maxValue)
     {
         int v0 = vals.Length > 0 ? Quantization.UnquantizeCEValueFromRange(vals[0], maxValue) : 0;
         int v1 = vals.Length > 1 ? Quantization.UnquantizeCEValueFromRange(vals[1], maxValue) : 0;
@@ -323,7 +323,7 @@ internal static class HdrEndpointDecoder
     /// Mode 14: HDR RGB Direct with LDR Alpha.
     /// RGB uses mode 11 logic; alpha uses LDR encoding (0-255 scaled to 0-65535).
     /// </summary>
-    private static (RgbaHdrColor low, RgbaHdrColor high) UnpackHdrRgbDirectLdrAlpha(int[] vals, int maxValue)
+    private static (RgbaHdrColor low, RgbaHdrColor high) UnpackHdrRgbDirectLdrAlpha(ReadOnlySpan<int> vals, int maxValue)
     {
         var (rgbLow, rgbHigh) = UnpackHdrRgbDirect(vals, maxValue);
 
@@ -341,7 +341,7 @@ internal static class HdrEndpointDecoder
     /// <summary>
     /// Mode 15: HDR RGB Direct with HDR Alpha
     /// </summary>
-    private static (RgbaHdrColor low, RgbaHdrColor high) UnpackHdrRgbDirectHdrAlpha(int[] vals, int maxValue)
+    private static (RgbaHdrColor low, RgbaHdrColor high) UnpackHdrRgbDirectHdrAlpha(ReadOnlySpan<int> vals, int maxValue)
     {
         var (rgbLow, rgbHigh) = UnpackHdrRgbDirect(vals, maxValue);
 

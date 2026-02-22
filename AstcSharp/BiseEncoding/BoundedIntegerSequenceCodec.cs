@@ -155,6 +155,43 @@ internal partial class BoundedIntegerSequenceCodec
         return extraBlockSize + blockSize * _bitCount;
     }
 
+    private static readonly (BiseEncodingMode Mode, int BitCount)[] _packingModeCache = InitPackingModeCache();
+
+    private static (BiseEncodingMode, int)[] InitPackingModeCache()
+    {
+        var cache = new (BiseEncodingMode, int)[1 << Log2MaxRangeForBits];
+        // Precompute for all valid ranges [1, 255]
+        for (int range = 1; range < cache.Length; range++)
+        {
+            int index = -1;
+            for (int i = 0; i < MaxRanges.Length; i++)
+            {
+                if (MaxRanges[i] >= range) { index = i; break; }
+            }
+            int maxValue = index < 0
+                ? MaxRanges[MaxRanges.Length - 1] + 1
+                : MaxRanges[index] + 1;
+
+            // Check QuintEncoding (5), TritEncoding (3), BitEncoding (1) in descending order
+            BiseEncodingMode encodingMode = BiseEncodingMode.Unknown;
+            ReadOnlySpan<BiseEncodingMode> modes = [BiseEncodingMode.QuintEncoding, BiseEncodingMode.TritEncoding, BiseEncodingMode.BitEncoding];
+            foreach (var em in modes)
+            {
+                if (maxValue % (int)em == 0 && int.IsPow2(maxValue / (int)em))
+                {
+                    encodingMode = em;
+                    break;
+                }
+            }
+
+            if (encodingMode == BiseEncodingMode.Unknown)
+                throw new InvalidOperationException($"Invalid range for BISE encoding: {range}");
+
+            cache[range] = (encodingMode, int.Log2(maxValue / (int)encodingMode));
+        }
+        return cache;
+    }
+
     /// <summary>
     /// The number of bits needed to encode the given number of values with respect to the
     /// number of trits, quints, and bits specified by <see cref="BiseEncodingMode"/>.
@@ -164,18 +201,7 @@ internal partial class BoundedIntegerSequenceCodec
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(range, 0);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(range, 1 << Log2MaxRangeForBits);
 
-        int index = Array.FindIndex(MaxRanges, v => v >= range);
-        int maxValue = index < 0
-            ? MaxRanges.Last() + 1
-            : MaxRanges[index] + 1;
-
-        var encodingMode = Enum.GetValues<BiseEncodingMode>()
-            .OrderDescending()
-            .FirstOrDefault(em => (maxValue % (int)em == 0) && int.IsPow2(maxValue / (int)em));
-        
-        return encodingMode != BiseEncodingMode.Unknown
-            ? (encodingMode, int.Log2(maxValue / (int)encodingMode))
-            : throw new ArgumentOutOfRangeException($"Invalid range for BISE encoding: {range}");
+        return _packingModeCache[range];
     }
 
     /// <summary>

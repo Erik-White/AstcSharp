@@ -1,12 +1,8 @@
 namespace AstcSharp.Core;
 
-internal record RgbColor
+internal readonly record struct RgbColor(byte R, byte G, byte B)
 {
     public static int BytesPerPixel => 3;
-
-    public byte R { get; }
-    public byte G { get; }
-    public byte B { get; }
 
     /// <summary>
     /// The rounded arithmetic mean of the R, G, and B channels
@@ -19,7 +15,7 @@ internal record RgbColor
             return (byte)((sum * 256 + 384) / 768);
         }
     }
-    
+
     public RgbColor(int r, int g, int b) : this(
         (byte)Math.Clamp(r, byte.MinValue, byte.MaxValue),
         (byte)Math.Clamp(g, byte.MinValue, byte.MaxValue),
@@ -27,14 +23,7 @@ internal record RgbColor
     {
     }
 
-    public RgbColor(byte r, byte g, byte b)
-    {
-        R = r;
-        G = g;
-        B = b;
-    }
-
-    public virtual int this[int i]
+    public int this[int i]
         => i switch
         {
             0 => R,
@@ -44,22 +33,26 @@ internal record RgbColor
         };
 
     public static int SquaredError(RgbColor a, RgbColor b)
-        => SquaredError(a, b, BytesPerPixel);
-
-    /// <summary>
-    /// Computes the squared error between this color and another color
-    /// </summary>
-    protected static int SquaredError(RgbColor a, RgbColor b, int bytesPerPixel)
     {
         int result = 0;
-        for (int i = 0; i < bytesPerPixel; i++)
+        for (int i = 0; i < BytesPerPixel; i++)
         {
             int diff = a[i] - b[i];
             result += diff * diff;
         }
-
         return result;
     }
 
-    public static RgbColor Empty => new(0, 0, 0);
+    /// <summary>
+    /// Computes the squared error comparing only the RGB channels of two RgbaColors.
+    /// </summary>
+    public static int SquaredError(RgbaColor a, RgbaColor b)
+    {
+        int dr = a.R - b.R;
+        int dg = a.G - b.G;
+        int db = a.B - b.B;
+        return dr * dr + dg * dg + db * db;
+    }
+
+    public static RgbColor Empty => default;
 }
