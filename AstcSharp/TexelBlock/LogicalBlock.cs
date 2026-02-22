@@ -669,7 +669,14 @@ namespace AstcSharp.TexelBlock
         public static LogicalBlock? UnpackLogicalBlock(Footprint footprint, UInt128 bits)
         {
             var info = BlockInfo.Decode(bits);
+            return UnpackLogicalBlock(footprint, bits, in info);
+        }
 
+        /// <summary>
+        /// Fast path with pre-computed BlockInfo (avoids re-decoding when caller already has it).
+        /// </summary>
+        public static LogicalBlock? UnpackLogicalBlock(Footprint footprint, UInt128 bits, in BlockInfo info)
+        {
             if (!info.IsValid) return null;
 
             if (info.IsVoidExtent)

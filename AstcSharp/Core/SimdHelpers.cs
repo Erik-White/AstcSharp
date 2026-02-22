@@ -49,33 +49,12 @@ internal static class SimdHelpers
         var b = InterpolateChannel4Pixels(lowB, highB, weights);
         var a = InterpolateChannel4Pixels(lowA, highA, weights);
 
-        // Interleave RGBA and write 16 bytes (4 pixels × 4 bytes)
-        // r = [R0, R1, R2, R3], g = [G0, G1, G2, G3], etc. as int vectors
-        // We need: [R0,G0,B0,A0, R1,G1,B1,A1, R2,G2,B2,A2, R3,G3,B3,A3]
-
-        // Narrow int32 → byte via truncation (values are already 0-255)
-        var rb = Vector128.Narrow(r.AsInt16(), g.AsInt16()); // interleaves shorts
-        var ba = Vector128.Narrow(b.AsInt16(), a.AsInt16());
-
-        // At this point we have bytes but in wrong order. Use scalar write which
-        // the JIT will optimize - the real gain is avoiding per-pixel method calls
-        // and heap allocations, not the final byte write.
-        output[offset +  0] = (byte)r.GetElement(0);
-        output[offset +  1] = (byte)g.GetElement(0);
-        output[offset +  2] = (byte)b.GetElement(0);
-        output[offset +  3] = (byte)a.GetElement(0);
-        output[offset +  4] = (byte)r.GetElement(1);
-        output[offset +  5] = (byte)g.GetElement(1);
-        output[offset +  6] = (byte)b.GetElement(1);
-        output[offset +  7] = (byte)a.GetElement(1);
-        output[offset +  8] = (byte)r.GetElement(2);
-        output[offset +  9] = (byte)g.GetElement(2);
-        output[offset + 10] = (byte)b.GetElement(2);
-        output[offset + 11] = (byte)a.GetElement(2);
-        output[offset + 12] = (byte)r.GetElement(3);
-        output[offset + 13] = (byte)g.GetElement(3);
-        output[offset + 14] = (byte)b.GetElement(3);
-        output[offset + 15] = (byte)a.GetElement(3);
+        // Pack 4 RGBA pixels into 16 bytes via vector OR+shift.
+        // Each int element has its channel value in bits [0:7].
+        // Combine: element[i] = R[i] | (G[i] << 8) | (B[i] << 16) | (A[i] << 24)
+        // On little-endian, storing this int32 writes bytes [R, G, B, A].
+        var rgba = r | (g << 8) | (b << 16) | (a << 24);
+        rgba.AsByte().CopyTo(output.Slice(offset, 16));
     }
 
     /// <summary>

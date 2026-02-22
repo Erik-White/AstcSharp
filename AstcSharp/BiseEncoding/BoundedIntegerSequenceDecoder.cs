@@ -82,53 +82,52 @@ internal class BoundedIntegerSequenceDecoder : BoundedIntegerSequenceCodec
     /// <summary>
     /// Decode a trit/quint block into a caller-provided span.
     /// Returns the number of values written.
+    /// Uses direct bit extraction (no BitStream) and flat encoding tables.
     /// </summary>
-    /// <param name="mode">The encoding mode (trit or quint).</param>
-    /// <param name="encodedBlock">The bits representing the encoded block.</param>
-    /// <param name="encodedBitCount">The number of bits used for each value.</param>
-    /// <param name="result">The span to write decoded values into.</param>
-    /// <returns>The number of values written to the result span.</returns>
-    /// <exception cref="ArgumentException"></exception>
-    /// <exception cref="InvalidOperationException"></exception>
     public static int DecodeISEBlock(BiseEncodingMode mode, ulong encodedBlock, int encodedBitCount, Span<int> result)
     {
-        int[] interleavedBits = mode switch
+        ulong mMask = (1UL << encodedBitCount) - 1;
+
+        if (mode == BiseEncodingMode.TritEncoding)
         {
-            BiseEncodingMode.TritEncoding => InterleavedTritBits,
-            BiseEncodingMode.QuintEncoding => InterleavedQuintBits,
-            _ => throw new ArgumentOutOfRangeException(nameof(mode), mode, $"ASTC blocks only support trit and quint encoding")
-        };
+            // 5 values, interleaved bits = [2, 2, 1, 2, 1] = 8 bits total
+            int bitPos = 0;
+            int m0 = (int)((encodedBlock >> bitPos) & mMask); bitPos += encodedBitCount;
+            ulong enc = (encodedBlock >> bitPos) & 0x3; bitPos += 2;
+            int m1 = (int)((encodedBlock >> bitPos) & mMask); bitPos += encodedBitCount;
+            enc |= ((encodedBlock >> bitPos) & 0x3) << 2; bitPos += 2;
+            int m2 = (int)((encodedBlock >> bitPos) & mMask); bitPos += encodedBitCount;
+            enc |= ((encodedBlock >> bitPos) & 0x1) << 4; bitPos += 1;
+            int m3 = (int)((encodedBlock >> bitPos) & mMask); bitPos += encodedBitCount;
+            enc |= ((encodedBlock >> bitPos) & 0x3) << 5; bitPos += 2;
+            int m4 = (int)((encodedBlock >> bitPos) & mMask);
+            enc |= ((encodedBlock >> (bitPos + encodedBitCount)) & 0x1) << 7;
 
-        var valuesCount = mode == BiseEncodingMode.TritEncoding ? 5 : 3;
-        var bitSource = new BitStream(encodedBlock, dataSize: sizeof(ulong) * 8);
-        Span<int> m = stackalloc int[5];
-        ulong encodedBits = 0;
-        int encodedBitsRead = 0;
-
-        for (int i = 0; i < valuesCount; i++)
-        {
-            if (!bitSource.TryGetBits(encodedBitCount, out ulong bits))
-                throw new InvalidOperationException();
-
-            m[i] = (int)bits;
-
-            if (!bitSource.TryGetBits(interleavedBits[i], out ulong encoded_bits))
-                throw new InvalidOperationException();
-
-            encodedBits |= encoded_bits << encodedBitsRead;
-            encodedBitsRead += interleavedBits[i];
+            int base5 = (int)enc * 5;
+            result[0] = (FlatTritEncodings[base5] << encodedBitCount) | m0;
+            result[1] = (FlatTritEncodings[base5 + 1] << encodedBitCount) | m1;
+            result[2] = (FlatTritEncodings[base5 + 2] << encodedBitCount) | m2;
+            result[3] = (FlatTritEncodings[base5 + 3] << encodedBitCount) | m3;
+            result[4] = (FlatTritEncodings[base5 + 4] << encodedBitCount) | m4;
+            return 5;
         }
-
-        int[] encodings = mode == BiseEncodingMode.TritEncoding
-            ? TritEncodings[encodedBits]
-            : QuintEncodings[encodedBits];
-
-        for (int i = 0; i < valuesCount; ++i)
+        else
         {
-            result[i] = (encodings[i] << encodedBitCount) | m[i];
-        }
+            // 3 values, interleaved bits = [3, 2, 2] = 7 bits total
+            int bitPos = 0;
+            int m0 = (int)((encodedBlock >> bitPos) & mMask); bitPos += encodedBitCount;
+            ulong enc = (encodedBlock >> bitPos) & 0x7; bitPos += 3;
+            int m1 = (int)((encodedBlock >> bitPos) & mMask); bitPos += encodedBitCount;
+            enc |= ((encodedBlock >> bitPos) & 0x3) << 3; bitPos += 2;
+            int m2 = (int)((encodedBlock >> bitPos) & mMask);
+            enc |= ((encodedBlock >> (bitPos + encodedBitCount)) & 0x3) << 5;
 
-        return valuesCount;
+            int base3 = (int)enc * 3;
+            result[0] = (FlatQuintEncodings[base3] << encodedBitCount) | m0;
+            result[1] = (FlatQuintEncodings[base3 + 1] << encodedBitCount) | m1;
+            result[2] = (FlatQuintEncodings[base3 + 2] << encodedBitCount) | m2;
+            return 3;
+        }
     }
 
     /// <summary>

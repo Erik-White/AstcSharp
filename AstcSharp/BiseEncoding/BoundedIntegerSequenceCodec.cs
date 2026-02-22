@@ -107,6 +107,23 @@ internal partial class BoundedIntegerSequenceCodec
     /// </remarks>
     internal static readonly int[] MaxRanges = [1, 2, 3, 4, 5, 7, 9, 11, 15, 19, 23, 31, 39, 47, 63, 79, 95, 127, 159, 191, 255];
 
+    // Flat encoding tables: eliminates jagged array indirection (two pointer dereferences → one).
+    // FlatTritEncodings[encodedBits * 5 + i] == TritEncodings[encodedBits][i]
+    // FlatQuintEncodings[encodedBits * 3 + i] == QuintEncodings[encodedBits][i]
+    protected static readonly int[] FlatTritEncodings = FlattenEncodings(TritEncodings, 5);
+    protected static readonly int[] FlatQuintEncodings = FlattenEncodings(QuintEncodings, 3);
+
+    private static int[] FlattenEncodings(int[][] jagged, int stride)
+    {
+        var flat = new int[jagged.Length * stride];
+        for (int i = 0; i < jagged.Length; i++)
+        {
+            for (int j = 0; j < stride; j++)
+                flat[i * stride + j] = jagged[i][j];
+        }
+        return flat;
+    }
+
     protected BiseEncodingMode _encoding;
     protected int _bitCount;
 

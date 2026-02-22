@@ -18,6 +18,10 @@ internal struct BlockInfo
 
     private static readonly int[] s_extraCemBitsForPartition = [0, 2, 5, 8];
 
+    // Valid BISE endpoint ranges in descending order (only these produce valid encodings)
+    private static readonly int[] s_validEndpointRanges =
+        [255, 191, 159, 127, 95, 79, 63, 47, 39, 31, 23, 19, 15, 11, 9, 7, 5];
+
     public bool IsValid;
     public bool IsVoidExtent;
 
@@ -299,9 +303,9 @@ internal struct BlockInfo
         if (maxColorBits < requiredColorBits)
             return default;
 
-        // Find max color range that fits
+        // Find max color range that fits (only check valid BISE ranges: 17 vs up to 255)
         int colorValuesRange = 0, colorBitCount = 0;
-        for (int rv = 255; rv > 0; --rv)
+        foreach (int rv in s_validEndpointRanges)
         {
             int bitCount = BoundedIntegerSequenceCodec.GetBitCountForRange(colorValuesCount, rv);
             if (bitCount <= maxColorBits)

@@ -407,10 +407,80 @@ internal static class Quantization
         ArgumentOutOfRangeException.ThrowIfGreaterThan(range_max_value, kWeightRangeMaxValue);
         ArgumentOutOfRangeException.ThrowIfLessThan(weight, 0);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(weight, range_max_value);
-        
+
         var map = GetQuantMapForWeightRange(range_max_value);
         int dq = map != null ? map.Unquantize(weight) : 0;
         if (dq > 32) dq += 1;
         return dq;
+    }
+
+    // Pre-computed flat tables for weight unquantization: entry[quantizedValue] = final unquantized weight.
+    // Includes the dq > 32 → dq + 1 adjustment. Indexed by weight range.
+    // Valid ranges: 1, 2, 3, 4, 5, 7, 9, 11, 15, 19, 23, 31
+    private static readonly int[]?[] s_weightUnquantFlat = InitWeightUnquantFlat();
+
+    private static int[]?[] InitWeightUnquantFlat()
+    {
+        var tables = new int[]?[kWeightRangeMaxValue + 1];
+        foreach (var kvp in weightMaps)
+        {
+            int range = kvp.Key;
+            var map = kvp.Value;
+            var table = new int[range + 1];
+            for (int i = 0; i <= range; i++)
+            {
+                int dq = map.Unquantize(i);
+                table[i] = dq > 32 ? dq + 1 : dq;
+            }
+            tables[range] = table;
+        }
+        return tables;
+    }
+
+    /// <summary>
+    /// Batch unquantize: uses pre-computed flat table for O(1) lookup per value.
+    /// No per-call validation, no conditional branch per weight.
+    /// </summary>
+    internal static void UnquantizeWeightsBatch(Span<int> weights, int count, int range)
+    {
+        var table = s_weightUnquantFlat[range];
+        if (table == null) return;
+        for (int i = 0; i < count; i++)
+        {
+            weights[i] = table[weights[i]];
+        }
+    }
+
+    // Pre-computed flat tables for endpoint unquantization.
+    // Indexed by range value. Valid ranges: 5, 7, 9, 11, 15, 19, 23, 31, 39, 47, 63, 79, 95, 127, 159, 191, 255
+    private static readonly int[]?[] s_endpointUnquantFlat = InitEndpointUnquantFlat();
+
+    private static int[]?[] InitEndpointUnquantFlat()
+    {
+        var tables = new int[]?[256];
+        foreach (var kvp in endpointMaps)
+        {
+            int range = kvp.Key;
+            var map = kvp.Value;
+            var table = new int[range + 1];
+            for (int i = 0; i <= range; i++)
+                table[i] = map.Unquantize(i);
+            tables[range] = table;
+        }
+        return tables;
+    }
+
+    /// <summary>
+    /// Batch unquantize color endpoint values: uses pre-computed flat table.
+    /// No per-call validation, single array lookup per value.
+    /// </summary>
+    internal static void UnquantizeCEValuesBatch(Span<int> values, int count, int rangeMaxValue)
+    {
+        var table = s_endpointUnquantFlat[rangeMaxValue];
+        if (table == null) return;
+        for (int i = 0; i < count; i++)
+        {
+            values[i] = table[values[i]];
+        }
     }
 }

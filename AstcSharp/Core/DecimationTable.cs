@@ -132,18 +132,17 @@ internal static class DecimationTable
     {
         int texelCount = di.TexelCount;
         int padded = di.PaddedTexelCount;
-        int[] weightIndices = di.WeightIndices;
-        int[] weightFactors = di.WeightFactors;
+        int[] wi = di.WeightIndices;
+        int[] wf = di.WeightFactors;
+        int p1 = padded, p2 = padded * 2, p3 = padded * 3;
 
         for (int i = 0; i < texelCount; i++)
         {
-            int sum = 8;
-            for (int j = 0; j < 4; j++)
-            {
-                int baseIdx = j * padded + i;
-                sum += gridWeights[weightIndices[baseIdx]] * weightFactors[baseIdx];
-            }
-            result[i] = sum >> 4;
+            result[i] = (8
+                + gridWeights[wi[i]] * wf[i]
+                + gridWeights[wi[p1 + i]] * wf[p1 + i]
+                + gridWeights[wi[p2 + i]] * wf[p2 + i]
+                + gridWeights[wi[p3 + i]] * wf[p3 + i]) >> 4;
         }
     }
 }

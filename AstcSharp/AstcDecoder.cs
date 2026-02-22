@@ -1,5 +1,9 @@
 using System.Buffers;
 using System.Buffers.Binary;
+using System.Runtime.CompilerServices;
+using System.Runtime.Intrinsics;
+using AstcSharp.BiseEncoding;
+using AstcSharp.ColorEncoding;
 using AstcSharp.Core;
 using AstcSharp.IO;
 using AstcSharp.TexelBlock;
@@ -75,11 +79,13 @@ public static class AstcDecoder
 
         try
         {
-            // Create a buffer once, and reuse for all the blocks in the image
+            // Create a buffer once for fallback blocks; fast path writes directly to image
             decodedBlock = _arrayPool.Rent(footprint.Width * footprint.Height * BytesPerPixelUnorm8);
             var decodedPixels = decodedBlock.AsSpan();
             int blocksHigh = (height + footprint.Height - 1) / footprint.Height;
             int blockIndex = 0;
+            int fW = footprint.Width;
+            int fH = footprint.Height;
 
             for (int blockY = 0; blockY < blocksHigh; blockY++)
             {
@@ -89,23 +95,47 @@ public static class AstcDecoder
                     if (blockDataOffset + PhysicalBlock.SizeInBytes > astcData.Length)
                         continue;
 
-                    DecompressBlock(
-                        astcData.Slice(blockDataOffset, PhysicalBlock.SizeInBytes),
-                        footprint,
-                        decodedPixels);
+                    ulong low = BinaryPrimitives.ReadUInt64LittleEndian(astcData.Slice(blockDataOffset));
+                    ulong high = BinaryPrimitives.ReadUInt64LittleEndian(astcData.Slice(blockDataOffset + 8));
+                    var blockBits = new UInt128(high, low);
 
-                    if (decodedPixels.Length == 0)
-                        throw new InvalidOperationException("Failed to decompress ASTC block.");
+                    int dstBaseX = blockX * fW;
+                    int dstBaseY = blockY * fH;
+                    int copyWidth = Math.Min(fW, width - dstBaseX);
+                    int copyHeight = Math.Min(fH, height - dstBaseY);
 
-                    int dstBaseX = blockX * footprint.Width;
-                    int dstBaseY = blockY * footprint.Height;
-                    int copyWidth = Math.Min(footprint.Width, width - dstBaseX);
-                    int copyHeight = Math.Min(footprint.Height, height - dstBaseY);
+                    var info = BlockInfo.Decode(blockBits);
+                    if (!info.IsValid) continue;
+
+                    // Fast path: fuse decode directly into image buffer for interior full blocks
+                    if (!info.IsVoidExtent && info.PartitionCount == 1 && !info.IsDualPlane
+                        && !info.EndpointMode0.IsHdr()
+                        && copyWidth == fW && copyHeight == fH)
+                    {
+                        DecompressBlockFusedLdrToImage(
+                            blockBits, in info, footprint,
+                            dstBaseX, dstBaseY, width, imageBuffer);
+                        continue;
+                    }
+
+                    // Fallback: decode to temp buffer, then copy
+                    if (!info.IsVoidExtent && info.PartitionCount == 1 && !info.IsDualPlane
+                        && !info.EndpointMode0.IsHdr())
+                    {
+                        DecompressBlockFusedLdr(blockBits, in info, footprint, decodedPixels);
+                    }
+                    else
+                    {
+                        var logicalBlock = LogicalBlock.UnpackLogicalBlock(footprint, blockBits, in info);
+                        if (logicalBlock is null) continue;
+                        logicalBlock.WriteAllPixelsLdr(footprint, decodedPixels);
+                        logicalBlock.ReturnPooledArrays();
+                    }
+
                     int copyBytes = copyWidth * BytesPerPixelUnorm8;
-
                     for (int pixelY = 0; pixelY < copyHeight; pixelY++)
                     {
-                        int srcOffset = pixelY * footprint.Width * BytesPerPixelUnorm8;
+                        int srcOffset = pixelY * fW * BytesPerPixelUnorm8;
                         int dstOffset = ((dstBaseY + pixelY) * width + dstBaseX) * BytesPerPixelUnorm8;
                         decodedPixels.Slice(srcOffset, copyBytes)
                             .CopyTo(imageBuffer.Slice(dstOffset, copyBytes));
@@ -160,13 +190,305 @@ public static class AstcDecoder
         ulong high = BinaryPrimitives.ReadUInt64LittleEndian(blockData.Slice(8));
         var blockBits = new UInt128(high, low);
 
-        // Fast path: bypass PhysicalBlock.Create, decode all block fields in one pass
-        var logicalBlock = LogicalBlock.UnpackLogicalBlock(footprint, blockBits);
-        if (logicalBlock is null)
-            return;
+        var info = BlockInfo.Decode(blockBits);
+        if (!info.IsValid) return;
 
+        // Fully fused fast path for single-partition, non-dual-plane, LDR blocks
+        if (!info.IsVoidExtent && info.PartitionCount == 1 && !info.IsDualPlane
+            && !info.EndpointMode0.IsHdr())
+        {
+            DecompressBlockFusedLdr(blockBits, in info, footprint, buffer);
+            return;
+        }
+
+        // Fallback for void extent, multi-partition, dual plane, HDR
+        var logicalBlock = LogicalBlock.UnpackLogicalBlock(footprint, blockBits, in info);
+        if (logicalBlock is null) return;
         logicalBlock.WriteAllPixelsLdr(footprint, buffer);
         logicalBlock.ReturnPooledArrays();
+    }
+
+    /// <summary>
+    /// Fully fused LDR decode: BISE decode → unquantize → infill → interpolate → output.
+    /// Zero heap allocations. Entire decode happens on the stack.
+    /// Only handles single-partition, non-dual-plane, LDR blocks.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    private static void DecompressBlockFusedLdr(
+        UInt128 bits, in BlockInfo info, Footprint footprint, Span<byte> buffer)
+    {
+        // 1. BISE decode color endpoint values
+        int colorCount = info.EndpointMode0.GetColorValuesCount();
+        Span<int> colors = stackalloc int[colorCount];
+        DecodeBiseValues(bits, info.ColorStartBit, info.ColorBitCount, info.ColorValuesRange, colorCount, colors);
+
+        // 2. Batch unquantize color values, then decode endpoint pair
+        Quantization.UnquantizeCEValuesBatch(colors, colorCount, info.ColorValuesRange);
+        var ep = EndpointCodec.DecodeColorsForModeUnquantized(colors, info.EndpointMode0);
+
+        // 3. BISE decode weights
+        int gridSize = info.GridWidth * info.GridHeight;
+        Span<int> gridWeights = stackalloc int[gridSize];
+        DecodeBiseWeights(bits, info.WeightBitCount, info.WeightRange, gridSize, gridWeights);
+
+        // 4. Batch unquantize weights
+        Quantization.UnquantizeWeightsBatch(gridWeights, gridSize, info.WeightRange);
+
+        // 5. Infill weights from grid to texels (or skip if identity mapping)
+        if (info.GridWidth == footprint.Width && info.GridHeight == footprint.Height)
+        {
+            // Grid matches footprint: each texel maps 1-to-1 to a grid point
+            WriteLdrPixels(buffer, footprint.PixelCount, in ep, gridWeights);
+        }
+        else
+        {
+            var di = DecimationTable.Get(footprint, info.GridWidth, info.GridHeight);
+            Span<int> texelWeights = stackalloc int[footprint.PixelCount];
+            DecimationTable.InfillWeights(gridWeights, di, texelWeights);
+            WriteLdrPixels(buffer, footprint.PixelCount, in ep, texelWeights);
+        }
+    }
+
+    /// <summary>
+    /// Fully fused LDR decode writing directly to image buffer at strided positions.
+    /// Avoids the intermediate block buffer + row-by-row copy for interior full blocks.
+    /// Only handles single-partition, non-dual-plane, LDR blocks.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    private static void DecompressBlockFusedLdrToImage(
+        UInt128 bits, in BlockInfo info, Footprint footprint,
+        int dstBaseX, int dstBaseY, int imageWidth, Span<byte> imageBuffer)
+    {
+        // 1. BISE decode color endpoint values
+        int colorCount = info.EndpointMode0.GetColorValuesCount();
+        Span<int> colors = stackalloc int[colorCount];
+        DecodeBiseValues(bits, info.ColorStartBit, info.ColorBitCount, info.ColorValuesRange, colorCount, colors);
+
+        // 2. Batch unquantize color values, then decode endpoint pair
+        Quantization.UnquantizeCEValuesBatch(colors, colorCount, info.ColorValuesRange);
+        var ep = EndpointCodec.DecodeColorsForModeUnquantized(colors, info.EndpointMode0);
+
+        // 3. BISE decode weights
+        int gridSize = info.GridWidth * info.GridHeight;
+        Span<int> gridWeights = stackalloc int[gridSize];
+        DecodeBiseWeights(bits, info.WeightBitCount, info.WeightRange, gridSize, gridWeights);
+
+        // 4. Batch unquantize weights
+        Quantization.UnquantizeWeightsBatch(gridWeights, gridSize, info.WeightRange);
+
+        // 5+6. Infill weights and write pixels to image buffer
+        if (info.GridWidth == footprint.Width && info.GridHeight == footprint.Height)
+        {
+            // Grid matches footprint: each texel maps 1-to-1, skip bilinear infill
+            WriteLdrPixelsToImage(imageBuffer, footprint, dstBaseX, dstBaseY, imageWidth, in ep, gridWeights);
+        }
+        else
+        {
+            Span<int> texelWeights = stackalloc int[footprint.PixelCount];
+            var di = DecimationTable.Get(footprint, info.GridWidth, info.GridHeight);
+            DecimationTable.InfillWeights(gridWeights, di, texelWeights);
+            WriteLdrPixelsToImage(imageBuffer, footprint, dstBaseX, dstBaseY, imageWidth, in ep, texelWeights);
+        }
+    }
+
+    /// <summary>
+    /// Decodes BISE-encoded values from the specified bit region of the block.
+    /// For bit-only encoding with small total bit count, extracts directly from ulong
+    /// without creating a BitStream (avoids per-value ShiftBuffer overhead).
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void DecodeBiseValues(
+        UInt128 bits, int startBit, int bitCount, int range, int valuesCount, Span<int> result)
+    {
+        var (encMode, bitsPerValue) = BoundedIntegerSequenceCodec.GetPackingModeBitCount(range);
+
+        if (encMode == BiseEncodingMode.BitEncoding)
+        {
+            // Fast path: extract N-bit values directly via shifts
+            int totalBits = valuesCount * bitsPerValue;
+            ulong mask = (1UL << bitsPerValue) - 1;
+
+            if (startBit + totalBits <= 64)
+            {
+                // All color data fits in the low 64 bits
+                ulong data = bits.Low() >> startBit;
+                for (int i = 0; i < valuesCount; i++)
+                {
+                    result[i] = (int)(data & mask);
+                    data >>= bitsPerValue;
+                }
+            }
+            else
+            {
+                // Spans both halves — use UInt128 shift then extract from low
+                var shifted = (bits >> startBit) & UInt128Extensions.OnesMask(totalBits);
+                ulong lo = shifted.Low();
+                ulong hi = shifted.High();
+                int bitPos = 0;
+                for (int i = 0; i < valuesCount; i++)
+                {
+                    if (bitPos < 64)
+                    {
+                        ulong val = (lo >> bitPos) & mask;
+                        if (bitPos + bitsPerValue > 64)
+                            val |= (hi << (64 - bitPos)) & mask;
+                        result[i] = (int)val;
+                    }
+                    else
+                    {
+                        result[i] = (int)((hi >> (bitPos - 64)) & mask);
+                    }
+                    bitPos += bitsPerValue;
+                }
+            }
+            return;
+        }
+
+        // Trit/quint encoding: fall back to full BISE decoder
+        var colorBitMask = UInt128Extensions.OnesMask(bitCount);
+        var colorBits = (bits >> startBit) & colorBitMask;
+        var colorBitStream = new BitStream(colorBits, 128);
+        var decoder = BoundedIntegerSequenceDecoder.GetCached(range);
+        decoder.Decode(valuesCount, ref colorBitStream, result);
+    }
+
+    /// <summary>
+    /// Decodes BISE-encoded weight values from the reversed high-end of the block.
+    /// For bit-only encoding, extracts directly from the reversed bits without BitStream.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void DecodeBiseWeights(
+        UInt128 bits, int weightBitCount, int weightRange, int gridSize, Span<int> result)
+    {
+        var (encMode, bitsPerValue) = BoundedIntegerSequenceCodec.GetPackingModeBitCount(weightRange);
+        var weightBits = UInt128Extensions.ReverseBits(bits) & UInt128Extensions.OnesMask(weightBitCount);
+
+        if (encMode == BiseEncodingMode.BitEncoding)
+        {
+            // Fast path: extract N-bit values directly via shifts
+            int totalBits = gridSize * bitsPerValue;
+            ulong mask = (1UL << bitsPerValue) - 1;
+
+            if (totalBits <= 64)
+            {
+                ulong data = weightBits.Low();
+                for (int i = 0; i < gridSize; i++)
+                {
+                    result[i] = (int)(data & mask);
+                    data >>= bitsPerValue;
+                }
+            }
+            else
+            {
+                ulong lo = weightBits.Low();
+                ulong hi = weightBits.High();
+                int bitPos = 0;
+                for (int i = 0; i < gridSize; i++)
+                {
+                    if (bitPos < 64)
+                    {
+                        ulong val = (lo >> bitPos) & mask;
+                        if (bitPos + bitsPerValue > 64)
+                            val |= (hi << (64 - bitPos)) & mask;
+                        result[i] = (int)val;
+                    }
+                    else
+                    {
+                        result[i] = (int)((hi >> (bitPos - 64)) & mask);
+                    }
+                    bitPos += bitsPerValue;
+                }
+            }
+            return;
+        }
+
+        // Trit/quint encoding: fall back to full BISE decoder
+        var weightBitStream = new BitStream(weightBits, 128);
+        var decoder = BoundedIntegerSequenceDecoder.GetCached(weightRange);
+        decoder.Decode(gridSize, ref weightBitStream, result);
+    }
+
+    /// <summary>
+    /// Writes all pixels for a single-partition LDR block using SIMD where possible.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void WriteLdrPixels(
+        Span<byte> buffer, int pixelCount, in ColorEndpointPair ep, Span<int> texelWeights)
+    {
+        int lowR = ep.LdrLow.R, lowG = ep.LdrLow.G, lowB = ep.LdrLow.B, lowA = ep.LdrLow.A;
+        int highR = ep.LdrHigh.R, highG = ep.LdrHigh.G, highB = ep.LdrHigh.B, highA = ep.LdrHigh.A;
+
+        int i = 0;
+        if (Vector128.IsHardwareAccelerated)
+        {
+            int limit = pixelCount - 3;
+            for (; i < limit; i += 4)
+            {
+                var weights = Vector128.Create(
+                    texelWeights[i], texelWeights[i + 1],
+                    texelWeights[i + 2], texelWeights[i + 3]);
+                SimdHelpers.WritePixels4Ldr(
+                    buffer, i * 4,
+                    lowR, lowG, lowB, lowA, highR, highG, highB, highA,
+                    weights);
+            }
+        }
+
+        for (; i < pixelCount; i++)
+        {
+            SimdHelpers.WritePixel1Ldr(
+                buffer, i * 4,
+                lowR, lowG, lowB, lowA, highR, highG, highB, highA,
+                texelWeights[i]);
+        }
+    }
+
+    /// <summary>
+    /// Writes LDR pixels directly to image buffer at strided positions.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void WriteLdrPixelsToImage(
+        Span<byte> imageBuffer, Footprint footprint,
+        int dstBaseX, int dstBaseY, int imageWidth,
+        in ColorEndpointPair ep, Span<int> texelWeights)
+    {
+        int lowR = ep.LdrLow.R, lowG = ep.LdrLow.G, lowB = ep.LdrLow.B, lowA = ep.LdrLow.A;
+        int highR = ep.LdrHigh.R, highG = ep.LdrHigh.G, highB = ep.LdrHigh.B, highA = ep.LdrHigh.A;
+
+        int fW = footprint.Width;
+        int fH = footprint.Height;
+        int rowStride = imageWidth * BytesPerPixelUnorm8;
+
+        for (int py = 0; py < fH; py++)
+        {
+            int dstRowOffset = (dstBaseY + py) * rowStride + dstBaseX * BytesPerPixelUnorm8;
+            int srcRowBase = py * fW;
+            int px = 0;
+
+            if (Vector128.IsHardwareAccelerated)
+            {
+                int limit = fW - 3;
+                for (; px < limit; px += 4)
+                {
+                    int ti = srcRowBase + px;
+                    var weights = Vector128.Create(
+                        texelWeights[ti], texelWeights[ti + 1],
+                        texelWeights[ti + 2], texelWeights[ti + 3]);
+                    SimdHelpers.WritePixels4Ldr(
+                        imageBuffer, dstRowOffset + px * BytesPerPixelUnorm8,
+                        lowR, lowG, lowB, lowA, highR, highG, highB, highA,
+                        weights);
+                }
+            }
+
+            for (; px < fW; px++)
+            {
+                SimdHelpers.WritePixel1Ldr(
+                    imageBuffer, dstRowOffset + px * BytesPerPixelUnorm8,
+                    lowR, lowG, lowB, lowA, highR, highG, highB, highA,
+                    texelWeights[srcRowBase + px]);
+            }
+        }
     }
 
     /// <summary>
