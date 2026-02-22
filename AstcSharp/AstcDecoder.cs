@@ -492,6 +492,271 @@ public static class AstcDecoder
     }
 
     /// <summary>
+    /// Fully fused HDR decode: BISE decode → unquantize → infill → interpolate → float output.
+    /// Zero heap allocations. Entire decode happens on the stack.
+    /// Handles single-partition, non-dual-plane blocks with both LDR and HDR endpoints.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    private static void DecompressBlockFusedHdr(
+        UInt128 bits, in BlockInfo info, Footprint footprint, Span<float> buffer)
+    {
+        // 1. BISE decode color endpoint values
+        int colorCount = info.EndpointMode0.GetColorValuesCount();
+        Span<int> colors = stackalloc int[colorCount];
+        DecodeBiseValues(bits, info.ColorStartBit, info.ColorBitCount, info.ColorValuesRange, colorCount, colors);
+
+        // 2. Batch unquantize color values, then decode endpoint pair (LDR or HDR)
+        Quantization.UnquantizeCEValuesBatch(colors, colorCount, info.ColorValuesRange);
+        var ep = EndpointCodec.DecodeColorsForModePolymorphicUnquantized(colors, info.EndpointMode0);
+
+        // 3. BISE decode weights
+        int gridSize = info.GridWidth * info.GridHeight;
+        Span<int> gridWeights = stackalloc int[gridSize];
+        DecodeBiseWeights(bits, info.WeightBitCount, info.WeightRange, gridSize, gridWeights);
+
+        // 4. Batch unquantize weights
+        Quantization.UnquantizeWeightsBatch(gridWeights, gridSize, info.WeightRange);
+
+        // 5. Infill weights from grid to texels (or skip if identity mapping)
+        if (info.GridWidth == footprint.Width && info.GridHeight == footprint.Height)
+        {
+            WriteHdrOutputPixels(buffer, footprint.PixelCount, in ep, gridWeights);
+        }
+        else
+        {
+            var di = DecimationTable.Get(footprint, info.GridWidth, info.GridHeight);
+            Span<int> texelWeights = stackalloc int[footprint.PixelCount];
+            DecimationTable.InfillWeights(gridWeights, di, texelWeights);
+            WriteHdrOutputPixels(buffer, footprint.PixelCount, in ep, texelWeights);
+        }
+    }
+
+    /// <summary>
+    /// Fully fused HDR decode writing directly to image buffer at strided positions.
+    /// Avoids the intermediate block buffer + row-by-row copy for interior full blocks.
+    /// Handles single-partition, non-dual-plane blocks with both LDR and HDR endpoints.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    private static void DecompressBlockFusedHdrToImage(
+        UInt128 bits, in BlockInfo info, Footprint footprint,
+        int dstBaseX, int dstBaseY, int imageWidth, Span<float> imageBuffer)
+    {
+        // 1. BISE decode color endpoint values
+        int colorCount = info.EndpointMode0.GetColorValuesCount();
+        Span<int> colors = stackalloc int[colorCount];
+        DecodeBiseValues(bits, info.ColorStartBit, info.ColorBitCount, info.ColorValuesRange, colorCount, colors);
+
+        // 2. Batch unquantize color values, then decode endpoint pair (LDR or HDR)
+        Quantization.UnquantizeCEValuesBatch(colors, colorCount, info.ColorValuesRange);
+        var ep = EndpointCodec.DecodeColorsForModePolymorphicUnquantized(colors, info.EndpointMode0);
+
+        // 3. BISE decode weights
+        int gridSize = info.GridWidth * info.GridHeight;
+        Span<int> gridWeights = stackalloc int[gridSize];
+        DecodeBiseWeights(bits, info.WeightBitCount, info.WeightRange, gridSize, gridWeights);
+
+        // 4. Batch unquantize weights
+        Quantization.UnquantizeWeightsBatch(gridWeights, gridSize, info.WeightRange);
+
+        // 5+6. Infill weights and write pixels to image buffer
+        if (info.GridWidth == footprint.Width && info.GridHeight == footprint.Height)
+        {
+            WriteHdrOutputPixelsToImage(imageBuffer, footprint, dstBaseX, dstBaseY, imageWidth, in ep, gridWeights);
+        }
+        else
+        {
+            Span<int> texelWeights = stackalloc int[footprint.PixelCount];
+            var di = DecimationTable.Get(footprint, info.GridWidth, info.GridHeight);
+            DecimationTable.InfillWeights(gridWeights, di, texelWeights);
+            WriteHdrOutputPixelsToImage(imageBuffer, footprint, dstBaseX, dstBaseY, imageWidth, in ep, texelWeights);
+        }
+    }
+
+    /// <summary>
+    /// Dispatches HDR float output based on endpoint type (LDR or HDR).
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void WriteHdrOutputPixels(
+        Span<float> buffer, int pixelCount, in ColorEndpointPair ep, Span<int> texelWeights)
+    {
+        if (ep.IsHdr)
+            WriteHdrPixels(buffer, pixelCount, in ep, texelWeights);
+        else
+            WriteLdrAsHdrPixels(buffer, pixelCount, in ep, texelWeights);
+    }
+
+    /// <summary>
+    /// Dispatches HDR float output to image buffer based on endpoint type.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void WriteHdrOutputPixelsToImage(
+        Span<float> imageBuffer, Footprint footprint,
+        int dstBaseX, int dstBaseY, int imageWidth,
+        in ColorEndpointPair ep, Span<int> texelWeights)
+    {
+        if (ep.IsHdr)
+            WriteHdrPixelsToImage(imageBuffer, footprint, dstBaseX, dstBaseY, imageWidth, in ep, texelWeights);
+        else
+            WriteLdrAsHdrPixelsToImage(imageBuffer, footprint, dstBaseX, dstBaseY, imageWidth, in ep, texelWeights);
+    }
+
+    /// <summary>
+    /// Writes LDR endpoints as normalized float output (common case in HDR API).
+    /// Interpolates to UNORM16, then normalizes to [0, 1].
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void WriteLdrAsHdrPixels(
+        Span<float> buffer, int pixelCount, in ColorEndpointPair ep, Span<int> texelWeights)
+    {
+        int lowR = ep.LdrLow.R, lowG = ep.LdrLow.G, lowB = ep.LdrLow.B, lowA = ep.LdrLow.A;
+        int highR = ep.LdrHigh.R, highG = ep.LdrHigh.G, highB = ep.LdrHigh.B, highA = ep.LdrHigh.A;
+
+        for (int i = 0; i < pixelCount; i++)
+        {
+            int w = texelWeights[i];
+            int offset = i * 4;
+            buffer[offset + 0] = InterpolateLdrAsFloat(lowR, highR, w);
+            buffer[offset + 1] = InterpolateLdrAsFloat(lowG, highG, w);
+            buffer[offset + 2] = InterpolateLdrAsFloat(lowB, highB, w);
+            buffer[offset + 3] = InterpolateLdrAsFloat(lowA, highA, w);
+        }
+    }
+
+    /// <summary>
+    /// Writes LDR endpoints as normalized float output directly to image buffer.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void WriteLdrAsHdrPixelsToImage(
+        Span<float> imageBuffer, Footprint footprint,
+        int dstBaseX, int dstBaseY, int imageWidth,
+        in ColorEndpointPair ep, Span<int> texelWeights)
+    {
+        int lowR = ep.LdrLow.R, lowG = ep.LdrLow.G, lowB = ep.LdrLow.B, lowA = ep.LdrLow.A;
+        int highR = ep.LdrHigh.R, highG = ep.LdrHigh.G, highB = ep.LdrHigh.B, highA = ep.LdrHigh.A;
+
+        const int channelsPerPixel = 4;
+        int fW = footprint.Width;
+        int fH = footprint.Height;
+        int rowStride = imageWidth * channelsPerPixel;
+
+        for (int py = 0; py < fH; py++)
+        {
+            int dstRowOffset = (dstBaseY + py) * rowStride + dstBaseX * channelsPerPixel;
+            int srcRowBase = py * fW;
+
+            for (int px = 0; px < fW; px++)
+            {
+                int w = texelWeights[srcRowBase + px];
+                int dstOffset = dstRowOffset + px * channelsPerPixel;
+                imageBuffer[dstOffset + 0] = InterpolateLdrAsFloat(lowR, highR, w);
+                imageBuffer[dstOffset + 1] = InterpolateLdrAsFloat(lowG, highG, w);
+                imageBuffer[dstOffset + 2] = InterpolateLdrAsFloat(lowB, highB, w);
+                imageBuffer[dstOffset + 3] = InterpolateLdrAsFloat(lowA, highA, w);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Writes HDR endpoints as float output with LNS-to-FP16 conversion.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void WriteHdrPixels(
+        Span<float> buffer, int pixelCount, in ColorEndpointPair ep, Span<int> texelWeights)
+    {
+        bool alphaIsLdr = ep.AlphaIsLdr;
+        int lowR = ep.HdrLow.R, lowG = ep.HdrLow.G, lowB = ep.HdrLow.B, lowA = ep.HdrLow.A;
+        int highR = ep.HdrHigh.R, highG = ep.HdrHigh.G, highB = ep.HdrHigh.B, highA = ep.HdrHigh.A;
+
+        for (int i = 0; i < pixelCount; i++)
+        {
+            int w = texelWeights[i];
+            int offset = i * 4;
+            buffer[offset + 0] = InterpolateHdrAsFloat(lowR, highR, w);
+            buffer[offset + 1] = InterpolateHdrAsFloat(lowG, highG, w);
+            buffer[offset + 2] = InterpolateHdrAsFloat(lowB, highB, w);
+
+            if (alphaIsLdr)
+            {
+                int c = (lowA * (64 - w) + highA * w + 32) / 64;
+                buffer[offset + 3] = (ushort)Math.Clamp(c, 0, 0xFFFF) / 65535.0f;
+            }
+            else
+            {
+                buffer[offset + 3] = InterpolateHdrAsFloat(lowA, highA, w);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Writes HDR endpoints as float output directly to image buffer.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void WriteHdrPixelsToImage(
+        Span<float> imageBuffer, Footprint footprint,
+        int dstBaseX, int dstBaseY, int imageWidth,
+        in ColorEndpointPair ep, Span<int> texelWeights)
+    {
+        bool alphaIsLdr = ep.AlphaIsLdr;
+        int lowR = ep.HdrLow.R, lowG = ep.HdrLow.G, lowB = ep.HdrLow.B, lowA = ep.HdrLow.A;
+        int highR = ep.HdrHigh.R, highG = ep.HdrHigh.G, highB = ep.HdrHigh.B, highA = ep.HdrHigh.A;
+
+        const int channelsPerPixel = 4;
+        int fW = footprint.Width;
+        int fH = footprint.Height;
+        int rowStride = imageWidth * channelsPerPixel;
+
+        for (int py = 0; py < fH; py++)
+        {
+            int dstRowOffset = (dstBaseY + py) * rowStride + dstBaseX * channelsPerPixel;
+            int srcRowBase = py * fW;
+
+            for (int px = 0; px < fW; px++)
+            {
+                int w = texelWeights[srcRowBase + px];
+                int dstOffset = dstRowOffset + px * channelsPerPixel;
+                imageBuffer[dstOffset + 0] = InterpolateHdrAsFloat(lowR, highR, w);
+                imageBuffer[dstOffset + 1] = InterpolateHdrAsFloat(lowG, highG, w);
+                imageBuffer[dstOffset + 2] = InterpolateHdrAsFloat(lowB, highB, w);
+
+                if (alphaIsLdr)
+                {
+                    int c = (lowA * (64 - w) + highA * w + 32) / 64;
+                    imageBuffer[dstOffset + 3] = (ushort)Math.Clamp(c, 0, 0xFFFF) / 65535.0f;
+                }
+                else
+                {
+                    imageBuffer[dstOffset + 3] = InterpolateHdrAsFloat(lowA, highA, w);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Interpolates an LDR channel and returns a normalized float [0, 1].
+    /// Bit-replicates 8-bit endpoints to 16-bit, interpolates, then normalizes.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static float InterpolateLdrAsFloat(int p0, int p1, int weight)
+    {
+        int c0 = (p0 << 8) | p0;
+        int c1 = (p1 << 8) | p1;
+        int c = (c0 * (64 - weight) + c1 * weight + 32) / 64;
+        return Math.Clamp(c, 0, 0xFFFF) / 65535.0f;
+    }
+
+    /// <summary>
+    /// Interpolates an HDR channel (LNS values) and converts to float via FP16.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static float InterpolateHdrAsFloat(int p0, int p1, int weight)
+    {
+        int c = (p0 * (64 - weight) + p1 * weight + 32) / 64;
+        ushort clamped = (ushort)Math.Clamp(c, 0, 0xFFFF);
+        ushort sf16 = LogicalBlock.LnsToSf16(clamped);
+        return (float)BitConverter.UInt16BitsToHalf(sf16);
+    }
+
+    /// <summary>
     /// Decompresses ASTC-compressed data to RGBA values.
     /// </summary>
     /// <param name="astcData">The ASTC-compressed texture data</param>
@@ -541,11 +806,13 @@ public static class AstcDecoder
 
         try
         {
-            // Create a buffer once, and reuse for all the blocks in the image
+            // Create a buffer once for fallback blocks; fast path writes directly to image
             decodedBlock = ArrayPool<float>.Shared.Rent(footprint.Width * footprint.Height * channelsPerPixel);
             var decodedPixels = decodedBlock.AsSpan();
             int blocksHigh = (height + footprint.Height - 1) / footprint.Height;
             int blockIndex = 0;
+            int fW = footprint.Width;
+            int fH = footprint.Height;
 
             for (int blockY = 0; blockY < blocksHigh; blockY++)
             {
@@ -555,23 +822,53 @@ public static class AstcDecoder
                     if (blockDataOffset + PhysicalBlock.SizeInBytes > astcData.Length)
                         continue;
 
-                    DecompressHdrBlock(
-                        astcData.Slice(blockDataOffset, PhysicalBlock.SizeInBytes),
-                        footprint,
-                        decodedPixels);
+                    ulong low = BinaryPrimitives.ReadUInt64LittleEndian(astcData.Slice(blockDataOffset));
+                    ulong high = BinaryPrimitives.ReadUInt64LittleEndian(astcData.Slice(blockDataOffset + 8));
+                    var blockBits = new UInt128(high, low);
 
-                    if (decodedPixels.Length == 0)
-                        throw new InvalidOperationException("Failed to decompress ASTC block.");
+                    int dstBaseX = blockX * fW;
+                    int dstBaseY = blockY * fH;
+                    int copyWidth = Math.Min(fW, width - dstBaseX);
+                    int copyHeight = Math.Min(fH, height - dstBaseY);
 
-                    int dstBaseX = blockX * footprint.Width;
-                    int dstBaseY = blockY * footprint.Height;
-                    int copyWidth = Math.Min(footprint.Width, width - dstBaseX);
-                    int copyHeight = Math.Min(footprint.Height, height - dstBaseY);
+                    var info = BlockInfo.Decode(blockBits);
+                    if (!info.IsValid) continue;
+
+                    // Fast path: fuse decode directly into image buffer for interior full blocks
+                    if (!info.IsVoidExtent && info.PartitionCount == 1 && !info.IsDualPlane
+                        && copyWidth == fW && copyHeight == fH)
+                    {
+                        DecompressBlockFusedHdrToImage(
+                            blockBits, in info, footprint,
+                            dstBaseX, dstBaseY, width, imageBuffer);
+                        continue;
+                    }
+
+                    // Fused decode to temp buffer for single-partition non-dual-plane
+                    if (!info.IsVoidExtent && info.PartitionCount == 1 && !info.IsDualPlane)
+                    {
+                        DecompressBlockFusedHdr(blockBits, in info, footprint, decodedPixels);
+                    }
+                    else
+                    {
+                        // Fallback: LogicalBlock path for void extent, multi-partition, dual plane
+                        var logicalBlock = LogicalBlock.UnpackLogicalBlock(footprint, blockBits, in info);
+                        if (logicalBlock is null) continue;
+                        for (int row = 0; row < fH; row++)
+                        {
+                            for (int column = 0; column < fW; ++column)
+                            {
+                                var pixelOffset = (fW * row * channelsPerPixel) + (column * channelsPerPixel);
+                                logicalBlock.WriteHdrPixel(column, row, decodedPixels.Slice(pixelOffset, channelsPerPixel));
+                            }
+                        }
+                        logicalBlock.ReturnPooledArrays();
+                    }
+
                     int copyFloats = copyWidth * channelsPerPixel;
-
                     for (int pixelY = 0; pixelY < copyHeight; pixelY++)
                     {
-                        int srcOffset = pixelY * footprint.Width * channelsPerPixel;
+                        int srcOffset = pixelY * fW * channelsPerPixel;
                         int dstOffset = ((dstBaseY + pixelY) * width + dstBaseX) * channelsPerPixel;
                         decodedPixels.Slice(srcOffset, copyFloats)
                             .CopyTo(imageBuffer.Slice(dstOffset, copyFloats));
@@ -616,10 +913,19 @@ public static class AstcDecoder
         ulong high = BinaryPrimitives.ReadUInt64LittleEndian(blockData.Slice(8));
         var blockBits = new UInt128(high, low);
 
-        // Fast path: bypass PhysicalBlock.Create, decode all block fields in one pass
-        var logicalBlock = LogicalBlock.UnpackLogicalBlock(footprint, blockBits);
-        if (logicalBlock is null)
+        var info = BlockInfo.Decode(blockBits);
+        if (!info.IsValid) return;
+
+        // Fused fast path for single-partition, non-dual-plane blocks
+        if (!info.IsVoidExtent && info.PartitionCount == 1 && !info.IsDualPlane)
+        {
+            DecompressBlockFusedHdr(blockBits, in info, footprint, buffer);
             return;
+        }
+
+        // Fallback for void extent, multi-partition, dual plane
+        var logicalBlock = LogicalBlock.UnpackLogicalBlock(footprint, blockBits, in info);
+        if (logicalBlock is null) return;
 
         const int channelsPerPixel = 4;
         for (int row = 0; row < footprint.Height; row++)

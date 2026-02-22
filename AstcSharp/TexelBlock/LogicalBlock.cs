@@ -434,7 +434,7 @@ namespace AstcSharp.TexelBlock
         /// in the lower bits. The mantissa is transformed using a piecewise linear function
         /// before being combined with the exponent to form the FP16 result.
         /// </remarks>
-        private static ushort LnsToSf16(int lns)
+        internal static ushort LnsToSf16(int lns)
         {
             int mc = lns & 0x7FF;       // Lower 11 bits: mantissa component
             int ec = (lns >> 11) & 0x1F; // Upper 5 bits: exponent component

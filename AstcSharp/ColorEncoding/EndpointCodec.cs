@@ -531,6 +531,23 @@ internal static class EndpointCodec
     }
 
     /// <summary>
+    /// Decodes color endpoints from already-unquantized values, supporting both LDR and HDR modes.
+    /// Called from the fused HDR decode path where BISE decode + batch unquantize
+    /// have already been performed. Returns a ColorEndpointPair (LDR or HDR).
+    /// </summary>
+    internal static ColorEndpointPair DecodeColorsForModePolymorphicUnquantized(ReadOnlySpan<int> uv, ColorEndpointMode mode)
+    {
+        if (mode.IsHdr())
+        {
+            var (low, high) = HdrEndpointDecoder.DecodeHdrModeUnquantized(uv, mode);
+            bool alphaIsLdr = mode == ColorEndpointMode.HdrRgbDirectLdrAlpha;
+            return ColorEndpointPair.Hdr(low, high, alphaIsLdr);
+        }
+
+        return DecodeColorsForModeUnquantized(uv, mode);
+    }
+
+    /// <summary>
     /// Decodes color endpoints from already-unquantized values.
     /// Called from the fused decode path where BISE decode + batch unquantize
     /// have already been performed. Returns an LDR ColorEndpointPair.
