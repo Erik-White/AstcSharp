@@ -381,6 +381,63 @@ internal static class IntermediateBlock
         return data;
     }
 
+    /// <summary>
+    /// Fast overload that uses pre-computed BlockInfo instead of calling PhysicalBlock getters.
+    /// Eliminates ~18 redundant DecodeBlockMode calls per block.
+    /// </summary>
+    public static IntermediateBlockData? UnpackIntermediateBlock(UInt128 bits, in BlockInfo info)
+    {
+        if (!info.IsValid || info.IsVoidExtent) return null;
+
+        var data = new IntermediateBlockData();
+
+        // Use cached values from BlockInfo instead of PhysicalBlock getters
+        var colorBitMask = UInt128Extensions.OnesMask(info.ColorBitCount);
+        var colorBits = (bits >> info.ColorStartBit) & colorBitMask;
+        var colorBitStream = new BitStream(colorBits, 128);
+
+        var colorDecoder = BoundedIntegerSequenceDecoder.GetCached(info.ColorValuesRange);
+        Span<int> colors = stackalloc int[info.ColorValuesCount];
+        colorDecoder.Decode(info.ColorValuesCount, ref colorBitStream, colors);
+
+        data.weightGridX = info.GridWidth;
+        data.weightGridY = info.GridHeight;
+        data.weightRange = info.WeightRange;
+
+        data.partitionId = info.PartitionCount > 1
+            ? (int)BitOperations.GetBits(bits.Low(), 13, 10)
+            : null;
+
+        data.dualPlaneChannel = info.IsDualPlane ? info.DualPlaneChannel : null;
+
+        int colorIndex = 0;
+        data.endpointCount = info.PartitionCount;
+        for (int i = 0; i < info.PartitionCount; ++i)
+        {
+            var mode = info.GetEndpointMode(i);
+            int colorCount = mode.GetColorValuesCount();
+            var ep = new IntermediateEndpointData { mode = mode, colorCount = colorCount };
+            for (int j = 0; j < colorCount; ++j)
+            {
+                ep.colors[j] = colors[colorIndex++];
+            }
+            data.endpoints[i] = ep;
+        }
+
+        data.endpointRange = info.ColorValuesRange;
+
+        var weightBits = UInt128Extensions.ReverseBits(bits) & UInt128Extensions.OnesMask(info.WeightBitCount);
+        var weightBitStream = new BitStream(weightBits, 128);
+
+        var weightDecoder = BoundedIntegerSequenceDecoder.GetCached(data.weightRange);
+        int weightsCount = data.weightGridX * data.weightGridY;
+        if (info.IsDualPlane) weightsCount *= 2;
+        data.RentWeights(weightsCount);
+        weightDecoder.Decode(weightsCount, ref weightBitStream, data.weights);
+
+        return data;
+    }
+
     public static int EndpointRangeForBlock(in IntermediateBlockData data)
     {
         if (BoundedIntegerSequenceCodec.GetBitCountForRange(data.weightGridX * data.weightGridY * (data.dualPlaneChannel.HasValue ? 2 : 1), data.weightRange) > 96)

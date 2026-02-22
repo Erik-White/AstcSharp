@@ -159,9 +159,9 @@ public static class AstcDecoder
         ulong low = BinaryPrimitives.ReadUInt64LittleEndian(blockData);
         ulong high = BinaryPrimitives.ReadUInt64LittleEndian(blockData.Slice(8));
         var blockBits = new UInt128(high, low);
-        var physicalBlock = PhysicalBlock.Create(blockBits);
 
-        var logicalBlock = LogicalBlock.UnpackLogicalBlock(footprint, physicalBlock);
+        // Fast path: bypass PhysicalBlock.Create, decode all block fields in one pass
+        var logicalBlock = LogicalBlock.UnpackLogicalBlock(footprint, blockBits);
         if (logicalBlock is null)
             return;
 
@@ -293,9 +293,9 @@ public static class AstcDecoder
         ulong low = BinaryPrimitives.ReadUInt64LittleEndian(blockData);
         ulong high = BinaryPrimitives.ReadUInt64LittleEndian(blockData.Slice(8));
         var blockBits = new UInt128(high, low);
-        var physicalBlock = PhysicalBlock.Create(blockBits);
 
-        var logicalBlock = LogicalBlock.UnpackLogicalBlock(footprint, physicalBlock);
+        // Fast path: bypass PhysicalBlock.Create, decode all block fields in one pass
+        var logicalBlock = LogicalBlock.UnpackLogicalBlock(footprint, blockBits);
         if (logicalBlock is null)
             return;
 

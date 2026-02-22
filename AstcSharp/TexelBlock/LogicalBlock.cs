@@ -660,5 +660,39 @@ namespace AstcSharp.TexelBlock
                 return result;
             }
         }
+
+        /// <summary>
+        /// Fast path: unpacks a logical block directly from raw bits using fused BlockInfo decode.
+        /// Bypasses PhysicalBlock.Create entirely for standard blocks, eliminating ~25 redundant
+        /// DecodeBlockMode calls per block.
+        /// </summary>
+        public static LogicalBlock? UnpackLogicalBlock(Footprint footprint, UInt128 bits)
+        {
+            var info = BlockInfo.Decode(bits);
+
+            if (!info.IsValid) return null;
+
+            if (info.IsVoidExtent)
+            {
+                // Void extent blocks are rare; fall back to existing PhysicalBlock path
+                var pb = PhysicalBlock.Create(bits);
+                var voidExtentData = IntermediateBlock.UnpackVoidExtent(pb);
+                if (voidExtentData is null) return null;
+
+                var result = Rent();
+                result.Initialize(footprint, voidExtentData.Value);
+                return result;
+            }
+            else
+            {
+                var intermediateBlock = IntermediateBlock.UnpackIntermediateBlock(bits, in info);
+                if (intermediateBlock is not { } ib) return null;
+
+                var result = Rent();
+                result.Initialize(footprint, in ib);
+                ib.ReturnPooledArrays();
+                return result;
+            }
+        }
     }
 }
