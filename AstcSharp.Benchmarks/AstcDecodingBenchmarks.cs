@@ -51,10 +51,10 @@ namespace AstcSharp.Benchmarks
             var low = BitConverter.ToUInt64(blockBytes);
             var high = BitConverter.ToUInt64(blockBytes.Slice(8));
             var block = PhysicalBlock.Create(((UInt128)low | ((UInt128)high << 64)));
-            var ib = IntermediateBlock.UnpackIntermediateBlock(block);
-            var logical = ib is not null
-                ? new LogicalBlock(Footprint.Get4x4(), ib)
-                : throw new InvalidOperationException("Failed to unpack intermediate block");
+            var ibOpt = IntermediateBlock.UnpackIntermediateBlock(block);
+            if (ibOpt is not { } ib)
+                throw new InvalidOperationException("Failed to unpack intermediate block");
+            var logical = new LogicalBlock(Footprint.Get4x4(), in ib);
         }
     }
 

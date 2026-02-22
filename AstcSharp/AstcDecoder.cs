@@ -39,22 +39,39 @@ public static class AstcDecoder
     /// <exception cref="InvalidOperationException">If decompression fails for any block</exception>
     public static Span<byte> DecompressImage(ReadOnlySpan<byte> astcData, int width, int height, Footprint footprint)
     {
+        var imageBuffer = new byte[width * height * BytesPerPixelUnorm8];
+        if (!DecompressImage(astcData, width, height, footprint, imageBuffer))
+            return [];
+        return imageBuffer;
+    }
+
+    /// <summary>
+    /// Decompresses ASTC-compressed data to uncompressed RGBA8 format into a caller-provided buffer.
+    /// </summary>
+    /// <param name="astcData">The ASTC-compressed texture data</param>
+    /// <param name="width">Image width in pixels</param>
+    /// <param name="height">Image height in pixels</param>
+    /// <param name="footprint">The ASTC block footprint (e.g., 4x4, 5x5)</param>
+    /// <param name="imageBuffer">Output buffer. Must be at least width * height * 4 bytes.</param>
+    /// <returns>True if decompression succeeded, false if input was invalid.</returns>
+    /// <exception cref="InvalidOperationException">If decompression fails for any block</exception>
+    public static bool DecompressImage(ReadOnlySpan<byte> astcData, int width, int height, Footprint footprint, Span<byte> imageBuffer)
+    {
         int blockWidth = footprint.Width;
         int blockHeight = footprint.Height;
 
         if (blockWidth == 0 || blockHeight == 0 || width == 0 || height == 0)
-            return [];
+            return false;
 
         int blocksWide = (width + blockWidth - 1) / blockWidth;
         if (blocksWide == 0)
-            return [];
+            return false;
 
         int expectedBlockCount = (width + blockWidth - 1) / blockWidth * ((height + blockHeight - 1) / blockHeight);
         if (astcData.Length % PhysicalBlock.SizeInBytes != 0 || astcData.Length / PhysicalBlock.SizeInBytes != expectedBlockCount)
-            return [];
+            return false;
 
         var decodedBlock = Array.Empty<byte>();
-        var imageBuffer = new byte[width * height * BytesPerPixelUnorm8];
 
         try
         {
@@ -63,7 +80,7 @@ public static class AstcDecoder
             var decodedPixels = decodedBlock.AsSpan();
             int blocksHigh = (height + footprint.Height - 1) / footprint.Height;
             int blockIndex = 0;
-            
+
             for (int blockY = 0; blockY < blocksHigh; blockY++)
             {
                 for (int blockX = 0; blockX < blocksWide; blockX++)
@@ -91,7 +108,7 @@ public static class AstcDecoder
                         int srcOffset = pixelY * footprint.Width * BytesPerPixelUnorm8;
                         int dstOffset = ((dstBaseY + pixelY) * width + dstBaseX) * BytesPerPixelUnorm8;
                         decodedPixels.Slice(srcOffset, copyBytes)
-                            .CopyTo(imageBuffer.AsSpan(dstOffset, copyBytes));
+                            .CopyTo(imageBuffer.Slice(dstOffset, copyBytes));
                     }
                 }
             }
@@ -101,7 +118,7 @@ public static class AstcDecoder
             _arrayPool.Return(decodedBlock);
         }
 
-        return imageBuffer;
+        return true;
     }
 
     /// <summary>
@@ -164,22 +181,40 @@ public static class AstcDecoder
     /// </returns>
     public static Span<float> DecompressHdrImage(ReadOnlySpan<byte> astcData, int width, int height, Footprint footprint)
     {
+        const int channelsPerPixel = 4;
+        var imageBuffer = new float[width * height * channelsPerPixel];
+        if (!DecompressHdrImage(astcData, width, height, footprint, imageBuffer))
+            return [];
+        return imageBuffer;
+    }
+
+    /// <summary>
+    /// Decompresses ASTC-compressed data to RGBA float values into a caller-provided buffer.
+    /// </summary>
+    /// <param name="astcData">The ASTC-compressed texture data</param>
+    /// <param name="width">Image width in pixels</param>
+    /// <param name="height">Image height in pixels</param>
+    /// <param name="footprint">The ASTC block footprint (e.g., 4x4, 5x5)</param>
+    /// <param name="imageBuffer">Output buffer. Must be at least width * height * 4 floats.</param>
+    /// <returns>True if decompression succeeded, false if input was invalid.</returns>
+    /// <exception cref="InvalidOperationException">If decompression fails for any block</exception>
+    public static bool DecompressHdrImage(ReadOnlySpan<byte> astcData, int width, int height, Footprint footprint, Span<float> imageBuffer)
+    {
         int blockWidth = footprint.Width;
         int blockHeight = footprint.Height;
 
         if (blockWidth == 0 || blockHeight == 0 || width == 0 || height == 0)
-            return [];
+            return false;
 
         int blocksWide = (width + blockWidth - 1) / blockWidth;
         if (blocksWide == 0)
-            return [];
+            return false;
 
         int expectedBlockCount = (width + blockWidth - 1) / blockWidth * ((height + blockHeight - 1) / blockHeight);
         if (astcData.Length % PhysicalBlock.SizeInBytes != 0 || astcData.Length / PhysicalBlock.SizeInBytes != expectedBlockCount)
-            return [];
+            return false;
 
-        const int channelsPerPixel = 4; // R, G, B, A
-        var imageBuffer = new float[width * height * channelsPerPixel];
+        const int channelsPerPixel = 4;
         var decodedBlock = Array.Empty<float>();
 
         try
@@ -217,7 +252,7 @@ public static class AstcDecoder
                         int srcOffset = pixelY * footprint.Width * channelsPerPixel;
                         int dstOffset = ((dstBaseY + pixelY) * width + dstBaseX) * channelsPerPixel;
                         decodedPixels.Slice(srcOffset, copyFloats)
-                            .CopyTo(imageBuffer.AsSpan(dstOffset, copyFloats));
+                            .CopyTo(imageBuffer.Slice(dstOffset, copyFloats));
                     }
                 }
             }
@@ -227,7 +262,7 @@ public static class AstcDecoder
             ArrayPool<float>.Shared.Return(decodedBlock);
         }
 
-        return imageBuffer;
+        return true;
     }
 
     /// <summary>

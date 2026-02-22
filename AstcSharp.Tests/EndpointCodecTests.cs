@@ -316,17 +316,18 @@ public class EndpointCodecTests
             // Unpack to intermediate block
             var intermediateBlock = IntermediateBlock.UnpackIntermediateBlock(physicalBlock);
             intermediateBlock.Should().NotBeNull("checkerboard blocks should not be void extent");
+            var ib = intermediateBlock!.Value;
 
             // Verify endpoints exist
-            intermediateBlock!.endpoints.Should().NotBeEmpty("block should have endpoints");
+            ib.endpointCount.Should().BeGreaterThan(0, "block should have endpoints");
 
-            int colorRange = IntermediateBlock.EndpointRangeForBlock(intermediateBlock);
+            int colorRange = IntermediateBlock.EndpointRangeForBlock(ib);
             colorRange.Should().BeGreaterThan(0, "color range should be valid");
 
             // Check all endpoint pairs decode successfully to grayscale colors
-            for (int ep = 0; ep < intermediateBlock.endpointCount; ep++)
+            for (int ep = 0; ep < ib.endpointCount; ep++)
             {
-                ref var endpoints = ref intermediateBlock.endpoints[ep];
+                var endpoints = ib.endpoints[ep];
                 ReadOnlySpan<int> colorSpan = ((ReadOnlySpan<int>)endpoints.colors)[..endpoints.colorCount];
                 var (low, high) = EndpointCodec.DecodeColorsForMode(
                     colorSpan,

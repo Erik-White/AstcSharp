@@ -7,65 +7,73 @@ namespace AstcSharp.TexelBlock;
 /// <summary>
 /// A physical ASTC texel block (128 bits)
 /// </summary>
-internal abstract class PhysicalBlock
+internal readonly struct PhysicalBlock
 {
     public const int SizeInBytes = 16;
 
     private static readonly int[] s_weightRanges = [-1, -1, 1, 2, 3, 4, 5, 7, -1, -1, 9, 11, 15, 19, 23, 31];
     private static readonly int[] s_extraCemBitsForPartition = [0, 2, 5, 8];
 
-    public UInt128 BlockBits { get; init; }
+    public UInt128 BlockBits { get; }
+    private readonly bool _isVoidExtent;
+    private readonly bool _isIllegalEncoding;
 
-    public abstract bool IsDualPlane { get; }
-
-    private bool _isIllegalEncodingCached;
-    private bool _isIllegalEncoding;
-
-    public bool IsIllegalEncoding
-    {
-        get
-        {
-            if (!_isIllegalEncodingCached)
-            {
-                _isIllegalEncoding = IdentifyInvalidEncodingIssues() is not null;
-                _isIllegalEncodingCached = true;
-            }
-            return _isIllegalEncoding;
-        }
-    }
-
-    public abstract bool IsVoidExtent { get; }
-
-    protected PhysicalBlock(ulong low) : this((UInt128)low)
-    {
-    }
-
-    protected PhysicalBlock(ulong low, ulong high) : this(new UInt128(high, low))
-    {
-    }
-
-    protected PhysicalBlock(UInt128 bits)
+    private PhysicalBlock(UInt128 bits, bool isVoidExtent, bool isIllegalEncoding)
     {
         BlockBits = bits;
+        _isVoidExtent = isVoidExtent;
+        _isIllegalEncoding = isIllegalEncoding;
     }
 
     /// <summary>
-    /// Factory method to create the appropriate PhysicalBlock subtype
+    /// Factory method to create a PhysicalBlock from raw bits
     /// </summary>
     public static PhysicalBlock Create(UInt128 bits)
-        => DecodeBlockMode(bits) == PhysicalBlockMode.VoidExtent
-            ? new VoidExtentPhysicalBlock(bits)
-            : new StandardPhysicalBlock(bits);
+    {
+        bool isVoid = DecodeBlockMode(bits) == PhysicalBlockMode.VoidExtent;
+        bool isIllegal = isVoid
+            ? CheckVoidExtentIsIllegal(bits)
+            : IdentifyStandardIssues(bits) is not null;
+        return new PhysicalBlock(bits, isVoid, isIllegal);
+    }
 
     public static PhysicalBlock Create(ulong low) => Create((UInt128)low);
 
     public static PhysicalBlock Create(ulong low, ulong high) => Create(new UInt128(high, low));
 
-    internal abstract (int Width, int Height)? GetWeightGridDimensions();
+    public bool IsVoidExtent => _isVoidExtent;
 
-    internal abstract int? GetWeightRange();
+    public bool IsIllegalEncoding => _isIllegalEncoding;
 
-    internal abstract int[]? GetVoidExtentCoordinates();
+    public bool IsDualPlane
+        => !_isVoidExtent && !_isIllegalEncoding && DecodeDualPlaneBit(BlockBits);
+
+    internal (int Width, int Height)? GetWeightGridDimensions()
+    {
+        if (_isVoidExtent || _isIllegalEncoding) return null;
+        var (props, _) = DecodeWeightProperties(BlockBits);
+        return props is not null ? (props.Value.Width, props.Value.Height) : null;
+    }
+
+    internal int? GetWeightRange()
+    {
+        if (_isVoidExtent || _isIllegalEncoding) return null;
+        var (props, _) = DecodeWeightProperties(BlockBits);
+        return props?.Range;
+    }
+
+    internal int[]? GetVoidExtentCoordinates()
+    {
+        if (!_isVoidExtent) return null;
+
+        // If void extent coords are all 1's then these are not valid void extent coords
+        ulong voidExtentMask = 0xFFFFFFFFFFFFFDFFUL;
+        ulong constBlockMode = 0xFFFFFFFFFFFFFDFCUL;
+
+        return !_isIllegalEncoding && (voidExtentMask & BlockBits.Low()) != constBlockMode
+            ? DecodeVoidExtentCoordinates(BlockBits)
+            : null;
+    }
 
     /// <summary>
     /// Get the dual plane channel if dual plane is enabled
@@ -81,13 +89,30 @@ internal abstract class PhysicalBlock
         return (int)planeBits.Low();
     }
 
-    internal abstract string? IdentifyInvalidEncodingIssues();
+    internal string? IdentifyInvalidEncodingIssues()
+    {
+        return _isVoidExtent
+            ? IdentifyVoidExtentIssues(BlockBits)
+            : IdentifyStandardIssues(BlockBits);
+    }
 
-    internal abstract int? GetWeightBitCount();
+    internal int? GetWeightBitCount()
+    {
+        if (_isVoidExtent) return null;
+        return !_isIllegalEncoding ? DecodeNumWeightBits(BlockBits) : null;
+    }
 
-    internal abstract int? GetWeightStartBit();
+    internal int? GetWeightStartBit()
+    {
+        if (_isVoidExtent) return null;
+        return !_isIllegalEncoding ? 128 - DecodeNumWeightBits(BlockBits) : null;
+    }
 
-    internal abstract int? GetPartitionsCount();
+    internal int? GetPartitionsCount()
+    {
+        if (_isVoidExtent) return null;
+        return !_isIllegalEncoding ? DecodePartitionsCount(BlockBits) : null;
+    }
 
     internal int? GetPartitionId()
     {
@@ -98,15 +123,138 @@ internal abstract class PhysicalBlock
             : null;
     }
 
-    internal abstract ColorEndpointMode? GetEndpointMode(int partition);
+    internal ColorEndpointMode? GetEndpointMode(int partition)
+    {
+        if (_isVoidExtent) return null;
+        return partition >= 0 && DecodePartitionsCount(BlockBits) > partition
+            ? DecodeEndpointMode(BlockBits, partition)
+            : null;
+    }
 
-    internal abstract int? GetColorStartBit();
+    internal int? GetColorStartBit()
+    {
+        if (_isVoidExtent) return 64;
+        var numPartitions = GetPartitionsCount();
+        if (!numPartitions.HasValue) return null;
+        return (numPartitions.Value == 1) ? 17 : 29;
+    }
 
-    internal abstract int? GetColorValuesCount();
+    internal int? GetColorValuesCount()
+    {
+        if (_isVoidExtent) return 4;
+        return !_isIllegalEncoding ? DecodeNumColorValues(BlockBits) : null;
+    }
 
-    internal abstract int? GetColorBitCount();
+    internal int? GetColorBitCount()
+    {
+        if (_isVoidExtent) return 64;
+        if (_isIllegalEncoding) return null;
+        var (colorBits, _) = GetColorValuesInfo();
+        return colorBits;
+    }
 
-    internal abstract int? GetColorValuesRange();
+    internal int? GetColorValuesRange()
+    {
+        if (_isVoidExtent) return (1 << 16) - 1;
+        if (_isIllegalEncoding) return null;
+        var (_, colorRange) = GetColorValuesInfo();
+        return colorRange;
+    }
+
+    // --- Private helpers ---
+
+    private (int colorBits, int colorRange) GetColorValuesInfo()
+    {
+        int dualPlaneStartPos = DecodeDualPlaneBitStartPosition(BlockBits);
+        var colorStartBitOpt = GetColorStartBit();
+        var numColorValuesOpt = GetColorValuesCount();
+        if (!colorStartBitOpt.HasValue || !numColorValuesOpt.HasValue)
+        {
+            return (0, 0);
+        }
+        int maxColorBits = dualPlaneStartPos - colorStartBitOpt.Value;
+        int numColorValues = numColorValuesOpt.Value;
+        for (int range = byte.MaxValue; range > byte.MinValue; --range)
+        {
+            int bitCount = BoundedIntegerSequenceCodec.GetBitCountForRange(numColorValues, range);
+            if (bitCount <= maxColorBits)
+            {
+                return (bitCount, range);
+            }
+        }
+
+        throw new InvalidOperationException("Not enough bits to store color values");
+    }
+
+    /// <summary>
+    /// Allocation-free check for void extent illegal encoding (used in hot path)
+    /// </summary>
+    private static bool CheckVoidExtentIsIllegal(UInt128 bits)
+    {
+        if (BitOperations.GetBits(bits, 10, 2).Low() != 0x3UL)
+            return true;
+
+        ulong low_bits = bits.Low();
+        int c0 = (int)BitOperations.GetBits(low_bits, 12, 13);
+        int c1 = (int)BitOperations.GetBits(low_bits, 25, 13);
+        int c2 = (int)BitOperations.GetBits(low_bits, 38, 13);
+        int c3 = (int)BitOperations.GetBits(low_bits, 51, 13);
+
+        const int all1s = (1 << 13) - 1;
+        bool coordsAll1s = c0 == all1s && c1 == all1s && c2 == all1s && c3 == all1s;
+
+        return !coordsAll1s && (c0 >= c1 || c2 >= c3);
+    }
+
+    /// <summary>
+    /// Full error-string version for void extent issues (used for error reporting)
+    /// </summary>
+    private static string? IdentifyVoidExtentIssues(UInt128 bits)
+    {
+        if (BitOperations.GetBits(bits, 10, 2).Low() != 0x3UL)
+            return "Reserved bits set for void extent block";
+
+        ulong low_bits = bits.Low();
+        int c0 = (int)BitOperations.GetBits(low_bits, 12, 13);
+        int c1 = (int)BitOperations.GetBits(low_bits, 25, 13);
+        int c2 = (int)BitOperations.GetBits(low_bits, 38, 13);
+        int c3 = (int)BitOperations.GetBits(low_bits, 51, 13);
+
+        const int all1s = (1 << 13) - 1;
+        bool coordsAll1s = c0 == all1s && c1 == all1s && c2 == all1s && c3 == all1s;
+
+        if (!coordsAll1s && (c0 >= c1 || c2 >= c3))
+            return "Void extent texture coordinates are invalid";
+
+        return null;
+    }
+
+    private static string? IdentifyStandardIssues(UInt128 bits)
+    {
+        var (props, error) = DecodeWeightProperties(bits);
+        if (props == null)
+        {
+            return error;
+        }
+
+        int numColorVals = DecodeNumColorValues(bits);
+        if (numColorVals > 18) return "Too many color values";
+
+        int numPartitions = DecodePartitionsCount(bits);
+        int dualPlaneStartPos = DecodeDualPlaneBitStartPosition(bits);
+        int colorStartBit = (numPartitions == 1) ? 17 : 29;
+
+        int requiredColorBits = ((13 * numColorVals) + 4) / 5;
+        int availableColorBits = dualPlaneStartPos - colorStartBit;
+        if (availableColorBits < requiredColorBits) return "Not enough color bits";
+
+        if (numPartitions == 4 && DecodeDualPlaneBit(bits))
+            return "Both four partitions and dual plane specified";
+
+        return null;
+    }
+
+    // --- Static decode methods ---
 
     internal static PhysicalBlockMode? DecodeBlockMode(UInt128 astcBits)
     {
@@ -260,10 +408,7 @@ internal abstract class PhysicalBlock
         int idx = (int)((h << 3) | r);
         if (idx < 0 || idx >= kWeightRanges.Length)
         {
-            // reserved range detected in weight props
-            // Try alternative interpretation using high 32 bits
             uint altLow32 = (uint)(astcBits.High() & 0xFFFFFFFFUL);
-            // attempting alternate low32 interpretation
             uint alt_r = (uint)BitOperations.GetBits(altLow32, 4, 1);
             switch (blockMode.Value)
             {
@@ -280,21 +425,17 @@ internal abstract class PhysicalBlock
             }
             uint alt_h = (uint)BitOperations.GetBits(altLow32, 9, 1);
             int altIdx = (int)((alt_h << 3) | alt_r);
-            // computed alternate candidate
             if (altIdx >= 0 && altIdx < kWeightRanges.Length && kWeightRanges[altIdx] >= 0)
             {
-                // using alternate high-derived header fields
-                r = alt_r; h = alt_h; idx = altIdx; low32 = altLow32; // adopt the alternate low32 for subsequent logic
+                r = alt_r; h = alt_h; idx = altIdx; low32 = altLow32;
             }
             else
             {
-                // print bits 0..15
                 string bits = "";
                 for (int i = 0; i < 16; ++i)
                 {
                     bits = (BitOperations.GetBits(low32, i, 1) == 1 ? '1' : '0') + bits;
                 }
-                // printed low32 bits for diagnostics removed
                 return (null, "Reserved range for weight bits");
             }
         }
@@ -342,7 +483,7 @@ internal abstract class PhysicalBlock
         const int kNumPartitionsBitLength = 2;
         ulong low_bits = astcBits.Low();
         int num_partitions = 1 + (int)BitOperations.GetBits(low_bits, kNumPartitionsBitPosition, kNumPartitionsBitLength);
-        
+
         ArgumentOutOfRangeException.ThrowIfLessThan(num_partitions, 1);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(num_partitions, 4);
 
@@ -385,7 +526,7 @@ internal abstract class PhysicalBlock
         ulong low_bits = astcBits.Low();
         ArgumentOutOfRangeException.ThrowIfLessThan(partition, 0);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(partition, num_partitions);
-        
+
         if (num_partitions == 1)
         {
             ulong cem = BitOperations.GetBits(low_bits, 13, 4);
@@ -424,7 +565,7 @@ internal abstract class PhysicalBlock
         int mode = base_cem + 4 * c + m;
         ArgumentOutOfRangeException.ThrowIfLessThan(mode, 0);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(mode, (int)ColorEndpointMode.ColorEndpointModeCount);
-        
+
         return (ColorEndpointMode)mode;
     }
 
@@ -438,29 +579,6 @@ internal abstract class PhysicalBlock
             num_color_values += endpoint_mode.GetColorValuesCount();
         }
         return num_color_values;
-    }
-
-    protected (int colorBits, int colorRange) GetColorValuesInfo()
-    {
-        int dualPlaneStartPos = DecodeDualPlaneBitStartPosition(BlockBits);
-        var colorStartBitOpt = GetColorStartBit();
-        var numColorValuesOpt = GetColorValuesCount();
-        if (!colorStartBitOpt.HasValue || !numColorValuesOpt.HasValue)
-        {
-            return (0, 0);
-        }
-        int maxColorBits = dualPlaneStartPos - colorStartBitOpt.Value;
-        int numColorValues = numColorValuesOpt.Value;
-        for (int range = byte.MaxValue; range > byte.MinValue; --range)
-        {
-            int bitCount = BoundedIntegerSequenceCodec.GetBitCountForRange(numColorValues, range);
-            if (bitCount <= maxColorBits)
-            {
-                return (bitCount, range);
-            }
-        }
-
-        throw new InvalidOperationException("Not enough bits to store color values");
     }
 
     internal record struct WeightGridDimensions(int Width, int Height, int Range);

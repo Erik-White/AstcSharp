@@ -36,7 +36,16 @@ internal static class IntermediateBlock
         public int colorCount;
     }
 
-    internal class IntermediateBlockData
+    [System.Runtime.CompilerServices.InlineArray(MaxPartitions)]
+    internal struct IntermediateEndpointBuffer
+    {
+        public const int MaxPartitions = 4;
+#pragma warning disable CS0169, S1144 // Accessed by runtime via [InlineArray]
+        private IntermediateEndpointData _element0;
+#pragma warning restore CS0169, S1144
+    }
+
+    internal struct IntermediateBlockData
     {
         private static readonly System.Buffers.ArrayPool<int> _intPool = System.Buffers.ArrayPool<int>.Shared;
 
@@ -44,14 +53,14 @@ internal static class IntermediateBlock
         public int weightGridY;
         public int weightRange;
 
-        public int[] weights = [];
+        public int[] weights;
         public int weightsCount;
         public bool weightsPooled;
 
         public int? partitionId;
         public int? dualPlaneChannel;
 
-        public IntermediateEndpointData[] endpoints = [];
+        public IntermediateEndpointBuffer endpoints;
         public int endpointCount;
 
         public int? endpointRange;
@@ -69,7 +78,7 @@ internal static class IntermediateBlock
             if (weightsPooled)
             {
                 _intPool.Return(weights);
-                weights = [];
+                weights = null!;
                 weightsPooled = false;
             }
         }
@@ -201,7 +210,7 @@ internal static class IntermediateBlock
     /// <summary>
     /// Determines if all endpoint modes in the intermediate block data are the same
     /// </summary>
-    private static bool SharedEndpointModes(IntermediateBlockData data)
+    private static bool SharedEndpointModes(in IntermediateBlockData data)
     {
         if (data.endpointCount == 0) return true;
         var first = data.endpoints[0].mode;
@@ -210,11 +219,11 @@ internal static class IntermediateBlock
         return true;
     }
 
-    private static (BitStream weightSink, int weightBitsCount) EncodeWeights(IntermediateBlockData data)
+    private static (BitStream weightSink, int weightBitsCount) EncodeWeights(in IntermediateBlockData data)
     {
         var weightSink = new BitStream(0UL, 0);
         var weightsEncoder = new BoundedIntegerSequenceEncoder(data.weightRange);
-        int wc = data.weightsCount > 0 ? data.weightsCount : data.weights.Length;
+        int wc = data.weightsCount > 0 ? data.weightsCount : (data.weights?.Length ?? 0);
         for (int i = 0; i < wc; i++) weightsEncoder.AddValue(data.weights[i]);
         weightsEncoder.Encode(ref weightSink);
 
@@ -225,7 +234,7 @@ internal static class IntermediateBlock
         return (weightSink, weightBitsCount);
     }
 
-    private static (string? error, int extraConfig) EncodeColorEndpointModes(IntermediateBlockData data, int partitionCount, ref BitStream bitSink)
+    private static (string? error, int extraConfig) EncodeColorEndpointModes(in IntermediateBlockData data, int partitionCount, ref BitStream bitSink)
     {
         int extraConfig = 0;
         bool sharedEndpointMode = SharedEndpointModes(data);
@@ -285,7 +294,7 @@ internal static class IntermediateBlock
         return (null, extraConfig);
     }
 
-    private static int ExtraConfigBitPosition(IntermediateBlockData data)
+    private static int ExtraConfigBitPosition(in IntermediateBlockData data)
     {
         bool has_dual_channel = data.dualPlaneChannel.HasValue;
         int num_weights = data.weightGridX * data.weightGridY * (has_dual_channel ? 2 : 1);
@@ -341,7 +350,6 @@ internal static class IntermediateBlock
 
         int colorIndex = 0;
         int pc = partitionCount.Value;
-        data.endpoints = new IntermediateEndpointData[pc];
         data.endpointCount = pc;
         for (int i = 0; i < pc; ++i)
         {
@@ -373,7 +381,7 @@ internal static class IntermediateBlock
         return data;
     }
 
-    public static int EndpointRangeForBlock(IntermediateBlockData data)
+    public static int EndpointRangeForBlock(in IntermediateBlockData data)
     {
         if (BoundedIntegerSequenceCodec.GetBitCountForRange(data.weightGridX * data.weightGridY * (data.dualPlaneChannel.HasValue ? 2 : 1), data.weightRange) > 96)
             return kEndpointRange_ReturnInvalidWeightDims;
@@ -434,11 +442,11 @@ internal static class IntermediateBlock
         return data;
     }
 
-    public static (string? error, UInt128 pb) Pack(IntermediateBlockData data)
+    public static (string? error, UInt128 pb) Pack(in IntermediateBlockData data)
     {
         UInt128 pb = 0;
         int expectedWeightsCount = data.weightGridX * data.weightGridY * (data.dualPlaneChannel.HasValue ? 2 : 1);
-        int actualWeightsCount = data.weightsCount > 0 ? data.weightsCount : data.weights.Length;
+        int actualWeightsCount = data.weightsCount > 0 ? data.weightsCount : (data.weights?.Length ?? 0);
         if (actualWeightsCount != expectedWeightsCount)
         {
             return ("Incorrect number of weights!", 0);
@@ -477,7 +485,7 @@ internal static class IntermediateBlock
         var colorEncoder = new BoundedIntegerSequenceEncoder(colorValueRange);
         for (int i = 0; i < data.endpointCount; i++)
         {
-            ref var ep = ref data.endpoints[i];
+            var ep = data.endpoints[i];
             for (int j = 0; j < ep.colorCount; j++)
             {
                 int color = ep.colors[j];

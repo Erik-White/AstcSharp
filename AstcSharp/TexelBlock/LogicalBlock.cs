@@ -13,6 +13,8 @@ namespace AstcSharp.TexelBlock
 
         private static readonly ArrayPool<int> _intPool = ArrayPool<int>.Shared;
 
+        [ThreadStatic] private static LogicalBlock? s_pooled;
+
         private ColorEndpointPair[] _endpoints;
         private int _endpointCount;
         private int[] _weights;
@@ -27,6 +29,29 @@ namespace AstcSharp.TexelBlock
             public bool WeightsPooled;
         }
 
+        /// <summary>
+        /// Pre-allocated DualPlaneData instance reused across blocks to avoid per-block allocation.
+        /// </summary>
+        private DualPlaneData? _ownedDualPlane;
+
+        private LogicalBlock()
+        {
+            _endpoints = new ColorEndpointPair[4];
+            _weights = [];
+            _ownedDualPlane = new DualPlaneData();
+        }
+
+        internal static LogicalBlock Rent()
+        {
+            var block = s_pooled;
+            if (block != null)
+            {
+                s_pooled = null;
+                return block;
+            }
+            return new LogicalBlock();
+        }
+
         public LogicalBlock(Footprint footprint)
         {
             _endpoints = [ColorEndpointPair.Ldr(RgbaColor.Empty, RgbaColor.Empty)];
@@ -38,45 +63,64 @@ namespace AstcSharp.TexelBlock
             };
         }
 
-        public LogicalBlock(Footprint footprint, IntermediateBlock.IntermediateBlockData block)
+        public LogicalBlock(Footprint footprint, in IntermediateBlock.IntermediateBlockData block)
         {
-            (_endpoints, _endpointCount) = DecodeEndpoints(block);
-            _partition = ComputePartition(footprint, block);
+            _endpoints = new ColorEndpointPair[block.endpointCount];
+            _endpointCount = DecodeEndpoints(in block, _endpoints);
+            _partition = ComputePartition(footprint, in block);
             _weights = _intPool.Rent(footprint.PixelCount);
             _weightsPooled = true;
-            CalculateWeights(footprint, block);
+            CalculateWeights(footprint, in block);
         }
 
         public LogicalBlock(Footprint footprint, IntermediateBlock.VoidExtentData block)
         {
-            (_endpoints, _endpointCount) = DecodeEndpoints(block);
+            _endpoints = new ColorEndpointPair[1];
+            _endpointCount = DecodeEndpoints(block, _endpoints);
             _partition = ComputePartition(footprint, block);
             _weights = _intPool.Rent(footprint.PixelCount);
             _weightsPooled = true;
             Array.Clear(_weights, 0, footprint.PixelCount);
         }
 
-        private static (ColorEndpointPair[] eps, int count) DecodeEndpoints(IntermediateBlock.IntermediateBlockData block)
+        internal void Initialize(Footprint footprint, in IntermediateBlock.IntermediateBlockData block)
         {
-            int endpointRange = block.endpointRange.HasValue ? block.endpointRange.Value : IntermediateBlock.EndpointRangeForBlock(block);
+            _endpointCount = DecodeEndpoints(in block, _endpoints);
+            _partition = ComputePartition(footprint, in block);
+            _weights = _intPool.Rent(footprint.PixelCount);
+            _weightsPooled = true;
+            CalculateWeights(footprint, in block);
+        }
+
+        internal void Initialize(Footprint footprint, IntermediateBlock.VoidExtentData block)
+        {
+            _endpointCount = DecodeEndpoints(block, _endpoints);
+            _partition = ComputePartition(footprint, block);
+            _weights = _intPool.Rent(footprint.PixelCount);
+            _weightsPooled = true;
+            Array.Clear(_weights, 0, footprint.PixelCount);
+        }
+
+        private static int DecodeEndpoints(in IntermediateBlock.IntermediateBlockData block, ColorEndpointPair[] eps)
+        {
+            int endpointRange = block.endpointRange ?? IntermediateBlock.EndpointRangeForBlock(block);
             if (endpointRange <= 0) throw new InvalidOperationException("Invalid endpoint range");
-            var eps = new ColorEndpointPair[block.endpointCount];
             for (int i = 0; i < block.endpointCount; i++)
             {
-                ref var ed = ref block.endpoints[i];
+                var ed = block.endpoints[i];
                 ReadOnlySpan<int> colorSpan = ((ReadOnlySpan<int>)ed.colors)[..ed.colorCount];
                 eps[i] = EndpointCodec.DecodeColorsForModePolymorphic(colorSpan, endpointRange, ed.mode);
             }
-            return (eps, block.endpointCount);
+            return block.endpointCount;
         }
 
-        private static (ColorEndpointPair[] eps, int count) DecodeEndpoints(IntermediateBlock.VoidExtentData block)
+        private static int DecodeEndpoints(IntermediateBlock.VoidExtentData block, ColorEndpointPair[] eps)
         {
             if (block.isHdr)
             {
                 // HDR void extent: ushort values are FP16 bit patterns (not LNS)
                 var hdrColor = new RgbaHdrColor(block.r, block.g, block.b, block.a);
-                return ([ColorEndpointPair.Hdr(hdrColor, hdrColor, valuesAreLns: false)], 1);
+                eps[0] = ColorEndpointPair.Hdr(hdrColor, hdrColor, valuesAreLns: false);
             }
             else
             {
@@ -86,8 +130,9 @@ namespace AstcSharp.TexelBlock
                     (byte)(block.g >> 8),
                     (byte)(block.b >> 8),
                     (byte)(block.a >> 8));
-                return ([ColorEndpointPair.Ldr(ldrColor, ldrColor)], 1);
+                eps[0] = ColorEndpointPair.Ldr(ldrColor, ldrColor);
             }
+            return 1;
         }
 
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<Footprint, Partition> _singlePartitionCache = new();
@@ -100,7 +145,7 @@ namespace AstcSharp.TexelBlock
             });
         }
 
-        private static Partition ComputePartition(Footprint footprint, IntermediateBlock.IntermediateBlockData block)
+        private static Partition ComputePartition(Footprint footprint, in IntermediateBlock.IntermediateBlockData block)
             => block.partitionId.HasValue
                 ? Partition.GetASTCPartition(footprint, block.endpointCount, block.partitionId.Value)
                 : GenerateSinglePartition(footprint);
@@ -108,7 +153,7 @@ namespace AstcSharp.TexelBlock
         private static Partition ComputePartition(Footprint footprint, IntermediateBlock.VoidExtentData block)
             => GenerateSinglePartition(footprint);
 
-        private void CalculateWeights(Footprint footprint, IntermediateBlock.IntermediateBlockData block)
+        private void CalculateWeights(Footprint footprint, in IntermediateBlock.IntermediateBlockData block)
         {
             int gridSize = block.weightGridX * block.weightGridY;
             int weightFrequency = block.dualPlaneChannel.HasValue ? 2 : 1;
@@ -127,12 +172,11 @@ namespace AstcSharp.TexelBlock
 
             if (block.dualPlaneChannel.HasValue)
             {
-                _dualPlane = new DualPlaneData
-                {
-                    Channel = block.dualPlaneChannel.Value,
-                    Weights = _intPool.Rent(footprint.PixelCount),
-                    WeightsPooled = true
-                };
+                var dp = _ownedDualPlane ??= new DualPlaneData();
+                dp.Channel = block.dualPlaneChannel.Value;
+                dp.Weights = _intPool.Rent(footprint.PixelCount);
+                dp.WeightsPooled = true;
+                _dualPlane = dp;
                 for (int i = 0; i < gridSize; ++i)
                 {
                     unquantized[i] = Quantization.UnquantizeWeightFromRange(
@@ -589,6 +633,9 @@ namespace AstcSharp.TexelBlock
                 _dualPlane.Weights = [];
                 _dualPlane.WeightsPooled = false;
             }
+            _dualPlane = null;
+            // _ownedDualPlane is intentionally kept — it is reused on next Rent()
+            s_pooled = this;
         }
 
         public static LogicalBlock? UnpackLogicalBlock(Footprint footprint, PhysicalBlock physicalBlock)
@@ -596,18 +643,20 @@ namespace AstcSharp.TexelBlock
             if (physicalBlock.IsVoidExtent)
             {
                 var voidExtantIntermediateBlock = IntermediateBlock.UnpackVoidExtent(physicalBlock);
+                if (voidExtantIntermediateBlock is null) return null;
 
-                return voidExtantIntermediateBlock is null
-                    ? null
-                    : new LogicalBlock(footprint, voidExtantIntermediateBlock.Value);
+                var result = Rent();
+                result.Initialize(footprint, voidExtantIntermediateBlock.Value);
+                return result;
             }
             else
             {
                 var intermediateBlock = IntermediateBlock.UnpackIntermediateBlock(physicalBlock);
-                if (intermediateBlock is null) return null;
+                if (intermediateBlock is not { } ib) return null;
 
-                var result = new LogicalBlock(footprint, intermediateBlock);
-                intermediateBlock.ReturnPooledArrays();
+                var result = Rent();
+                result.Initialize(footprint, in ib);
+                ib.ReturnPooledArrays();
                 return result;
             }
         }
