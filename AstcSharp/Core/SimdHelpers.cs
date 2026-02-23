@@ -90,22 +90,6 @@ internal static class SimdHelpers
         output[offset + 3] = (byte)InterpolateChannelScalar(lowA, highA, dpChannel == 3 ? dpWeight : weight);
     }
 
-    /// <summary>
-    /// Vectorized bilinear weight computation.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int BilinearWeight(int w0, int w1, int w2, int w3, int f0, int f1, int f2, int f3)
-    {
-        if (Vector128.IsHardwareAccelerated)
-        {
-            var wv = Vector128.Create(w0, w1, w2, w3);
-            var fv = Vector128.Create(f0, f1, f2, f3);
-            return (Vector128.Sum(wv * fv) + 8) >> 4;
-        }
-
-        return (w0 * f0 + w1 * f1 + w2 * f2 + w3 * f3 + 8) >> 4;
-    }
-
     // Keep the old API for ColorAt() (used by tests and non-hot paths)
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static RgbaColor InterpolateColorLdr(RgbaColor low, RgbaColor high, int weight)

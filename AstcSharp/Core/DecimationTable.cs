@@ -4,31 +4,28 @@ namespace AstcSharp.Core;
 
 /// <summary>
 /// Pre-computed weight infill data for a specific (footprint, weightGridX, weightGridY) combination.
-/// Stores bilinear interpolation indices and factors in a transposed layout for SIMD-friendly access.
+/// Stores bilinear interpolation indices and factors in a transposed layout.
 /// </summary>
 internal sealed class DecimationInfo
 {
     public readonly int TexelCount;
-    public readonly int PaddedTexelCount; // rounded up to multiple of 4
 
-    // Transposed layout: [contribution * PaddedTexelCount + texel]
+    // Transposed layout: [contribution * TexelCount + texel]
     // 4 contributions per texel (bilinear interpolation from weight grid).
     // For edge texels where some grid points are out of bounds, factor is 0 and index is 0.
-    // Sequential texels are adjacent in memory, enabling single Vector128 loads.
-    public readonly int[] WeightIndices;  // size: 4 * PaddedTexelCount
-    public readonly int[] WeightFactors;  // size: 4 * PaddedTexelCount
+    public readonly int[] WeightIndices;  // size: 4 * TexelCount
+    public readonly int[] WeightFactors;  // size: 4 * TexelCount
 
-    public DecimationInfo(int texelCount, int paddedTexelCount, int[] weightIndices, int[] weightFactors)
+    public DecimationInfo(int texelCount, int[] weightIndices, int[] weightFactors)
     {
         TexelCount = texelCount;
-        PaddedTexelCount = paddedTexelCount;
         WeightIndices = weightIndices;
         WeightFactors = weightFactors;
     }
 }
 
 /// <summary>
-/// Caches pre-computed DecimationInfo tables and provides SIMD-optimized weight infill.
+/// Caches pre-computed DecimationInfo tables and provides weight infill.
 /// For each unique (footprint, gridX, gridY) combination, the bilinear interpolation
 /// indices and factors are computed once and reused for every block with that configuration.
 /// Uses a flat array indexed by (footprintType, gridX, gridY) for O(1) lookup.
@@ -62,10 +59,9 @@ internal static class DecimationTable
     private static DecimationInfo Compute(int footprintWidth, int footprintHeight, int gridWidth, int gridHeight)
     {
         int texelCount = footprintWidth * footprintHeight;
-        int paddedTexelCount = (texelCount + 3) & ~3;
 
-        var indices = new int[4 * paddedTexelCount];
-        var factors = new int[4 * paddedTexelCount];
+        var indices = new int[4 * texelCount];
+        var factors = new int[4 * texelCount];
 
         int scaleHorizontal = GetScaleFactorD(footprintWidth);
         int scaleVertical = GetScaleFactorD(footprintHeight);
@@ -104,22 +100,21 @@ internal static class DecimationTable
                 if (gridPoint1 >= gridLimit) { factor1 = 0; gridPoint1 = 0; }
                 if (gridPoint0 >= gridLimit) { factor0 = 0; gridPoint0 = 0; }
 
-                indices[0 * paddedTexelCount + texelIndex] = gridPoint0;
-                indices[1 * paddedTexelCount + texelIndex] = gridPoint1;
-                indices[2 * paddedTexelCount + texelIndex] = gridPoint2;
-                indices[3 * paddedTexelCount + texelIndex] = gridPoint3;
+                indices[0 * texelCount + texelIndex] = gridPoint0;
+                indices[1 * texelCount + texelIndex] = gridPoint1;
+                indices[2 * texelCount + texelIndex] = gridPoint2;
+                indices[3 * texelCount + texelIndex] = gridPoint3;
 
-                factors[0 * paddedTexelCount + texelIndex] = factor0;
-                factors[1 * paddedTexelCount + texelIndex] = factor1;
-                factors[2 * paddedTexelCount + texelIndex] = factor2;
-                factors[3 * paddedTexelCount + texelIndex] = factor3;
+                factors[0 * texelCount + texelIndex] = factor0;
+                factors[1 * texelCount + texelIndex] = factor1;
+                factors[2 * texelCount + texelIndex] = factor2;
+                factors[3 * texelCount + texelIndex] = factor3;
 
                 texelIndex++;
             }
         }
 
-        // Padding slots are already zeroed (factors=0, indices=0)
-        return new DecimationInfo(texelCount, paddedTexelCount, indices, factors);
+        return new DecimationInfo(texelCount, indices, factors);
     }
 
     /// <summary>
@@ -131,10 +126,9 @@ internal static class DecimationTable
     public static void InfillWeights(ReadOnlySpan<int> gridWeights, DecimationInfo di, Span<int> result)
     {
         int texelCount = di.TexelCount;
-        int padded = di.PaddedTexelCount;
         int[] wi = di.WeightIndices;
         int[] wf = di.WeightFactors;
-        int p1 = padded, p2 = padded * 2, p3 = padded * 3;
+        int p1 = texelCount, p2 = texelCount * 2, p3 = texelCount * 3;
 
         for (int i = 0; i < texelCount; i++)
         {
