@@ -502,6 +502,29 @@ internal static class EndpointCodec
         throw new InvalidOperationException("Shouldn't have reached this point");
     }
 
+    /// <summary>
+    /// Decodes color endpoints for the specified mode, returning a polymorphic endpoint pair
+    /// that supports both LDR and HDR modes.
+    /// </summary>
+    /// <param name="vals">Quantized integer values from the ASTC block</param>
+    /// <param name="maxValue">Maximum quantization value</param>
+    /// <param name="mode">The color endpoint mode</param>
+    /// <returns>An IColorEndpointPair representing either LDR or HDR endpoints</returns>
+    public static IColorEndpointPair DecodeColorsForModePolymorphic(List<int> vals, int maxValue, ColorEndpointMode mode)
+    {
+        if (mode.IsHdr())
+        {
+            var (low, high) = HdrEndpointDecoder.DecodeHdrMode(vals, maxValue, mode);
+            bool alphaIsLdr = mode == ColorEndpointMode.HdrRgbDirectLdrAlpha;
+            return new HdrEndpointPair(low, high, alphaIsLdr);
+        }
+        else
+        {
+            var (low, high) = DecodeColorsForMode(vals, maxValue, mode);
+            return new LdrEndpointPair(low, high);
+        }
+    }
+
     public static (RgbaColor endpointLowRgba, RgbaColor endpointHighRgba) DecodeColorsForMode(List<int> vals, int maxValue, ColorEndpointMode mode)
     {
         var endpointLowRgba = RgbaColor.Empty;

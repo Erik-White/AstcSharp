@@ -1,15 +1,32 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <TargetFrameworks></TargetFrameworks>
     <OutputType>Exe</OutputType>
     <IsPackable>false</IsPackable>
     <SignAssembly>true</SignAssembly>
     <AssemblyOriginatorKeyFile>..\AstcSharp\AstcSharp.snk</AssemblyOriginatorKeyFile>
+    <NoWarn>$(NoWarn);CS8002</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" Version="0.13.12" />
     <ProjectReference Include="../AstcSharp/AstcSharp.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="AstcEncoderCSharp" Version="5.3.0" />
+  </ItemGroup>
+
+  <!-- Copy AstcEncoderCSharp native runtimes to the output directory. -->
+  <Target Name="CopyAstcEncNativeRuntimes" AfterTargets="Build">
+    <ItemGroup>
+      <_AstcEncNativeFiles Include="$(NuGetPackageRoot)astcencodercsharp\5.3.0\runtimes\**\*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_AstcEncNativeFiles)"
+          DestinationFiles="@(_AstcEncNativeFiles -> '$(TargetDir)runtimes\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
 
 </Project>

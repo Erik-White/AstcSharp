@@ -6,11 +6,12 @@ namespace AstcSharp.Benchmarks
     {
         public static void Main(string[] args)
         {
-            var switcher = new BenchmarkSwitcher(new[]
-            {
+            var switcher = new BenchmarkSwitcher(
+            [
                 typeof(AstcDecodingBenchmarks),
-                typeof(AstcFullImageDecodeBenchmark)
-            });
+                typeof(AstcFullImageDecodeBenchmark),
+                typeof(ArmReferenceComparisonBenchmark)
+            ]);
             switcher.Run(args);
         }
     }

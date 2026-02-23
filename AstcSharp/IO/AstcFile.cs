@@ -3,13 +3,13 @@ using AstcSharp.Core;
 namespace AstcSharp.IO;
 
 /// <summary>
-/// a very simple format consisting of a small header followed immediately
+/// A very simple format consisting of a small header followed immediately
 /// by the binary payload for a single image surface.
 /// </summary>
 /// <remarks>
 /// See https://github.com/ARM-software/astc-encoder/blob/main/Docs/FileFormat.md
-// </remarks>
-public record AstcFile
+/// </remarks>
+internal record AstcFile
 {
     private readonly AstcFileHeader _header;
     private readonly byte[] _blocks;

@@ -12,6 +12,7 @@ internal static class IntermediateBlock
 
     internal struct VoidExtentData
     {
+        public bool isHdr;
         public ushort r;
         public ushort g;
         public ushort b;
@@ -361,14 +362,18 @@ internal static class IntermediateBlock
 
     public static VoidExtentData? UnpackVoidExtent(PhysicalBlock physicalBlock)
     {
-        if (physicalBlock.IsIllegalEncoding) return null;
-        if (!physicalBlock.IsVoidExtent) return null;
+        var colorStartBit = physicalBlock.GetColorStartBit();
+        var colorBitCount = physicalBlock.GetColorBitCount();
+        if (physicalBlock.IsIllegalEncoding || !physicalBlock.IsVoidExtent || colorStartBit is null || colorBitCount is null)
+            return null;
 
-        var colorBits = (physicalBlock.BlockBits >> physicalBlock.GetColorStartBit().Value) & UInt128Extensions.OnesMask(physicalBlock.GetColorBitCount().Value);
+        var colorBits = (physicalBlock.BlockBits >> colorStartBit.Value) & UInt128Extensions.OnesMask(colorBitCount.Value);
         // We expect low 64 bits contain the 4x16-bit channels
         var low = colorBits.Low();
 
         var data = new VoidExtentData();
+        // Bit 9 of the block mode indicates HDR (1) vs LDR (0) void extent
+        data.isHdr = (physicalBlock.BlockBits.Low() & (1UL << 9)) != 0;
         data.r = (ushort)((low >> 0) & 0xFFFF);
         data.g = (ushort)((low >> 16) & 0xFFFF);
         data.b = (ushort)((low >> 32) & 0xFFFF);
