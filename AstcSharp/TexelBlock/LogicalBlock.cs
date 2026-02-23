@@ -253,7 +253,7 @@ namespace AstcSharp.TexelBlock
         /// <remarks>
         /// HDR endpoints are already 16-bit values (FP16 bit patterns). Unlike LDR interpolation
         /// which expands 8-bit to 16-bit before interpolating, HDR interpolation operates directly
-        /// on the 16-bit values: result = (e0 * (64 - w) + e1 * w + 32) / 64.
+        /// on the 16-bit values
         /// </remarks>
         private static ushort InterpolateChannelHdr(RgbaHdrColor first, RgbaHdrColor second, int channel, int weight)
         {
@@ -269,7 +269,7 @@ namespace AstcSharp.TexelBlock
         /// </summary>
         /// <remarks>
         /// For HDR endpoints, returns full 16-bit precision (0-65535) per channel.
-        /// For LDR endpoints, upscales to HDR range (multiplies by 257).
+        /// For LDR endpoints, upscales to HDR range.
         /// </remarks>
         public RgbaHdrColor ColorAtHdr(int x, int y)
         {
@@ -305,7 +305,7 @@ namespace AstcSharp.TexelBlock
                     result[channel] = InterpolateChannel(ldrPair.Low, ldrPair.High, channel, weight);
                 }
 
-                // Convert LDR (0-255) to HDR (0-65535) using multiply by 257
+                // Convert LDR (0-255) to HDR (0-65535)
                 return new RgbaHdrColor(
                     (ushort)(result[0] * 257),
                     (ushort)(result[1] * 257),
