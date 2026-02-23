@@ -1,10 +1,9 @@
 using AstcSharp.Core;
-using AstcSharp.IO;
 using AwesomeAssertions;
 
-namespace AstcSharp.Tests;
+namespace AstcSharp.Tests.HDR;
 
-public class HdrIntegrationTests
+public class HdrDecoderTests
 {
     [Fact]
     public void DecompressToFloat16_WithValidBlock_ShouldProduceCorrectOutputSize()

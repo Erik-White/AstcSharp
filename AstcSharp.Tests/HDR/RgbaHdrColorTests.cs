@@ -1,9 +1,9 @@
 using AstcSharp.Core;
 using AwesomeAssertions;
 
-namespace AstcSharp.Tests;
+namespace AstcSharp.Tests.HDR;
 
-public class HdrColorTests
+public class RgbaHdrColorTests
 {
     [Fact]
     public void Constructor_WithValidValues_ShouldInitializeCorrectly()

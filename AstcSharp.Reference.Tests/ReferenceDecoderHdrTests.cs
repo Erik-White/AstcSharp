@@ -73,7 +73,7 @@ public class ReferenceDecoderHdrTests
 
     [Theory]
     [MemberData(nameof(AllFootprintTypes))]
-    public void DecompressHdr_BrightSolid_ShouldMatch(FootprintType footprintType)
+    public void DecompressHdr_SolidColor_ShouldMatch(FootprintType footprintType)
     {
         var (blockX, blockY) = ReferenceDecoder.ToBlockDimensions(footprintType);
         int width = blockX;

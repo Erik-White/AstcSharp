@@ -2,21 +2,18 @@ using AstcSharp.Core;
 using AstcSharp.IO;
 using AwesomeAssertions;
 
-namespace AstcSharp.Tests;
+namespace AstcSharp.Tests.HDR;
 
 /// <summary>
 /// Comparing HDR and LDR ASTC decoding behavior using real reference files.
 /// </summary>
-public class HdrLdrComparisonTests
+public class HdrComparisonTests
 {
     [Fact]
     public void HdrFile_DecodedWithHdrApi_ShouldPreserveExtendedRange()
     {
         // HDR files should decode to values potentially exceeding 1.0
         var astcPath = Path.Combine("TestData", "HDR", "HDR-A-1x1.astc");
-
-        if (!File.Exists(astcPath))
-            return;
 
         var astcData = File.ReadAllBytes(astcPath);
         var astcFile = AstcFile.FromMemory(astcData);
@@ -43,9 +40,6 @@ public class HdrLdrComparisonTests
         // LDR files decoded with HDR API should produce values in 0.0-1.0 range
         var astcPath = Path.Combine("TestData", "HDR", "LDR-A-1x1.astc");
 
-        if (!File.Exists(astcPath))
-            return;
-
         var astcData = File.ReadAllBytes(astcPath);
         var astcFile = AstcFile.FromMemory(astcData);
 
@@ -69,9 +63,6 @@ public class HdrLdrComparisonTests
         // HDR files decoded with LDR API should clamp to 0-255
         var astcPath = Path.Combine("TestData", "HDR", "HDR-A-1x1.astc");
 
-        if (!File.Exists(astcPath))
-            return;
-
         var astcData = File.ReadAllBytes(astcPath);
         var astcFile = AstcFile.FromMemory(astcData);
 
@@ -94,9 +85,6 @@ public class HdrLdrComparisonTests
         // LDR content should produce equivalent results with both APIs
         var astcPath = Path.Combine("TestData", "HDR", "LDR-A-1x1.astc");
 
-        if (!File.Exists(astcPath))
-            return;
-
         var astcData = File.ReadAllBytes(astcPath);
         var astcFile = AstcFile.FromMemory(astcData);
 
@@ -113,7 +101,6 @@ public class HdrLdrComparisonTests
 
             float expectedHdr = ldrValue / 255.0f;
 
-            // Should be approximately equal (within 1% tolerance for rounding)
             Math.Abs(hdrValue - expectedHdr).Should().BeLessThan(0.01f);
         }
     }
@@ -124,20 +111,15 @@ public class HdrLdrComparisonTests
         // Test larger HDR tile decoding
         var astcPath = Path.Combine("TestData", "HDR", "hdr-tile.astc");
 
-        if (!File.Exists(astcPath))
-            return;
-
         var astcData = File.ReadAllBytes(astcPath);
         var astcFile = AstcFile.FromMemory(astcData);
 
-        // Decode with HDR API
         var hdrResult = AstcDecoder.DecompressHdrImage(
             astcFile.Blocks, astcFile.Width, astcFile.Height, astcFile.Footprint);
 
         // Should produce Width * Height * 4 values
         hdrResult.Length.Should().Be(astcFile.Width * astcFile.Height * 4);
 
-        // All values should be valid
         foreach (var value in hdrResult)
         {
             float.IsNaN(value).Should().BeFalse();
@@ -150,9 +132,6 @@ public class HdrLdrComparisonTests
     {
         // Test larger LDR tile decoding
         var astcPath = Path.Combine("TestData", "HDR", "ldr-tile.astc");
-
-        if (!File.Exists(astcPath))
-            return;
 
         var astcData = File.ReadAllBytes(astcPath);
         var astcFile = AstcFile.FromMemory(astcData);
@@ -173,9 +152,6 @@ public class HdrLdrComparisonTests
         // Verify files with same footprint decode correctly
         var hdrPath = Path.Combine("TestData", "HDR", "HDR-A-1x1.astc");
         var ldrPath = Path.Combine("TestData", "HDR", "LDR-A-1x1.astc");
-
-        if (!File.Exists(hdrPath) || !File.Exists(ldrPath))
-            return;
 
         var hdrData = File.ReadAllBytes(hdrPath);
         var ldrData = File.ReadAllBytes(ldrPath);
@@ -204,9 +180,6 @@ public class HdrLdrComparisonTests
     {
         // Verify that HdrColor.FromRgba() produces same results as decoding LDR with HDR API
         var astcPath = Path.Combine("TestData", "HDR", "LDR-A-1x1.astc");
-
-        if (!File.Exists(astcPath))
-            return;
 
         var astcData = File.ReadAllBytes(astcPath);
         var astcFile = AstcFile.FromMemory(astcData);
