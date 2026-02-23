@@ -362,10 +362,12 @@ internal static class IntermediateBlock
 
     public static VoidExtentData? UnpackVoidExtent(PhysicalBlock physicalBlock)
     {
-        if (physicalBlock.IsIllegalEncoding) return null;
-        if (!physicalBlock.IsVoidExtent) return null;
+        var colorStartBit = physicalBlock.GetColorStartBit();
+        var colorBitCount = physicalBlock.GetColorBitCount();
+        if (physicalBlock.IsIllegalEncoding || !physicalBlock.IsVoidExtent || colorStartBit is null || colorBitCount is null)
+            return null;
 
-        var colorBits = (physicalBlock.BlockBits >> physicalBlock.GetColorStartBit().Value) & UInt128Extensions.OnesMask(physicalBlock.GetColorBitCount().Value);
+        var colorBits = (physicalBlock.BlockBits >> colorStartBit.Value) & UInt128Extensions.OnesMask(colorBitCount.Value);
         // We expect low 64 bits contain the 4x16-bit channels
         var low = colorBits.Low();
 
