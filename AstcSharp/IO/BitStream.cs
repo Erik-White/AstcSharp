@@ -6,7 +6,7 @@ namespace AstcSharp.IO;
 /// <summary>
 /// A simple bit stream used for reading/writing arbitrary-sized chunks.
 /// </summary>
-internal class BitStream
+internal struct BitStream
 {
     private ulong _low;
     private ulong _high;
@@ -97,6 +97,32 @@ internal class BitStream
         bits = result ?? default;
 
         return result is not null;
+    }
+
+    public bool TryGetBits(int count, out ulong bits)
+    {
+        if (count > _dataSize) { bits = 0; return false; }
+        bits = count switch
+        {
+            0 => 0,
+            <= 64 => _low & MaskFor(count),
+            _ => _low
+        };
+        ShiftBuffer(count);
+        return true;
+    }
+
+    public bool TryGetBits(int count, out uint bits)
+    {
+        if (count > _dataSize) { bits = 0; return false; }
+        bits = (uint)(count switch
+        {
+            0 => 0UL,
+            <= 64 => _low & MaskFor(count),
+            _ => _low
+        });
+        ShiftBuffer(count);
+        return true;
     }
 
     private UInt128? GetBitsUInt128(int count)

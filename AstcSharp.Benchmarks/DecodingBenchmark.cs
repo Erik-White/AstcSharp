@@ -6,55 +6,60 @@ using AstcSharp.TexelBlock;
 namespace AstcSharp.Benchmarks
 {
     [MemoryDiagnoser]
-    public class AstcDecodingBenchmarks
+    public class DecodingBenchmark
     {
-        private byte[]? astcData;
-        private AstcFile? astcFile;
+        private AstcFile? _astcFile;
 
         [GlobalSetup]
         public void Setup()
         {
             var path = BenchmarkTestDataLocator.FindTestData(Path.Combine("Input", "atlas_small_4x4.astc"));
-            astcData = File.ReadAllBytes(path);
-            astcFile = AstcFile.FromMemory(astcData);
+            var astcData = File.ReadAllBytes(path);
+            _astcFile = AstcFile.FromMemory(astcData);
         }
 
         [Benchmark]
-        public void ParseBlock()
+        public bool ParseBlock()
         {
-            var blocks = astcFile!.Blocks;
+            var blocks = _astcFile!.Blocks;
             Span<byte> blockBytes = stackalloc byte[16];
             blocks.Slice(0, 16).CopyTo(blockBytes);
             var low = BitConverter.ToUInt64(blockBytes);
             var high = BitConverter.ToUInt64(blockBytes.Slice(8));
-            var block = PhysicalBlock.Create(((UInt128)low | ((UInt128)high << 64)));
+            var phyiscalBlock = PhysicalBlock.Create((UInt128)low | ((UInt128)high << 64));
+
+            return !phyiscalBlock.IsIllegalEncoding;
         }
 
         [Benchmark]
-        public void DecodeEndpoints()
+        public bool DecodeEndpoints()
         {
-            var blocks = astcFile!.Blocks;
+            var blocks = _astcFile!.Blocks;
             Span<byte> blockBytes = stackalloc byte[16];
             blocks.Slice(0, 16).CopyTo(blockBytes);
             var low = BitConverter.ToUInt64(blockBytes);
             var high = BitConverter.ToUInt64(blockBytes.Slice(8));
-            var block = PhysicalBlock.Create(((UInt128)low | ((UInt128)high << 64)));
-            var ib = IntermediateBlock.UnpackIntermediateBlock(block);
+            var physicalBlock = PhysicalBlock.Create((UInt128)low | ((UInt128)high << 64));
+
+            var blockData = IntermediateBlock.UnpackIntermediateBlock(physicalBlock);
+
+            return blockData is not null;
         }
 
         [Benchmark]
-        public void Partitioning()
+        public bool Partitioning()
         {
-            var blocks = astcFile!.Blocks;
+            var blocks = _astcFile!.Blocks;
             Span<byte> blockBytes = stackalloc byte[16];
             blocks.Slice(0, 16).CopyTo(blockBytes);
             var low = BitConverter.ToUInt64(blockBytes);
             var high = BitConverter.ToUInt64(blockBytes.Slice(8));
-            var block = PhysicalBlock.Create(((UInt128)low | ((UInt128)high << 64)));
-            var ib = IntermediateBlock.UnpackIntermediateBlock(block);
-            var logical = ib is not null
-                ? new LogicalBlock(Footprint.Get4x4(), ib)
-                : throw new InvalidOperationException("Failed to unpack intermediate block");
+            var bits = (UInt128)low | ((UInt128)high << 64);
+            var info = BlockInfo.Decode(bits);
+            var logicalBlock = LogicalBlock.UnpackLogicalBlock(Footprint.Get4x4(), bits, in info)
+                ?? throw new InvalidOperationException("Failed to unpack block");
+
+            return logicalBlock is not null;
         }
     }
 

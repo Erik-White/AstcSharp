@@ -1,16 +1,8 @@
 namespace AstcSharp.Core;
 
-internal record RgbaColor : RgbColor
+internal readonly record struct RgbaColor(byte R, byte G, byte B, byte A)
 {
-    public static new int BytesPerPixel => 4;
-
-    public byte A { get; }
-
-    public RgbaColor(byte r, byte g, byte b, byte a)
-        : base(r, g, b)
-    {
-        A = a;
-    }
+    public static int BytesPerPixel => 4;
 
     public RgbaColor(int r, int g, int b, int a = byte.MaxValue) : this(
         (byte)Math.Clamp(r, byte.MinValue, byte.MaxValue),
@@ -20,7 +12,19 @@ internal record RgbaColor : RgbColor
     {
     }
 
-    public override int this[int i]
+    /// <summary>
+    /// The rounded arithmetic mean of the R, G, and B channels
+    /// </summary>
+    public byte Average
+    {
+        get
+        {
+            var sum = R + G + B;
+            return (byte)((sum * 256 + 384) / 768);
+        }
+    }
+
+    public int this[int i]
         => i switch
         {
             0 => R,
@@ -30,10 +34,18 @@ internal record RgbaColor : RgbColor
             _ => throw new ArgumentOutOfRangeException(nameof(i), $"Index must be between 0 and {BytesPerPixel - 1}. Actual value: {i}.")
     };
 
-    public static new RgbaColor Empty => new(0, 0, 0, 0);
+    public static RgbaColor Empty => default;
 
-    public static new int SquaredError(RgbColor a, RgbColor b)
-        => SquaredError(a, b, BytesPerPixel);
+    public static int SquaredError(RgbaColor a, RgbaColor b)
+    {
+        int result = 0;
+        for (int i = 0; i < BytesPerPixel; i++)
+        {
+            int diff = a[i] - b[i];
+            result += diff * diff;
+        }
+        return result;
+    }
 
     public bool IsCloseTo(RgbaColor other, int tolerance)
         => Math.Abs(R - other.R) <= tolerance &&

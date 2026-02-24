@@ -8,21 +8,8 @@ namespace AstcSharp.Core;
 /// of values beyond the standard 0-255 LDR range. This enables encoding of High Dynamic
 /// Range content that can represent brightness values exceeding the typical white point.
 /// </remarks>
-internal record RgbaHdrColor
+internal readonly record struct RgbaHdrColor(ushort R, ushort G, ushort B, ushort A)
 {
-    public ushort R { get; }
-    public ushort G { get; }
-    public ushort B { get; }
-    public ushort A { get; }
-
-    public RgbaHdrColor(ushort r, ushort g, ushort b, ushort a)
-    {
-        R = r;
-        G = g;
-        B = b;
-        A = a;
-    }
-
     /// <summary>
     /// Indexer to access channels by index: 0=R, 1=G, 2=B, 3=A
     /// </summary>
@@ -35,7 +22,7 @@ internal record RgbaHdrColor
         _ => throw new ArgumentOutOfRangeException(nameof(i), $"Index must be between 0 and 3. Actual value: {i}.")
     };
 
-    public static RgbaHdrColor Empty => new(0, 0, 0, 0);
+    public static RgbaHdrColor Empty => default;
 
     /// <summary>
     /// Converts an LDR color (0-255) to HDR range (0-65535).
@@ -58,5 +45,4 @@ internal record RgbaHdrColor
            Math.Abs(G - other.G) <= tolerance &&
            Math.Abs(B - other.B) <= tolerance &&
            Math.Abs(A - other.A) <= tolerance;
-
 }

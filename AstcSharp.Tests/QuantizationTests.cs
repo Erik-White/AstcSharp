@@ -1,4 +1,5 @@
 using AstcSharp.BiseEncoding;
+using AstcSharp.BiseEncoding.Quantize;
 using AwesomeAssertions;
 
 namespace AstcSharp.Tests;

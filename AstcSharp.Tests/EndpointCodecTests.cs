@@ -285,7 +285,7 @@ public class EndpointCodecTests
         }
     }
 
-    private static List<int> EncodeRgbBaseOffset(RgbaColor low, RgbaColor high)
+    private static int[] EncodeRgbBaseOffset(RgbaColor low, RgbaColor high)
     {
         var values = new List<int>();
         for (int i = 0; i < 3; ++i)
@@ -296,7 +296,7 @@ public class EndpointCodecTests
             if (isLarge) diff |= 0x80;
             values.Add(diff);
         }
-        return values;
+        return values.ToArray();
     }
 
     [Fact]
@@ -316,18 +316,21 @@ public class EndpointCodecTests
             // Unpack to intermediate block
             var intermediateBlock = IntermediateBlock.UnpackIntermediateBlock(physicalBlock);
             intermediateBlock.Should().NotBeNull("checkerboard blocks should not be void extent");
+            var ib = intermediateBlock!.Value;
 
             // Verify endpoints exist
-            intermediateBlock!.endpoints.Should().NotBeEmpty("block should have endpoints");
+            ib.endpointCount.Should().BeGreaterThan(0, "block should have endpoints");
 
-            int colorRange = IntermediateBlock.EndpointRangeForBlock(intermediateBlock);
+            int colorRange = IntermediateBlock.EndpointRangeForBlock(ib);
             colorRange.Should().BeGreaterThan(0, "color range should be valid");
 
             // Check all endpoint pairs decode successfully to grayscale colors
-            foreach (var endpoints in intermediateBlock.endpoints)
+            for (int ep = 0; ep < ib.endpointCount; ep++)
             {
+                var endpoints = ib.endpoints[ep];
+                ReadOnlySpan<int> colorSpan = ((ReadOnlySpan<int>)endpoints.colors)[..endpoints.colorCount];
                 var (low, high) = EndpointCodec.DecodeColorsForMode(
-                    endpoints.colors,
+                    colorSpan,
                     colorRange,
                     endpoints.mode);
 
@@ -353,7 +356,7 @@ public class EndpointCodecTests
     {
         var values = new List<int>();
         var needsSwap = EndpointCodec.EncodeColorsForMode(low, high, quantRange, mode, out var astcMode, values);
-        var (decLow, decHigh) = EndpointCodec.DecodeColorsForMode(values, quantRange, astcMode);
+        var (decLow, decHigh) = EndpointCodec.DecodeColorsForMode(values.ToArray(), quantRange, astcMode);
 
         return needsSwap ? (decHigh, decLow) : (decLow, decHigh);
     }

@@ -202,15 +202,15 @@ public class PartitionTests
         {
             // Create random partition
             int numParts = 2 + random.Next(3); // 2, 3, or 4 parts
-            var partition = new Partition(footprint, numParts)
-            {
-                assignment = new List<int>(footprint.PixelCount)
-            };
-
+            var assignment = new int[footprint.PixelCount];
             for (int j = 0; j < footprint.PixelCount; j++)
             {
-                partition.assignment.Add(random.Next(numParts));
+                assignment[j] = random.Next(numParts);
             }
+            var partition = new Partition(footprint, numParts)
+            {
+                assignment = assignment
+            };
 
             var astcPartition = Partition.FindClosestASTCPartition(partition);
 

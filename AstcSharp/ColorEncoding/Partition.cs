@@ -11,11 +11,11 @@ namespace AstcSharp.ColorEncoding
         public Footprint footprint;
         public int numParts;
         public int? partitionId;
-        public List<int> assignment;
+        public int[] assignment;
 
         public Partition(Footprint f, int numParts, int? id = null)
         {
-            footprint = f; this.numParts = numParts; partitionId = id; assignment = new List<int>();
+            footprint = f; this.numParts = numParts; partitionId = id; assignment = [];
         }
 
         public override bool Equals(object? obj)
@@ -69,16 +69,25 @@ namespace AstcSharp.ColorEncoding
             return w * h - pixelsMatched;
         }
 
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<(Footprint, int, int), Partition> _partitionCache = new();
+
         // Basic GetASTCPartition implementation using selection function from C++
         public static Partition GetASTCPartition(Footprint footprint, int numParts, int partitionId)
         {
+            var key = (footprint, numParts, partitionId);
+            if (_partitionCache.TryGetValue(key, out var cached))
+                return cached;
+
             var part = new Partition(footprint, numParts, partitionId);
             int w = footprint.Width;
             int h = footprint.Height;
-            part.assignment = new List<int>(w * h);
+            var assignment = new int[w * h];
+            int idx = 0;
             for (int y = 0; y < h; ++y)
                 for (int x = 0; x < w; ++x)
-                    part.assignment.Add(SelectASTCPartition(partitionId, x, y, 0, numParts, footprint.PixelCount));
+                    assignment[idx++] = SelectASTCPartition(partitionId, x, y, 0, numParts, footprint.PixelCount);
+            part.assignment = assignment;
+            _partitionCache.TryAdd(key, part);
             return part;
         }
 

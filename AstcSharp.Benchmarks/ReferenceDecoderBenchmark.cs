@@ -6,7 +6,7 @@ namespace AstcSharp.Benchmarks;
 
 [MemoryDiagnoser]
 [Config(typeof(InProcessConfig))]
-public class ArmReferenceComparisonBenchmark
+public class ReferenceDecoderBenchmark
 {
     private AstcFile? _astcFile;
 
@@ -23,6 +23,8 @@ public class ArmReferenceComparisonBenchmark
     private byte[]? _armLdrOutput;
     private byte[]? _armHdrOutput;
     private byte[]? _armBlocksCopy;
+    private byte[]? _astcSharpLdrOutput;
+    private float[]? _astcSharpHdrOutput;
 
     [Params("atlas_small_4x4", "atlas_small_8x8", "footprint_4x4", "footprint_12x12")]
     public string FileName { get; set; } = string.Empty;
@@ -43,6 +45,8 @@ public class ArmReferenceComparisonBenchmark
         _armLdrOutput = new byte[pixelCount * 4];
         _armHdrOutput = new byte[pixelCount * 4 * sizeof(ushort)]; // FP16 = 2 bytes per channel
         _armBlocksCopy = _astcFile.Blocks.ToArray();
+        _astcSharpLdrOutput = new byte[pixelCount * 4];
+        _astcSharpHdrOutput = new float[pixelCount * 4];
 
         // Pre-allocate LDR context
         var error = Astcenc.AstcencConfigInit(
@@ -77,17 +81,17 @@ public class ArmReferenceComparisonBenchmark
     }
 
     [Benchmark]
-    public Span<byte> AstcSharp_DecompressLdr()
+    public bool AstcSharp_DecompressLdr()
     {
         var file = _astcFile!;
-        return AstcDecoder.DecompressImage(file.Blocks, file.Width, file.Height, file.Footprint);
+        return AstcDecoder.DecompressImage(file.Blocks, file.Width, file.Height, file.Footprint, _astcSharpLdrOutput);
     }
 
     [Benchmark]
-    public Span<float> AstcSharp_DecompressHdr()
+    public bool AstcSharp_DecompressHdr()
     {
         var file = _astcFile!;
-        return AstcDecoder.DecompressHdrImage(file.Blocks, file.Width, file.Height, file.Footprint);
+        return AstcDecoder.DecompressHdrImage(file.Blocks, file.Width, file.Height, file.Footprint, _astcSharpHdrOutput);
     }
 
     [Benchmark]

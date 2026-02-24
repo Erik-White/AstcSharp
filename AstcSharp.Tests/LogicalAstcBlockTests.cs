@@ -257,7 +257,7 @@ public class LogicalAstcBlockTests
         // Create partition with 2 subsets, all pixels assigned to subset 0
         var newPartition = new Partition(footprint, 2, 5)
         {
-            assignment = Enumerable.Repeat(0, footprint.PixelCount).ToList()
+            assignment = new int[footprint.PixelCount]
         };
 
         logicalBlock.SetPartition(newPartition);
@@ -284,7 +284,7 @@ public class LogicalAstcBlockTests
         var logicalBlock = new LogicalBlock(Footprint.Get4x4());
         var wrongPartition = new Partition(Footprint.Get8x8(), 1, 0)
         {
-            assignment = Enumerable.Repeat(0, 64).ToList()
+            assignment = new int[64]
         };
 
         var action = () => logicalBlock.SetPartition(wrongPartition);
@@ -311,9 +311,10 @@ public class LogicalAstcBlockTests
     [Fact]
     public void UnpackLogicalBlock_WithErrorBlock_ShouldReturnNull()
     {
-        var errorBlock = PhysicalBlock.Create(UInt128.Zero);
+        var bits = UInt128.Zero;
+        var info = BlockInfo.Decode(bits);
 
-        var result = LogicalBlock.UnpackLogicalBlock(Footprint.Get8x8(), errorBlock);
+        var result = LogicalBlock.UnpackLogicalBlock(Footprint.Get8x8(), bits, in info);
 
         result.Should().BeNull();
     }
@@ -321,9 +322,10 @@ public class LogicalAstcBlockTests
     [Fact]
     public void UnpackLogicalBlock_WithVoidExtentBlock_ShouldReturnLogicalBlock()
     {
-        var voidExtentBlock = PhysicalBlock.Create((UInt128)0xFFFFFFFFFFFFFDFCUL);
+        var bits = (UInt128)0xFFFFFFFFFFFFFDFCUL;
+        var info = BlockInfo.Decode(bits);
 
-        var result = LogicalBlock.UnpackLogicalBlock(Footprint.Get8x8(), voidExtentBlock);
+        var result = LogicalBlock.UnpackLogicalBlock(Footprint.Get8x8(), bits, in info);
 
         result.Should().NotBeNull();
         result!.GetFootprint().Should().Be(Footprint.Get8x8());
@@ -332,9 +334,10 @@ public class LogicalAstcBlockTests
     [Fact]
     public void UnpackLogicalBlock_WithStandardBlock_ShouldReturnLogicalBlock()
     {
-        var standardBlock = PhysicalBlock.Create((UInt128)0x0000000001FE000173UL);
+        var bits = (UInt128)0x0000000001FE000173UL;
+        var info = BlockInfo.Decode(bits);
 
-        var result = LogicalBlock.UnpackLogicalBlock(Footprint.Get6x5(), standardBlock);
+        var result = LogicalBlock.UnpackLogicalBlock(Footprint.Get6x5(), bits, in info);
 
         result.Should().NotBeNull();
         result!.GetFootprint().Should().Be(Footprint.Get6x5());

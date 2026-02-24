@@ -1,4 +1,4 @@
-using AstcSharp.BiseEncoding;
+using AstcSharp.BiseEncoding.Quantize;
 using AstcSharp.Core;
 
 namespace AstcSharp.ColorEncoding;
@@ -12,16 +12,31 @@ namespace AstcSharp.ColorEncoding;
 /// </remarks>
 internal static class HdrEndpointDecoder
 {
-    public static (RgbaHdrColor low, RgbaHdrColor high) DecodeHdrMode(List<int> vals, int maxValue, ColorEndpointMode mode)
+    public static (RgbaHdrColor low, RgbaHdrColor high) DecodeHdrMode(ReadOnlySpan<int> vals, int maxValue, ColorEndpointMode mode)
+    {
+        int count = mode.GetColorValuesCount();
+        Span<int> uv = stackalloc int[count];
+        int copyLen = Math.Min(count, vals.Length);
+        for (int i = 0; i < copyLen; i++)
+            uv[i] = Quantization.UnquantizeCEValueFromRange(vals[i], maxValue);
+        return DecodeHdrModeUnquantized(uv, mode);
+    }
+
+    /// <summary>
+    /// Decodes HDR endpoints from already-unquantized values.
+    /// Called from the fused decode path where BISE decode + batch unquantize
+    /// have already been performed.
+    /// </summary>
+    public static (RgbaHdrColor low, RgbaHdrColor high) DecodeHdrModeUnquantized(ReadOnlySpan<int> value, ColorEndpointMode mode)
     {
         return mode switch
         {
-            ColorEndpointMode.HdrLumaLargeRange => UnpackHdrLuminanceLargeRange(vals, maxValue),
-            ColorEndpointMode.HdrLumaSmallRange => UnpackHdrLuminanceSmallRange(vals, maxValue),
-            ColorEndpointMode.HdrRgbBaseScale => UnpackHdrRgbBaseScale(vals, maxValue),
-            ColorEndpointMode.HdrRgbDirect => UnpackHdrRgbDirect(vals, maxValue),
-            ColorEndpointMode.HdrRgbDirectLdrAlpha => UnpackHdrRgbDirectLdrAlpha(vals, maxValue),
-            ColorEndpointMode.HdrRgbDirectHdrAlpha => UnpackHdrRgbDirectHdrAlpha(vals, maxValue),
+            ColorEndpointMode.HdrLumaLargeRange => UnpackHdrLuminanceLargeRangeCore(value[0], value[1]),
+            ColorEndpointMode.HdrLumaSmallRange => UnpackHdrLuminanceSmallRangeCore(value[0], value[1]),
+            ColorEndpointMode.HdrRgbBaseScale => UnpackHdrRgbBaseScaleCore(value[0], value[1], value[2], value[3]),
+            ColorEndpointMode.HdrRgbDirect => UnpackHdrRgbDirectCore(value[0], value[1], value[2], value[3], value[4], value[5]),
+            ColorEndpointMode.HdrRgbDirectLdrAlpha => UnpackHdrRgbDirectLdrAlphaCore(value),
+            ColorEndpointMode.HdrRgbDirectHdrAlpha => UnpackHdrRgbDirectHdrAlphaCore(value),
             _ => throw new InvalidOperationException($"Mode {mode} is not an HDR mode")
         };
     }
@@ -32,15 +47,8 @@ internal static class HdrEndpointDecoder
     /// </summary>
     private static int SafeSignedLeftShift(int val, int shift) => (int)((uint)val << shift);
 
-    /// <summary>
-    /// Mode 2: HDR Luminance, Large Range.
-    /// Ported from hdr_luminance_large_range_unpack() in ARM astc-encoder.
-    /// </summary>
-    private static (RgbaHdrColor low, RgbaHdrColor high) UnpackHdrLuminanceLargeRange(List<int> vals, int maxValue)
+    private static (RgbaHdrColor low, RgbaHdrColor high) UnpackHdrLuminanceLargeRangeCore(int v0, int v1)
     {
-        int v0 = vals.Count > 0 ? Quantization.UnquantizeCEValueFromRange(vals[0], maxValue) : 0;
-        int v1 = vals.Count > 1 ? Quantization.UnquantizeCEValueFromRange(vals[1], maxValue) : 0;
-
         int y0, y1;
         if (v1 >= v0)
         {
@@ -58,14 +66,8 @@ internal static class HdrEndpointDecoder
         return (low, high);
     }
 
-    /// <summary>
-    /// Mode 3: HDR Luminance, Small Range.
-    /// </summary>
-    private static (RgbaHdrColor low, RgbaHdrColor high) UnpackHdrLuminanceSmallRange(List<int> vals, int maxValue)
+    private static (RgbaHdrColor low, RgbaHdrColor high) UnpackHdrLuminanceSmallRangeCore(int v0, int v1)
     {
-        int v0 = vals.Count > 0 ? Quantization.UnquantizeCEValueFromRange(vals[0], maxValue) : 0;
-        int v1 = vals.Count > 1 ? Quantization.UnquantizeCEValueFromRange(vals[1], maxValue) : 0;
-
         int y0, y1;
         if ((v0 & 0x80) != 0)
         {
@@ -87,16 +89,8 @@ internal static class HdrEndpointDecoder
         return (low, high);
     }
 
-    /// <summary>
-    /// Mode 7: HDR RGB, Base+Scale
-    /// </summary>
-    private static (RgbaHdrColor low, RgbaHdrColor high) UnpackHdrRgbBaseScale(List<int> vals, int maxValue)
+    private static (RgbaHdrColor low, RgbaHdrColor high) UnpackHdrRgbBaseScaleCore(int v0, int v1, int v2, int v3)
     {
-        int v0 = vals.Count > 0 ? Quantization.UnquantizeCEValueFromRange(vals[0], maxValue) : 0;
-        int v1 = vals.Count > 1 ? Quantization.UnquantizeCEValueFromRange(vals[1], maxValue) : 0;
-        int v2 = vals.Count > 2 ? Quantization.UnquantizeCEValueFromRange(vals[2], maxValue) : 0;
-        int v3 = vals.Count > 3 ? Quantization.UnquantizeCEValueFromRange(vals[3], maxValue) : 0;
-
         int modeval = ((v0 & 0xC0) >> 6) | (((v1 & 0x80) >> 7) << 2) | (((v2 & 0x80) >> 7) << 3);
 
         int majcomp;
@@ -200,18 +194,8 @@ internal static class HdrEndpointDecoder
         return (low, high);
     }
 
-    /// <summary>
-    /// Mode 11: HDR RGB Direct
-    /// </summary>
-    private static (RgbaHdrColor low, RgbaHdrColor high) UnpackHdrRgbDirect(List<int> vals, int maxValue)
+    private static (RgbaHdrColor low, RgbaHdrColor high) UnpackHdrRgbDirectCore(int v0, int v1, int v2, int v3, int v4, int v5)
     {
-        int v0 = vals.Count > 0 ? Quantization.UnquantizeCEValueFromRange(vals[0], maxValue) : 0;
-        int v1 = vals.Count > 1 ? Quantization.UnquantizeCEValueFromRange(vals[1], maxValue) : 0;
-        int v2 = vals.Count > 2 ? Quantization.UnquantizeCEValueFromRange(vals[2], maxValue) : 0;
-        int v3 = vals.Count > 3 ? Quantization.UnquantizeCEValueFromRange(vals[3], maxValue) : 0;
-        int v4 = vals.Count > 4 ? Quantization.UnquantizeCEValueFromRange(vals[4], maxValue) : 0;
-        int v5 = vals.Count > 5 ? Quantization.UnquantizeCEValueFromRange(vals[5], maxValue) : 0;
-
         int modeval = ((v1 & 0x80) >> 7) | (((v2 & 0x80) >> 7) << 1) | (((v3 & 0x80) >> 7) << 2);
         int majcomp = ((v4 & 0x80) >> 7) | (((v5 & 0x80) >> 7) << 1);
 
@@ -319,36 +303,23 @@ internal static class HdrEndpointDecoder
         return (lowResult, highResult);
     }
 
-    /// <summary>
-    /// Mode 14: HDR RGB Direct with LDR Alpha.
-    /// RGB uses mode 11 logic; alpha uses LDR encoding (0-255 scaled to 0-65535).
-    /// </summary>
-    private static (RgbaHdrColor low, RgbaHdrColor high) UnpackHdrRgbDirectLdrAlpha(List<int> vals, int maxValue)
+    private static (RgbaHdrColor low, RgbaHdrColor high) UnpackHdrRgbDirectLdrAlphaCore(ReadOnlySpan<int> uv)
     {
-        var (rgbLow, rgbHigh) = UnpackHdrRgbDirect(vals, maxValue);
+        var (rgbLow, rgbHigh) = UnpackHdrRgbDirectCore(uv[0], uv[1], uv[2], uv[3], uv[4], uv[5]);
 
-        int a0 = vals.Count > 6 ? Quantization.UnquantizeCEValueFromRange(vals[6], maxValue) : 0;
-        int a1 = vals.Count > 7 ? Quantization.UnquantizeCEValueFromRange(vals[7], maxValue) : 0;
-
-        ushort alpha0 = (ushort)(a0 * 257);
-        ushort alpha1 = (ushort)(a1 * 257);
+        ushort alpha0 = (ushort)(uv[6] * 257);
+        ushort alpha1 = (ushort)(uv[7] * 257);
 
         var low = new RgbaHdrColor(rgbLow.R, rgbLow.G, rgbLow.B, alpha0);
         var high = new RgbaHdrColor(rgbHigh.R, rgbHigh.G, rgbHigh.B, alpha1);
         return (low, high);
     }
 
-    /// <summary>
-    /// Mode 15: HDR RGB Direct with HDR Alpha
-    /// </summary>
-    private static (RgbaHdrColor low, RgbaHdrColor high) UnpackHdrRgbDirectHdrAlpha(List<int> vals, int maxValue)
+    private static (RgbaHdrColor low, RgbaHdrColor high) UnpackHdrRgbDirectHdrAlphaCore(ReadOnlySpan<int> uv)
     {
-        var (rgbLow, rgbHigh) = UnpackHdrRgbDirect(vals, maxValue);
+        var (rgbLow, rgbHigh) = UnpackHdrRgbDirectCore(uv[0], uv[1], uv[2], uv[3], uv[4], uv[5]);
 
-        int v6 = vals.Count > 6 ? Quantization.UnquantizeCEValueFromRange(vals[6], maxValue) : 0;
-        int v7 = vals.Count > 7 ? Quantization.UnquantizeCEValueFromRange(vals[7], maxValue) : 0;
-
-        var (alpha0, alpha1) = UnpackHdrAlpha(v6, v7);
+        var (alpha0, alpha1) = UnpackHdrAlpha(uv[6], uv[7]);
 
         var low = new RgbaHdrColor(rgbLow.R, rgbLow.G, rgbLow.B, alpha0);
         var high = new RgbaHdrColor(rgbHigh.R, rgbHigh.G, rgbHigh.B, alpha1);

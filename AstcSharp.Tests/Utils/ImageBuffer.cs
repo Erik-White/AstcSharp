@@ -49,11 +49,12 @@ internal class ImageBuffer
             int blockY = blockIndex / blocksWide;
 
             var blockSpan = astcData.AsSpan(i, PhysicalBlock.SizeInBytes).ToArray();
-            var physicalBlock = PhysicalBlock.Create(new UInt128(
+            var bits = new UInt128(
                 BitConverter.ToUInt64(blockSpan, 8),
-                BitConverter.ToUInt64(blockSpan, 0)));
+                BitConverter.ToUInt64(blockSpan, 0));
+            var info = BlockInfo.Decode(bits);
 
-            var logicalBlock = LogicalBlock.UnpackLogicalBlock(footprint, physicalBlock);
+            var logicalBlock = LogicalBlock.UnpackLogicalBlock(footprint, bits, in info);
             logicalBlock.Should().NotBeNull();
 
             for (int y = 0; y < blockHeight; ++y)
