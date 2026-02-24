@@ -8,100 +8,13 @@ namespace AstcSharp.TexelBlock;
 internal static class IntermediateBlock
 {
     // From Table C.2.7 -- valid weight ranges
-    public static readonly int[] _validWeightRanges = [1, 2, 3, 4, 5, 7, 9, 11, 15, 19, 23, 31];
-
-    internal struct VoidExtentData
-    {
-        public bool isHdr;
-        public ushort r;
-        public ushort g;
-        public ushort b;
-        public ushort a;
-        public ushort[] coords; // length 4
-    }
-
-    [System.Runtime.CompilerServices.InlineArray(MaxColorValues)]
-    internal struct EndpointColorValues
-    {
-        public const int MaxColorValues = 8;
-#pragma warning disable CS0169, S1144 // Accessed by runtime via [InlineArray]
-        private int _element0;
-#pragma warning restore CS0169, S1144
-    }
-
-    internal struct IntermediateBlockData
-    {
-        public int weightGridX;
-        public int weightGridY;
-        public int weightRange;
-
-        public int[] weights;
-        public int weightsCount;
-
-        public int? partitionId;
-        public int? dualPlaneChannel;
-
-        public IntermediateEndpointBuffer endpoints;
-        public int endpointCount;
-
-        public int? endpointRange;
-    }
-
-    internal struct IntermediateEndpointData
-    {
-        public ColorEndpointMode mode;
-        public EndpointColorValues colors;
-        public int colorCount;
-    }
-
-    [System.Runtime.CompilerServices.InlineArray(MaxPartitions)]
-    internal struct IntermediateEndpointBuffer
-    {
-        public const int MaxPartitions = 4;
-#pragma warning disable CS0169, S1144 // Accessed by runtime via [InlineArray]
-        private IntermediateEndpointData _element0;
-#pragma warning restore CS0169, S1144
-    }
+    public static readonly int[] ValidWeightRanges = [1, 2, 3, 4, 5, 7, 9, 11, 15, 19, 23, 31];
 
     // Returns the maximum endpoint value range or negative on error
     private const int EndpointRangeInvalidWeightDimensions = -1;
     private const int EndpointRangeNotEnoughColorBits = -2;
 
-    private static (string? error, int[] range) GetEncodedWeightRange(int range)
-    {
-        var kValidRangeEncodings = new int[][]{
-            new[]{0,1,0}, new[]{1,1,0}, new[]{0,0,1}, new[]{1,0,1}, new[]{0,1,1}, new[]{1,1,1},
-            new[]{0,1,0}, new[]{1,1,0}, new[]{0,0,1}, new[]{1,0,1}, new[]{0,1,1}, new[]{1,1,1}
-        };
-
-        int smallestRange = _validWeightRanges.First();
-        int largestRange = _validWeightRanges.Last();
-        if (range < smallestRange || largestRange < range)
-        {
-            return ($"Could not find block mode. Invalid weight range: {range} not in [{smallestRange}, {largestRange}]", new int[3]);
-        }
-
-        int index = Array.FindIndex(_validWeightRanges, v => v >= range);
-        if (index < 0) index = _validWeightRanges.Length - 1;
-        var encoding = kValidRangeEncodings[index];
-        return (null, [encoding[0], encoding[1], encoding[2]]);
-    }
-
-    private struct BlockModeInfo
-    {
-        public int minWeightGridDimX;
-        public int maxWeightGridDimX;
-        public int minWeightGridDimY;
-        public int maxWeightGridDimY;
-        public int r0BitPos;
-        public int r1BitPos;
-        public int r2BitPos;
-        public int weightGridXOffsetBitPos;
-        public int weightGridYOffsetBitPos;
-        public bool requireSinglePlaneLowPrec;
-    }
-
-    private static readonly BlockModeInfo[] blockModeInfoTable = new BlockModeInfo[]{
+    private static readonly BlockModeInfo[] _blockModeInfoTable = new BlockModeInfo[]{
         new BlockModeInfo{ minWeightGridDimX=4, maxWeightGridDimX=7, minWeightGridDimY=2, maxWeightGridDimY=5, r0BitPos=4, r1BitPos=0, r2BitPos=1, weightGridXOffsetBitPos=7, weightGridYOffsetBitPos=5, requireSinglePlaneLowPrec=false },
         new BlockModeInfo{ minWeightGridDimX=8, maxWeightGridDimX=11, minWeightGridDimY=2, maxWeightGridDimY=5, r0BitPos=4, r1BitPos=0, r2BitPos=1, weightGridXOffsetBitPos=7, weightGridYOffsetBitPos=5, requireSinglePlaneLowPrec=false },
         new BlockModeInfo{ minWeightGridDimX=2, maxWeightGridDimX=5, minWeightGridDimY=8, maxWeightGridDimY=11, r0BitPos=4, r1BitPos=0, r2BitPos=1, weightGridXOffsetBitPos=5, weightGridYOffsetBitPos=7, requireSinglePlaneLowPrec=false },
@@ -114,184 +27,7 @@ internal static class IntermediateBlock
         new BlockModeInfo{ minWeightGridDimX=6, maxWeightGridDimX=9, minWeightGridDimY=6, maxWeightGridDimY=9, r0BitPos=4, r1BitPos=2, r2BitPos=3, weightGridXOffsetBitPos=5, weightGridYOffsetBitPos=9, requireSinglePlaneLowPrec=true }
     };
 
-    private static readonly uint[] blockModeMasks = { 0x0u, 0x4u, 0x8u, 0xCu, 0x10Cu, 0x0u, 0x80u, 0x180u, 0x1A0u, 0x100u };
-
-    private static string? PackBlockMode(int dimX, int dimY, int range, bool dualPlane, ref BitStream bitSink)
-    {
-        bool highPrec = range > 7;
-        var (maybeErr, rangeValues) = GetEncodedWeightRange(range);
-        if (maybeErr != null) return maybeErr;
-
-        // Ensure top two bits of r1 and r2 not both zero per reference
-        if ((rangeValues[1] | rangeValues[2]) <= 0)
-            throw new InvalidOperationException($"{nameof(rangeValues)}[1] | {nameof(rangeValues)}[2] must be > 0");
-
-        for (int mode = 0; mode < blockModeInfoTable.Length; ++mode)
-        {
-            var blockMode = blockModeInfoTable[mode];
-            bool isValidMode = true;
-            isValidMode &= blockMode.minWeightGridDimX <= dimX;
-            isValidMode &= dimX <= blockMode.maxWeightGridDimX;
-            isValidMode &= blockMode.minWeightGridDimY <= dimY;
-            isValidMode &= dimY <= blockMode.maxWeightGridDimY;
-            isValidMode &= !(blockMode.requireSinglePlaneLowPrec && dualPlane);
-            isValidMode &= !(blockMode.requireSinglePlaneLowPrec && highPrec);
-
-            if (!isValidMode) continue;
-
-            uint encodedMode = blockModeMasks[mode];
-            void setBit(uint value, int offset)
-            {
-                if (offset < 0) return;
-                encodedMode = (encodedMode & ~(1u << offset)) | ((value & 1u) << offset);
-            }
-
-            setBit((uint)rangeValues[0], blockMode.r0BitPos);
-            setBit((uint)rangeValues[1], blockMode.r1BitPos);
-            setBit((uint)rangeValues[2], blockMode.r2BitPos);
-
-            int offsetX = dimX - blockMode.minWeightGridDimX;
-            int offsetY = dimY - blockMode.minWeightGridDimY;
-
-            if (blockMode.weightGridXOffsetBitPos >= 0)
-            {
-                encodedMode |= (uint)(offsetX << blockMode.weightGridXOffsetBitPos);
-            }
-            else
-            {
-                ArgumentOutOfRangeException.ThrowIfNotEqual(offsetX, 0);
-            }
-
-            if (blockMode.weightGridYOffsetBitPos >= 0)
-            {
-                encodedMode |= (uint)(offsetY << blockMode.weightGridYOffsetBitPos);
-            }
-            else
-            {
-                ArgumentOutOfRangeException.ThrowIfNotEqual(offsetY, 0);
-            }
-
-            if (!blockMode.requireSinglePlaneLowPrec)
-            {
-                setBit((uint)(highPrec ? 1u : 0u), 9);
-                setBit((uint)(dualPlane ? 1u : 0u), 10);
-            }
-
-            if (bitSink.Bits != 0)
-                throw new InvalidOperationException($"{nameof(bitSink)}.{nameof(bitSink.Bits)} must be 0");
-            bitSink.PutBits(encodedMode, 11);
-            return null;
-        }
-
-        return "Could not find viable block mode";
-    }
-
-    /// <summary>
-    /// Determines if all endpoint modes in the intermediate block data are the same
-    /// </summary>
-    private static bool SharedEndpointModes(in IntermediateBlockData data)
-    {
-        if (data.endpointCount == 0) return true;
-        var first = data.endpoints[0].mode;
-        for (int i = 1; i < data.endpointCount; i++)
-            if (data.endpoints[i].mode != first) return false;
-        return true;
-    }
-
-    private static (BitStream weightSink, int weightBitsCount) EncodeWeights(in IntermediateBlockData data)
-    {
-        var weightSink = new BitStream(0UL, 0);
-        var weightsEncoder = new BoundedIntegerSequenceEncoder(data.weightRange);
-        int weightCount = data.weightsCount > 0 ? data.weightsCount : (data.weights?.Length ?? 0);
-        if (data.weights is null)
-            throw new InvalidOperationException($"{nameof(data.weights)} is null in {nameof(EncodeWeights)}");
-        for (var i = 0; i < weightCount; i++) weightsEncoder.AddValue(data.weights[i]);
-        weightsEncoder.Encode(ref weightSink);
-
-        int weightBitsCount = (int)weightSink.Bits;
-        if ((int)weightSink.Bits != BoundedIntegerSequenceCodec.GetBitCountForRange(weightCount, data.weightRange))
-            throw new InvalidOperationException($"{nameof(weightSink)}.{nameof(weightSink.Bits)} does not match expected bit count");
-
-        return (weightSink, weightBitsCount);
-    }
-
-    private static (string? error, int extraConfig) EncodeColorEndpointModes(in IntermediateBlockData data, int partitionCount, ref BitStream bitSink)
-    {
-        int extraConfig = 0;
-        bool sharedEndpointMode = SharedEndpointModes(data);
-
-        if (sharedEndpointMode)
-        {
-            if (partitionCount > 1) bitSink.PutBits(0u, 2);
-            bitSink.PutBits((uint)data.endpoints[0].mode, 4);
-        }
-        else
-        {
-            // compute min_class, max_class
-            int minClass = 2; int maxClass = 0;
-            for (int i = 0; i < data.endpointCount; i++)
-            {
-                int endpointModeClass = ((int)data.endpoints[i].mode) >> 2;
-                minClass = Math.Min(minClass, endpointModeClass);
-                maxClass = Math.Max(maxClass, endpointModeClass);
-            }
-
-            if (maxClass - minClass > 1) return ("Endpoint modes are invalid", 0);
-
-            var cemEncoder = new BitStream(0UL, 0);
-            cemEncoder.PutBits((uint)(minClass + 1), 2);
-
-            for (int i = 0; i < data.endpointCount; i++)
-            {
-                int endpointModeClass = ((int)data.endpoints[i].mode) >> 2;
-                int classSelectorBit = endpointModeClass - minClass;
-                cemEncoder.PutBits(classSelectorBit, 1);
-            }
-
-            for (int i = 0; i < data.endpointCount; i++)
-            {
-                int epMode = ((int)data.endpoints[i].mode) & 3;
-                cemEncoder.PutBits(epMode, 2);
-            }
-
-            int cemBits = 2 + partitionCount * 3;
-            if (!cemEncoder.TryGetBits(cemBits, out uint encodedCem))
-                throw new InvalidOperationException();
-
-            extraConfig = (int)(encodedCem >> 6);
-
-            bitSink.PutBits(encodedCem, Math.Min(6, cemBits));
-        }
-
-        // dual plane channel
-        if (data.dualPlaneChannel.HasValue)
-        {
-            int channel = data.dualPlaneChannel.Value;
-            ArgumentOutOfRangeException.ThrowIfLessThan(channel, 0);
-            ArgumentOutOfRangeException.ThrowIfGreaterThan(channel, 3);
-            extraConfig = (extraConfig << 2) | channel;
-        }
-
-        return (null, extraConfig);
-    }
-
-    private static int ExtraConfigBitPosition(in IntermediateBlockData data)
-    {
-        bool hasDualChannel = data.dualPlaneChannel.HasValue;
-        int weightCount = data.weightGridX * data.weightGridY * (hasDualChannel ? 2 : 1);
-        int weightBitCount = BoundedIntegerSequenceCodec.GetBitCountForRange(weightCount, data.weightRange);
-
-        int extraConfigBitCount = 0;
-        if (!SharedEndpointModes(data))
-        {
-            int encodedCemBitCount = 2 + data.endpointCount * 3;
-            extraConfigBitCount = encodedCemBitCount - 6;
-        }
-
-        if (hasDualChannel) extraConfigBitCount += 2;
-
-        return 128 - weightBitCount - extraConfigBitCount;
-    }
+    private static readonly uint[] _blockModeMasks = { 0x0u, 0x4u, 0x8u, 0xCu, 0x10Cu, 0x0u, 0x80u, 0x180u, 0x1A0u, 0x100u };
 
     public static IntermediateBlockData? UnpackIntermediateBlock(PhysicalBlock physicalBlock)
     {
@@ -550,5 +286,269 @@ internal static class IntermediateBlock
             throw new InvalidOperationException($"{nameof(Pack)}(void extent) produced illegal encoding");
         }
         return (illegal, physicalBlockBits);
+    }
+
+    private static (string? error, int[] range) GetEncodedWeightRange(int range)
+    {
+        var kValidRangeEncodings = new int[][]{
+            new[]{0,1,0}, new[]{1,1,0}, new[]{0,0,1}, new[]{1,0,1}, new[]{0,1,1}, new[]{1,1,1},
+            new[]{0,1,0}, new[]{1,1,0}, new[]{0,0,1}, new[]{1,0,1}, new[]{0,1,1}, new[]{1,1,1}
+        };
+
+        int smallestRange = ValidWeightRanges.First();
+        int largestRange = ValidWeightRanges.Last();
+        if (range < smallestRange || largestRange < range)
+        {
+            return ($"Could not find block mode. Invalid weight range: {range} not in [{smallestRange}, {largestRange}]", new int[3]);
+        }
+
+        int index = Array.FindIndex(ValidWeightRanges, v => v >= range);
+        if (index < 0) index = ValidWeightRanges.Length - 1;
+        var encoding = kValidRangeEncodings[index];
+        return (null, [encoding[0], encoding[1], encoding[2]]);
+    }
+
+    private static string? PackBlockMode(int dimX, int dimY, int range, bool dualPlane, ref BitStream bitSink)
+    {
+        bool highPrec = range > 7;
+        var (maybeErr, rangeValues) = GetEncodedWeightRange(range);
+        if (maybeErr != null) return maybeErr;
+
+        // Ensure top two bits of r1 and r2 not both zero per reference
+        if ((rangeValues[1] | rangeValues[2]) <= 0)
+            throw new InvalidOperationException($"{nameof(rangeValues)}[1] | {nameof(rangeValues)}[2] must be > 0");
+
+        for (int mode = 0; mode < _blockModeInfoTable.Length; ++mode)
+        {
+            var blockMode = _blockModeInfoTable[mode];
+            bool isValidMode = true;
+            isValidMode &= blockMode.minWeightGridDimX <= dimX;
+            isValidMode &= dimX <= blockMode.maxWeightGridDimX;
+            isValidMode &= blockMode.minWeightGridDimY <= dimY;
+            isValidMode &= dimY <= blockMode.maxWeightGridDimY;
+            isValidMode &= !(blockMode.requireSinglePlaneLowPrec && dualPlane);
+            isValidMode &= !(blockMode.requireSinglePlaneLowPrec && highPrec);
+
+            if (!isValidMode) continue;
+
+            uint encodedMode = _blockModeMasks[mode];
+            void setBit(uint value, int offset)
+            {
+                if (offset < 0) return;
+                encodedMode = (encodedMode & ~(1u << offset)) | ((value & 1u) << offset);
+            }
+
+            setBit((uint)rangeValues[0], blockMode.r0BitPos);
+            setBit((uint)rangeValues[1], blockMode.r1BitPos);
+            setBit((uint)rangeValues[2], blockMode.r2BitPos);
+
+            int offsetX = dimX - blockMode.minWeightGridDimX;
+            int offsetY = dimY - blockMode.minWeightGridDimY;
+
+            if (blockMode.weightGridXOffsetBitPos >= 0)
+            {
+                encodedMode |= (uint)(offsetX << blockMode.weightGridXOffsetBitPos);
+            }
+            else
+            {
+                ArgumentOutOfRangeException.ThrowIfNotEqual(offsetX, 0);
+            }
+
+            if (blockMode.weightGridYOffsetBitPos >= 0)
+            {
+                encodedMode |= (uint)(offsetY << blockMode.weightGridYOffsetBitPos);
+            }
+            else
+            {
+                ArgumentOutOfRangeException.ThrowIfNotEqual(offsetY, 0);
+            }
+
+            if (!blockMode.requireSinglePlaneLowPrec)
+            {
+                setBit((uint)(highPrec ? 1u : 0u), 9);
+                setBit((uint)(dualPlane ? 1u : 0u), 10);
+            }
+
+            if (bitSink.Bits != 0)
+                throw new InvalidOperationException($"{nameof(bitSink)}.{nameof(bitSink.Bits)} must be 0");
+            bitSink.PutBits(encodedMode, 11);
+            return null;
+        }
+
+        return "Could not find viable block mode";
+    }
+
+    /// <summary>
+    /// Determines if all endpoint modes in the intermediate block data are the same
+    /// </summary>
+    private static bool SharedEndpointModes(in IntermediateBlockData data)
+    {
+        if (data.endpointCount == 0) return true;
+        var first = data.endpoints[0].mode;
+        for (int i = 1; i < data.endpointCount; i++)
+            if (data.endpoints[i].mode != first) return false;
+        return true;
+    }
+
+    private static (BitStream weightSink, int weightBitsCount) EncodeWeights(in IntermediateBlockData data)
+    {
+        var weightSink = new BitStream(0UL, 0);
+        var weightsEncoder = new BoundedIntegerSequenceEncoder(data.weightRange);
+        int weightCount = data.weightsCount > 0 ? data.weightsCount : (data.weights?.Length ?? 0);
+        if (data.weights is null)
+            throw new InvalidOperationException($"{nameof(data.weights)} is null in {nameof(EncodeWeights)}");
+        for (var i = 0; i < weightCount; i++) weightsEncoder.AddValue(data.weights[i]);
+        weightsEncoder.Encode(ref weightSink);
+
+        int weightBitsCount = (int)weightSink.Bits;
+        if ((int)weightSink.Bits != BoundedIntegerSequenceCodec.GetBitCountForRange(weightCount, data.weightRange))
+            throw new InvalidOperationException($"{nameof(weightSink)}.{nameof(weightSink.Bits)} does not match expected bit count");
+
+        return (weightSink, weightBitsCount);
+    }
+
+    private static (string? error, int extraConfig) EncodeColorEndpointModes(in IntermediateBlockData data, int partitionCount, ref BitStream bitSink)
+    {
+        int extraConfig = 0;
+        bool sharedEndpointMode = SharedEndpointModes(data);
+
+        if (sharedEndpointMode)
+        {
+            if (partitionCount > 1) bitSink.PutBits(0u, 2);
+            bitSink.PutBits((uint)data.endpoints[0].mode, 4);
+        }
+        else
+        {
+            // compute min_class, max_class
+            int minClass = 2; int maxClass = 0;
+            for (int i = 0; i < data.endpointCount; i++)
+            {
+                int endpointModeClass = ((int)data.endpoints[i].mode) >> 2;
+                minClass = Math.Min(minClass, endpointModeClass);
+                maxClass = Math.Max(maxClass, endpointModeClass);
+            }
+
+            if (maxClass - minClass > 1) return ("Endpoint modes are invalid", 0);
+
+            var cemEncoder = new BitStream(0UL, 0);
+            cemEncoder.PutBits((uint)(minClass + 1), 2);
+
+            for (int i = 0; i < data.endpointCount; i++)
+            {
+                int endpointModeClass = ((int)data.endpoints[i].mode) >> 2;
+                int classSelectorBit = endpointModeClass - minClass;
+                cemEncoder.PutBits(classSelectorBit, 1);
+            }
+
+            for (int i = 0; i < data.endpointCount; i++)
+            {
+                int epMode = ((int)data.endpoints[i].mode) & 3;
+                cemEncoder.PutBits(epMode, 2);
+            }
+
+            int cemBits = 2 + partitionCount * 3;
+            if (!cemEncoder.TryGetBits(cemBits, out uint encodedCem))
+                throw new InvalidOperationException();
+
+            extraConfig = (int)(encodedCem >> 6);
+
+            bitSink.PutBits(encodedCem, Math.Min(6, cemBits));
+        }
+
+        // dual plane channel
+        if (data.dualPlaneChannel.HasValue)
+        {
+            int channel = data.dualPlaneChannel.Value;
+            ArgumentOutOfRangeException.ThrowIfLessThan(channel, 0);
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(channel, 3);
+            extraConfig = (extraConfig << 2) | channel;
+        }
+
+        return (null, extraConfig);
+    }
+
+    private static int ExtraConfigBitPosition(in IntermediateBlockData data)
+    {
+        bool hasDualChannel = data.dualPlaneChannel.HasValue;
+        int weightCount = data.weightGridX * data.weightGridY * (hasDualChannel ? 2 : 1);
+        int weightBitCount = BoundedIntegerSequenceCodec.GetBitCountForRange(weightCount, data.weightRange);
+
+        int extraConfigBitCount = 0;
+        if (!SharedEndpointModes(data))
+        {
+            int encodedCemBitCount = 2 + data.endpointCount * 3;
+            extraConfigBitCount = encodedCemBitCount - 6;
+        }
+
+        if (hasDualChannel) extraConfigBitCount += 2;
+
+        return 128 - weightBitCount - extraConfigBitCount;
+    }
+
+    internal struct VoidExtentData
+    {
+        public bool isHdr;
+        public ushort r;
+        public ushort g;
+        public ushort b;
+        public ushort a;
+        public ushort[] coords; // length 4
+    }
+
+    [System.Runtime.CompilerServices.InlineArray(MaxColorValues)]
+    internal struct EndpointColorValues
+    {
+        public const int MaxColorValues = 8;
+#pragma warning disable CS0169, S1144 // Accessed by runtime via [InlineArray]
+        private int _element0;
+#pragma warning restore CS0169, S1144
+    }
+
+    internal struct IntermediateBlockData
+    {
+        public int weightGridX;
+        public int weightGridY;
+        public int weightRange;
+
+        public int[] weights;
+        public int weightsCount;
+
+        public int? partitionId;
+        public int? dualPlaneChannel;
+
+        public IntermediateEndpointBuffer endpoints;
+        public int endpointCount;
+
+        public int? endpointRange;
+    }
+
+    internal struct IntermediateEndpointData
+    {
+        public ColorEndpointMode mode;
+        public EndpointColorValues colors;
+        public int colorCount;
+    }
+
+    [System.Runtime.CompilerServices.InlineArray(MaxPartitions)]
+    internal struct IntermediateEndpointBuffer
+    {
+        public const int MaxPartitions = 4;
+#pragma warning disable CS0169, S1144 // Accessed by runtime via [InlineArray]
+        private IntermediateEndpointData _element0;
+#pragma warning restore CS0169, S1144
+    }
+
+    private struct BlockModeInfo
+    {
+        public int minWeightGridDimX;
+        public int maxWeightGridDimX;
+        public int minWeightGridDimY;
+        public int maxWeightGridDimY;
+        public int r0BitPos;
+        public int r1BitPos;
+        public int r2BitPos;
+        public int weightGridXOffsetBitPos;
+        public int weightGridYOffsetBitPos;
+        public bool requireSinglePlaneLowPrec;
     }
 }

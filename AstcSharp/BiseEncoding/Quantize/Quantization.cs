@@ -5,13 +5,97 @@ internal static class Quantization
     public const int EndpointRangeMinValue = 5;
     public const int WeightRangeMaxValue = 31;
 
+    private static readonly SortedDictionary<int, QuantizationMap> _endpointMaps = InitEndpointMaps();
+    private static readonly SortedDictionary<int, QuantizationMap> _weightMaps = InitWeightMaps();
+
     // Flat lookup tables indexed by range value for O(1) access.
     // Each slot maps to the QuantizationMap for the greatest supported range <= that index.
-    private static readonly QuantizationMap?[] endpointMapByRange = InitEndpointMapFlat();
-    private static readonly QuantizationMap?[] weightMapByRange = InitWeightMapFlat();
+    private static readonly QuantizationMap?[] _endpointMapByRange = InitEndpointMapFlat();
+    private static readonly QuantizationMap?[] _weightMapByRange = InitWeightMapFlat();
 
-    private static readonly SortedDictionary<int, QuantizationMap> endpointMaps = InitEndpointMaps();
-    private static readonly SortedDictionary<int, QuantizationMap> weightMaps = InitWeightMaps();
+    // Pre-computed flat tables for weight unquantization: entry[quantizedValue] = final unquantized weight.
+    // Includes the dq > 32 -> dq + 1 adjustment. Indexed by weight range.
+    // Valid ranges: 1, 2, 3, 4, 5, 7, 9, 11, 15, 19, 23, 31
+    private static readonly int[]?[] _unquantizeWeightsFlat = InitializeUnquantizeWeightsFlat();
+
+    // Pre-computed flat tables for endpoint unquantization.
+    // Indexed by range value. Valid ranges: 5, 7, 9, 11, 15, 19, 23, 31, 39, 47, 63, 79, 95, 127, 159, 191, 255
+    private static readonly int[]?[] _unquantizeEndpointsFlat = InitializeUnquantizeEndpointsFlat();
+
+    public static int QuantizeCEValueToRange(int value, int rangeMaxValue)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(rangeMaxValue, EndpointRangeMinValue);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(rangeMaxValue, byte.MaxValue);
+        ArgumentOutOfRangeException.ThrowIfLessThan(value, 0);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(value, byte.MaxValue);
+
+        var map = GetQuantMapForValueRange(rangeMaxValue);
+        return map != null ? map.Quantize(value) : 0;
+    }
+
+    public static int UnquantizeCEValueFromRange(int value, int rangeMaxValue)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(rangeMaxValue, EndpointRangeMinValue);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(rangeMaxValue, byte.MaxValue);
+        ArgumentOutOfRangeException.ThrowIfLessThan(value, 0);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(value, rangeMaxValue);
+
+        var map = GetQuantMapForValueRange(rangeMaxValue);
+        return map != null ? map.Unquantize(value) : 0;
+    }
+
+    public static int QuantizeWeightToRange(int weight, int rangeMaxValue)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(rangeMaxValue, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(rangeMaxValue, WeightRangeMaxValue);
+        ArgumentOutOfRangeException.ThrowIfLessThan(weight, 0);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(weight, 64);
+
+        if (weight > 33) weight -= 1;
+        var map = GetQuantMapForWeightRange(rangeMaxValue);
+        return map != null ? map.Quantize(weight) : 0;
+    }
+
+    public static int UnquantizeWeightFromRange(int weight, int rangeMaxValue)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(rangeMaxValue, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(rangeMaxValue, WeightRangeMaxValue);
+        ArgumentOutOfRangeException.ThrowIfLessThan(weight, 0);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(weight, rangeMaxValue);
+
+        var map = GetQuantMapForWeightRange(rangeMaxValue);
+        int dequantized = map != null ? map.Unquantize(weight) : 0;
+        if (dequantized > 32) dequantized += 1;
+        return dequantized;
+    }
+
+    /// <summary>
+    /// Batch unquantize: uses pre-computed flat table for O(1) lookup per value.
+    /// No per-call validation, no conditional branch per weight.
+    /// </summary>
+    internal static void UnquantizeWeightsBatch(Span<int> weights, int count, int range)
+    {
+        var table = _unquantizeWeightsFlat[range];
+        if (table == null) return;
+        for (int i = 0; i < count; i++)
+        {
+            weights[i] = table[weights[i]];
+        }
+    }
+
+    /// <summary>
+    /// Batch unquantize color endpoint values: uses pre-computed flat table.
+    /// No per-call validation, single array lookup per value.
+    /// </summary>
+    internal static void UnquantizeCEValuesBatch(Span<int> values, int count, int rangeMaxValue)
+    {
+        var table = _unquantizeEndpointsFlat[rangeMaxValue];
+        if (table == null) return;
+        for (int i = 0; i < count; i++)
+        {
+            values[i] = table[values[i]];
+        }
+    }
 
     private static SortedDictionary<int, QuantizationMap> InitEndpointMaps()
     {
@@ -79,72 +163,20 @@ internal static class Quantization
 
     private static QuantizationMap? GetQuantMapForValueRange(int r)
     {
-        if ((uint)r >= (uint)endpointMapByRange.Length) return null;
-        return endpointMapByRange[r];
+        if ((uint)r >= (uint)_endpointMapByRange.Length) return null;
+        return _endpointMapByRange[r];
     }
 
     private static QuantizationMap? GetQuantMapForWeightRange(int r)
     {
-        if ((uint)r >= (uint)weightMapByRange.Length) return null;
-        return weightMapByRange[r];
+        if ((uint)r >= (uint)_weightMapByRange.Length) return null;
+        return _weightMapByRange[r];
     }
-
-    public static int QuantizeCEValueToRange(int value, int rangeMaxValue)
-    {
-        ArgumentOutOfRangeException.ThrowIfLessThan(rangeMaxValue, EndpointRangeMinValue);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(rangeMaxValue, byte.MaxValue);
-        ArgumentOutOfRangeException.ThrowIfLessThan(value, 0);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(value, byte.MaxValue);
-
-        var map = GetQuantMapForValueRange(rangeMaxValue);
-        return map != null ? map.Quantize(value) : 0;
-    }
-
-    public static int UnquantizeCEValueFromRange(int value, int rangeMaxValue)
-    {
-        ArgumentOutOfRangeException.ThrowIfLessThan(rangeMaxValue, EndpointRangeMinValue);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(rangeMaxValue, byte.MaxValue);
-        ArgumentOutOfRangeException.ThrowIfLessThan(value, 0);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(value, rangeMaxValue);
-
-        var map = GetQuantMapForValueRange(rangeMaxValue);
-        return map != null ? map.Unquantize(value) : 0;
-    }
-
-    public static int QuantizeWeightToRange(int weight, int rangeMaxValue)
-    {
-        ArgumentOutOfRangeException.ThrowIfLessThan(rangeMaxValue, 1);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(rangeMaxValue, WeightRangeMaxValue);
-        ArgumentOutOfRangeException.ThrowIfLessThan(weight, 0);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(weight, 64);
-
-        if (weight > 33) weight -= 1;
-        var map = GetQuantMapForWeightRange(rangeMaxValue);
-        return map != null ? map.Quantize(weight) : 0;
-    }
-
-    public static int UnquantizeWeightFromRange(int weight, int rangeMaxValue)
-    {
-        ArgumentOutOfRangeException.ThrowIfLessThan(rangeMaxValue, 1);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(rangeMaxValue, WeightRangeMaxValue);
-        ArgumentOutOfRangeException.ThrowIfLessThan(weight, 0);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(weight, rangeMaxValue);
-
-        var map = GetQuantMapForWeightRange(rangeMaxValue);
-        int dequantized = map != null ? map.Unquantize(weight) : 0;
-        if (dequantized > 32) dequantized += 1;
-        return dequantized;
-    }
-
-    // Pre-computed flat tables for weight unquantization: entry[quantizedValue] = final unquantized weight.
-    // Includes the dq > 32 -> dq + 1 adjustment. Indexed by weight range.
-    // Valid ranges: 1, 2, 3, 4, 5, 7, 9, 11, 15, 19, 23, 31
-    private static readonly int[]?[] unquantizeWeightsFlat = InitializeUnquantizeWeightsFlat();
 
     private static int[]?[] InitializeUnquantizeWeightsFlat()
     {
         var tables = new int[]?[WeightRangeMaxValue + 1];
-        foreach (var kvp in weightMaps)
+        foreach (var kvp in _weightMaps)
         {
             int range = kvp.Key;
             var map = kvp.Value;
@@ -159,28 +191,10 @@ internal static class Quantization
         return tables;
     }
 
-    /// <summary>
-    /// Batch unquantize: uses pre-computed flat table for O(1) lookup per value.
-    /// No per-call validation, no conditional branch per weight.
-    /// </summary>
-    internal static void UnquantizeWeightsBatch(Span<int> weights, int count, int range)
-    {
-        var table = unquantizeWeightsFlat[range];
-        if (table == null) return;
-        for (int i = 0; i < count; i++)
-        {
-            weights[i] = table[weights[i]];
-        }
-    }
-
-    // Pre-computed flat tables for endpoint unquantization.
-    // Indexed by range value. Valid ranges: 5, 7, 9, 11, 15, 19, 23, 31, 39, 47, 63, 79, 95, 127, 159, 191, 255
-    private static readonly int[]?[] unquantizeEndpointsFlat = InitialzeUnquantizeEndpointsFlat();
-
-    private static int[]?[] InitialzeUnquantizeEndpointsFlat()
+    private static int[]?[] InitializeUnquantizeEndpointsFlat()
     {
         var tables = new int[]?[256];
-        foreach (var kvp in endpointMaps)
+        foreach (var kvp in _endpointMaps)
         {
             int range = kvp.Key;
             var map = kvp.Value;
@@ -190,19 +204,5 @@ internal static class Quantization
             tables[range] = table;
         }
         return tables;
-    }
-
-    /// <summary>
-    /// Batch unquantize color endpoint values: uses pre-computed flat table.
-    /// No per-call validation, single array lookup per value.
-    /// </summary>
-    internal static void UnquantizeCEValuesBatch(Span<int> values, int count, int rangeMaxValue)
-    {
-        var table = unquantizeEndpointsFlat[rangeMaxValue];
-        if (table == null) return;
-        for (int i = 0; i < count; i++)
-        {
-            values[i] = table[values[i]];
-        }
     }
 }

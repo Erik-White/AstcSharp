@@ -10,6 +10,8 @@ namespace AstcSharp.Core;
 /// </remarks>
 internal readonly record struct RgbaHdrColor(ushort R, ushort G, ushort B, ushort A)
 {
+    public static RgbaHdrColor Empty => default;
+
     /// <summary>
     /// Indexer to access channels by index: 0=R, 1=G, 2=B, 3=A
     /// </summary>
@@ -21,8 +23,6 @@ internal readonly record struct RgbaHdrColor(ushort R, ushort G, ushort B, ushor
         3 => A,
         _ => throw new ArgumentOutOfRangeException(nameof(i), $"Index must be between 0 and 3. Actual value: {i}.")
     };
-
-    public static RgbaHdrColor Empty => default;
 
     /// <summary>
     /// Converts an LDR color (0-255) to HDR range (0-65535).

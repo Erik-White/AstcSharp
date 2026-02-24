@@ -23,15 +23,15 @@ internal class BitQuantizationMap : QuantizationMap
                 unquantizedBitCount += destinationShiftUp;
             }
             if (unquantizedBitCount != totalUnquantizedBits) throw new InvalidOperationException();
-            unquantizationMapBuilder.Add(unquantized);
+            _unquantizationMapBuilder.Add(unquantized);
 
             if (bits > 0)
             {
-                int previousUnquantized = unquantizationMapBuilder[bits - 1];
-                while (quantizationMapBuilder.Count <= (previousUnquantized + unquantized) / 2)
-                    quantizationMapBuilder.Add(bits - 1);
+                int previousUnquantized = _unquantizationMapBuilder[bits - 1];
+                while (_quantizationMapBuilder.Count <= (previousUnquantized + unquantized) / 2)
+                    _quantizationMapBuilder.Add(bits - 1);
             }
-            while (quantizationMapBuilder.Count <= unquantized) quantizationMapBuilder.Add(bits);
+            while (_quantizationMapBuilder.Count <= unquantized) _quantizationMapBuilder.Add(bits);
         }
 
         Freeze();

@@ -16,20 +16,6 @@ public static class AstcDecoder
     private static readonly ArrayPool<byte> _arrayPool = ArrayPool<byte>.Shared;
     private const int BytesPerPixelUnorm8 = 4;
 
-    internal static Span<byte> DecompressImage(AstcFile file)
-    {
-        ArgumentNullException.ThrowIfNull(file);
-
-        return DecompressImage(file.Blocks, file.Width, file.Height, file.Footprint);
-    }
-
-    internal static Span<byte> DecompressImage(ReadOnlySpan<byte> astcData, int width, int height, FootprintType footprint)
-    {
-        var footPrint = Footprint.FromFootprintType(footprint);
-
-        return DecompressImage(astcData, width, height, footPrint);
-    }
-
     /// <summary>
     /// Decompresses ASTC-compressed data to uncompressed RGBA8 format (4 bytes per pixel).
     /// </summary>
@@ -384,5 +370,19 @@ public static class AstcDecoder
                 logicalBlock.WriteHdrPixel(column, row, buffer.Slice(pixelOffset, channelsPerPixel));
             }
         }
+    }
+
+    internal static Span<byte> DecompressImage(AstcFile file)
+    {
+        ArgumentNullException.ThrowIfNull(file);
+
+        return DecompressImage(file.Blocks, file.Width, file.Height, file.Footprint);
+    }
+
+    internal static Span<byte> DecompressImage(ReadOnlySpan<byte> astcData, int width, int height, FootprintType footprint)
+    {
+        var footPrint = Footprint.FromFootprintType(footprint);
+
+        return DecompressImage(astcData, width, height, footPrint);
     }
 }

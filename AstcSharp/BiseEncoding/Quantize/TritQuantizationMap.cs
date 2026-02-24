@@ -11,7 +11,7 @@ internal class TritQuantizationMap : QuantizationMap
 
         for (int trit = 0; trit < 3; ++trit)
             for (int bits = 0; bits < (1 << bitCount); ++bits)
-                unquantizationMapBuilder.Add(unquantFunc(trit, bits, range));
+                _unquantizationMapBuilder.Add(unquantFunc(trit, bits, range));
 
         GenerateQuantizationMap();
         Freeze();

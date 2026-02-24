@@ -5,177 +5,6 @@ namespace AstcSharp.ColorEncoding;
 
 internal static class EndpointCodec
 {
-    // TODO: Move these two to RGBA color extensions?
-    private static int[] QuantizeColorArray(RgbaColor c, int maxValue)
-    {
-        var array = new int[RgbaColor.BytesPerPixel];
-        for (int i = 0; i < RgbaColor.BytesPerPixel; ++i) array[i] = Quantization.QuantizeCEValueToRange(c[i], maxValue);
-        return array;
-    }
-
-    private static int[] UnquantizeArray(int[] values, int maxValue)
-    {
-        var result = new int[values.Length];
-        for (int i = 0; i < values.Length; ++i) result[i] = Quantization.UnquantizeCEValueFromRange(values[i], maxValue);
-        return result;
-    }
-
-    private static void UnquantizeInline(Span<int> values, int maxValue)
-    {
-        for (int i = 0; i < values.Length; ++i) values[i] = Quantization.UnquantizeCEValueFromRange(values[i], maxValue);
-    }
-
-    // TODO: Move to a separate file
-    private class QuantizedEndpointPair
-    {
-        private readonly RgbaColor _originalLow;
-        private readonly RgbaColor _originalHigh;
-        private readonly int[] _quantizedLow;
-        private readonly int[] _quantizedHigh;
-        private readonly int[] _unquantizedLow;
-        private readonly int[] _unquantizedHigh;
-
-        public QuantizedEndpointPair(RgbaColor low, RgbaColor high, int maxValue)
-        {
-            _originalLow = low;
-            _originalHigh = high;
-            _quantizedLow = QuantizeColorArray(low, maxValue);
-            _quantizedHigh = QuantizeColorArray(high, maxValue);
-            _unquantizedLow = UnquantizeArray(_quantizedLow, maxValue);
-            _unquantizedHigh = UnquantizeArray(_quantizedHigh, maxValue);
-        }
-
-        public int[] QuantizedLow() => _quantizedLow;
-        public int[] QuantizedHigh() => _quantizedHigh;
-        public int[] UnquantizedLow() => _unquantizedLow;
-        public int[] UnquantizedHigh() => _unquantizedHigh;
-        public RgbaColor OriginalLow() => _originalLow;
-        public RgbaColor OriginalHigh() => _originalHigh;
-    }
-
-    private class CEEncodingOption
-    {
-        private readonly int _squaredError;
-        private readonly QuantizedEndpointPair _quantizedEndpoints;
-        private readonly bool _swapEndpoints;
-        private readonly bool _blueContract;
-        private readonly bool _useOffsetMode;
-
-        public CEEncodingOption(
-            int squaredError,
-            QuantizedEndpointPair quantizedEndpoints,
-            bool swapEndpoints,
-            bool blueContract,
-            bool useOffsetMode)
-        {
-            _squaredError = squaredError;
-            _quantizedEndpoints = quantizedEndpoints;
-            _swapEndpoints = swapEndpoints;
-            _blueContract = blueContract;
-            _useOffsetMode = useOffsetMode;
-        }
-
-        public bool Pack(bool hasAlpha, out ColorEndpointMode endpointMode, List<int> values, ref bool needsWeightSwap)
-        {
-            endpointMode = ColorEndpointMode.LdrLumaDirect;
-            var unquantizedLowOriginal = _quantizedEndpoints.UnquantizedLow();
-            var unquantizedHighOriginal = _quantizedEndpoints.UnquantizedHigh();
-
-            var unquantizedLow = (int[])unquantizedLowOriginal.Clone();
-            var unquantizedHigh = (int[])unquantizedHighOriginal.Clone();
-
-            if (_useOffsetMode)
-            {
-                for (int i = 0; i < 4; ++i)
-                {
-                    (unquantizedHigh[i], unquantizedLow[i]) = BitOperations.TransferPrecision(unquantizedHigh[i], unquantizedLow[i]);
-                }
-            }
-
-            int sum0 = 0, sum1 = 0;
-            for (int i = 0; i < 3; ++i)
-            {
-                sum0 += unquantizedLow[i];
-                sum1 += unquantizedHigh[i];
-            }
-
-            bool swapVals = false;
-            if (_useOffsetMode)
-            {
-                if (_blueContract)
-                {
-                    swapVals = sum1 >= 0;
-                }
-                else
-                {
-                    swapVals = sum1 < 0;
-                }
-
-                if (swapVals) return false;
-            }
-            else
-            {
-                if (_blueContract)
-                {
-                    if (sum1 == sum0) return false;
-                    swapVals = sum1 > sum0;
-                    needsWeightSwap = !needsWeightSwap;
-                }
-                else
-                {
-                    swapVals = sum1 < sum0;
-                }
-            }
-
-            var quantizedLowOriginal = _quantizedEndpoints.QuantizedLow();
-            var quantizedHighOriginal = _quantizedEndpoints.QuantizedHigh();
-
-            var quantizedLow = (int[])quantizedLowOriginal.Clone();
-            var quantizedHigh = (int[])quantizedHighOriginal.Clone();
-
-            if (swapVals)
-            {
-                if (_useOffsetMode) throw new InvalidOperationException();
-                var tmp = quantizedLow; quantizedLow = quantizedHigh; quantizedHigh = tmp;
-                needsWeightSwap = !needsWeightSwap;
-            }
-
-            values[0] = quantizedLow[0];
-            values[1] = quantizedHigh[0];
-            values[2] = quantizedLow[1];
-            values[3] = quantizedHigh[1];
-            values[4] = quantizedLow[2];
-            values[5] = quantizedHigh[2];
-
-            if (_useOffsetMode)
-            {
-                endpointMode = ColorEndpointMode.LdrRgbBaseOffset;
-            }
-            else
-            {
-                endpointMode = ColorEndpointMode.LdrRgbDirect;
-            }
-
-            if (hasAlpha)
-            {
-                values[6] = quantizedLow[3];
-                values[7] = quantizedHigh[3];
-                if (_useOffsetMode) endpointMode = ColorEndpointMode.LdrRgbaBaseOffset;
-                else endpointMode = ColorEndpointMode.LdrRgbaDirect;
-            }
-
-            if (_swapEndpoints)
-            {
-                needsWeightSwap = !needsWeightSwap;
-            }
-
-            return true;
-        }
-
-        public bool BlueContract() => _blueContract;
-        public int Error() => _squaredError;
-    }
-
     public static bool UsesBlueContract(int maxValue, ColorEndpointMode mode, List<int> values)
     {
         int valueCount = mode.GetColorValuesCount();
@@ -294,6 +123,232 @@ internal static class EndpointCodec
         }
 
         return needsWeightSwap;
+    }
+
+    /// <summary>
+    /// Decodes color endpoints for the specified mode, returning a polymorphic endpoint pair
+    /// that supports both LDR and HDR modes.
+    /// </summary>
+    /// <param name="values">Quantized integer values from the ASTC block</param>
+    /// <param name="maxValue">Maximum quantization value</param>
+    /// <param name="mode">The color endpoint mode</param>
+    /// <returns>A ColorEndpointPair representing either LDR or HDR endpoints</returns>
+    public static ColorEndpointPair DecodeColorsForModePolymorphic(ReadOnlySpan<int> values, int maxValue, ColorEndpointMode mode)
+    {
+        if (mode.IsHdr())
+        {
+            var (low, high) = HdrEndpointDecoder.DecodeHdrMode(values, maxValue, mode);
+            bool alphaIsLdr = mode == ColorEndpointMode.HdrRgbDirectLdrAlpha;
+            return ColorEndpointPair.Hdr(low, high, alphaIsLdr);
+        }
+        else
+        {
+            var (low, high) = DecodeColorsForMode(values, maxValue, mode);
+            return ColorEndpointPair.Ldr(low, high);
+        }
+    }
+
+    public static (RgbaColor endpointLowRgba, RgbaColor endpointHighRgba) DecodeColorsForMode(ReadOnlySpan<int> values, int maxValue, ColorEndpointMode mode)
+    {
+        int count = mode.GetColorValuesCount();
+        Span<int> unquantizedValues = stackalloc int[count];
+        int copyLen = Math.Min(count, values.Length);
+        for (int i = 0; i < copyLen; i++) unquantizedValues[i] = values[i];
+        UnquantizeInline(unquantizedValues, maxValue);
+        var pair = DecodeColorsForModeUnquantized(unquantizedValues, mode);
+        return (pair.LdrLow, pair.LdrHigh);
+    }
+
+    /// <summary>
+    /// Decodes color endpoints from already-unquantized values, supporting both LDR and HDR modes.
+    /// Called from the fused HDR decode path where BISE decode + batch unquantize
+    /// have already been performed. Returns a ColorEndpointPair (LDR or HDR).
+    /// </summary>
+    internal static ColorEndpointPair DecodeColorsForModePolymorphicUnquantized(ReadOnlySpan<int> unquantizedValues, ColorEndpointMode mode)
+    {
+        if (mode.IsHdr())
+        {
+            var (low, high) = HdrEndpointDecoder.DecodeHdrModeUnquantized(unquantizedValues, mode);
+            bool alphaIsLdr = mode == ColorEndpointMode.HdrRgbDirectLdrAlpha;
+            return ColorEndpointPair.Hdr(low, high, alphaIsLdr);
+        }
+
+        return DecodeColorsForModeUnquantized(unquantizedValues, mode);
+    }
+
+    /// <summary>
+    /// Decodes color endpoints from already-unquantized values.
+    /// Called from the fused decode path where BISE decode + batch unquantize
+    /// have already been performed. Returns an LDR ColorEndpointPair.
+    /// </summary>
+    internal static ColorEndpointPair DecodeColorsForModeUnquantized(ReadOnlySpan<int> unquantizedValues, ColorEndpointMode mode)
+    {
+        RgbaColor endpointLowRgba, endpointHighRgba;
+
+        switch (mode)
+        {
+            case ColorEndpointMode.LdrLumaDirect:
+                endpointLowRgba = new RgbaColor(unquantizedValues[0], unquantizedValues[0], unquantizedValues[0]);
+                endpointHighRgba = new RgbaColor(unquantizedValues[1], unquantizedValues[1], unquantizedValues[1]);
+                break;
+            case ColorEndpointMode.LdrLumaBaseOffset:
+                {
+                    int l0 = (unquantizedValues[0] >> 2) | (unquantizedValues[1] & 0xC0);
+                    int l1 = Math.Min(l0 + (unquantizedValues[1] & 0x3F), 0xFF);
+                    endpointLowRgba = new RgbaColor(l0, l0, l0);
+                    endpointHighRgba = new RgbaColor(l1, l1, l1);
+                    break;
+                }
+            case ColorEndpointMode.LdrLumaAlphaDirect:
+                endpointLowRgba = new RgbaColor(unquantizedValues[0], unquantizedValues[0], unquantizedValues[0], unquantizedValues[2]);
+                endpointHighRgba = new RgbaColor(unquantizedValues[1], unquantizedValues[1], unquantizedValues[1], unquantizedValues[3]);
+                break;
+            case ColorEndpointMode.LdrLumaAlphaBaseOffset:
+                {
+                    var (b0, a0) = BitOperations.TransferPrecision(unquantizedValues[1], unquantizedValues[0]);
+                    var (b2, a2) = BitOperations.TransferPrecision(unquantizedValues[3], unquantizedValues[2]);
+                    endpointLowRgba = new RgbaColor(a0, a0, a0, a2);
+                    int highLuma = a0 + b0;
+                    endpointHighRgba = new RgbaColor(highLuma, highLuma, highLuma, a2 + b2);
+                    break;
+                }
+            case ColorEndpointMode.LdrRgbBaseScale:
+                endpointLowRgba = new RgbaColor(
+                    (unquantizedValues[0] * unquantizedValues[3]) >> 8,
+                    (unquantizedValues[1] * unquantizedValues[3]) >> 8,
+                    (unquantizedValues[2] * unquantizedValues[3]) >> 8);
+                endpointHighRgba = new RgbaColor(unquantizedValues[0], unquantizedValues[1], unquantizedValues[2]);
+                break;
+            case ColorEndpointMode.LdrRgbDirect:
+                {
+                    int sum0 = unquantizedValues[0] + unquantizedValues[2] + unquantizedValues[4];
+                    int sum1 = unquantizedValues[1] + unquantizedValues[3] + unquantizedValues[5];
+                    if (sum1 < sum0)
+                    {
+                        endpointLowRgba = new RgbaColor(
+                            r: (unquantizedValues[1] + unquantizedValues[5]) >> 1,
+                            g: (unquantizedValues[3] + unquantizedValues[5]) >> 1,
+                            b: unquantizedValues[5]);
+                        endpointHighRgba = new RgbaColor(
+                            r: (unquantizedValues[0] + unquantizedValues[4]) >> 1,
+                            g: (unquantizedValues[2] + unquantizedValues[4]) >> 1,
+                            b: unquantizedValues[4]);
+                    }
+                    else
+                    {
+                        endpointLowRgba = new RgbaColor(unquantizedValues[0], unquantizedValues[2], unquantizedValues[4]);
+                        endpointHighRgba = new RgbaColor(unquantizedValues[1], unquantizedValues[3], unquantizedValues[5]);
+                    }
+                    break;
+                }
+            case ColorEndpointMode.LdrRgbBaseOffset:
+                {
+                    var (b0, a0) = BitOperations.TransferPrecision(unquantizedValues[1], unquantizedValues[0]);
+                    var (b1, a1) = BitOperations.TransferPrecision(unquantizedValues[3], unquantizedValues[2]);
+                    var (b2, a2) = BitOperations.TransferPrecision(unquantizedValues[5], unquantizedValues[4]);
+                    if (b0 + b1 + b2 < 0)
+                    {
+                        endpointLowRgba = new RgbaColor(
+                            r: (a0 + b0 + a2 + b2) >> 1,
+                            g: (a1 + b1 + a2 + b2) >> 1,
+                            b: a2 + b2);
+                        endpointHighRgba = new RgbaColor(
+                            r: (a0 + a2) >> 1,
+                            g: (a1 + a2) >> 1,
+                            b: a2);
+                    }
+                    else
+                    {
+                        endpointLowRgba = new RgbaColor(a0, a1, a2);
+                        endpointHighRgba = new RgbaColor(a0 + b0, a1 + b1, a2 + b2);
+                    }
+                    break;
+                }
+            case ColorEndpointMode.LdrRgbBaseScaleTwoA:
+                endpointLowRgba = new RgbaColor(
+                    r: (unquantizedValues[0] * unquantizedValues[3]) >> 8,
+                    g: (unquantizedValues[1] * unquantizedValues[3]) >> 8,
+                    b: (unquantizedValues[2] * unquantizedValues[3]) >> 8,
+                    a: unquantizedValues[4]);
+                endpointHighRgba = new RgbaColor(unquantizedValues[0], unquantizedValues[1], unquantizedValues[2], unquantizedValues[5]);
+                break;
+            case ColorEndpointMode.LdrRgbaDirect:
+                {
+                    int sum0 = unquantizedValues[0] + unquantizedValues[2] + unquantizedValues[4];
+                    int sum1 = unquantizedValues[1] + unquantizedValues[3] + unquantizedValues[5];
+                    if (sum1 >= sum0)
+                    {
+                        endpointLowRgba = new RgbaColor(unquantizedValues[0], unquantizedValues[2], unquantizedValues[4], unquantizedValues[6]);
+                        endpointHighRgba = new RgbaColor(unquantizedValues[1], unquantizedValues[3], unquantizedValues[5], unquantizedValues[7]);
+                    }
+                    else
+                    {
+                        endpointLowRgba = new RgbaColor(
+                            r: (unquantizedValues[1] + unquantizedValues[5]) >> 1,
+                            g: (unquantizedValues[3] + unquantizedValues[5]) >> 1,
+                            b: unquantizedValues[5],
+                            a: unquantizedValues[7]);
+                        endpointHighRgba = new RgbaColor(
+                            r: (unquantizedValues[0] + unquantizedValues[4]) >> 1,
+                            g: (unquantizedValues[2] + unquantizedValues[4]) >> 1,
+                            b: unquantizedValues[4],
+                            a: unquantizedValues[6]);
+                    }
+                    break;
+                }
+            case ColorEndpointMode.LdrRgbaBaseOffset:
+                {
+                    var (b0, a0) = BitOperations.TransferPrecision(unquantizedValues[1], unquantizedValues[0]);
+                    var (b1, a1) = BitOperations.TransferPrecision(unquantizedValues[3], unquantizedValues[2]);
+                    var (b2, a2) = BitOperations.TransferPrecision(unquantizedValues[5], unquantizedValues[4]);
+                    var (b3, a3) = BitOperations.TransferPrecision(unquantizedValues[7], unquantizedValues[6]);
+                    if (b0 + b1 + b2 < 0)
+                    {
+                        endpointLowRgba = new RgbaColor(
+                            r: (a0 + b0 + a2 + b2) >> 1,
+                            g: (a1 + b1 + a2 + b2) >> 1,
+                            b: a2 + b2,
+                            a: a3 + b3);
+                        endpointHighRgba = new RgbaColor(
+                            r: (a0 + a2) >> 1,
+                            g: (a1 + a2) >> 1,
+                            b: a2,
+                            a: a3);
+                    }
+                    else
+                    {
+                        endpointLowRgba = new RgbaColor(a0, a1, a2, a3);
+                        endpointHighRgba = new RgbaColor(a0 + b0, a1 + b1, a2 + b2, a3 + b3);
+                    }
+                    break;
+                }
+            default:
+                endpointLowRgba = RgbaColor.Empty;
+                endpointHighRgba = RgbaColor.Empty;
+                break;
+        }
+
+        return ColorEndpointPair.Ldr(endpointLowRgba, endpointHighRgba);
+    }
+
+    // TODO: Move these two to RGBA color extensions?
+    private static int[] QuantizeColorArray(RgbaColor c, int maxValue)
+    {
+        var array = new int[RgbaColor.BytesPerPixel];
+        for (int i = 0; i < RgbaColor.BytesPerPixel; ++i) array[i] = Quantization.QuantizeCEValueToRange(c[i], maxValue);
+        return array;
+    }
+
+    private static int[] UnquantizeArray(int[] values, int maxValue)
+    {
+        var result = new int[values.Length];
+        for (int i = 0; i < values.Length; ++i) result[i] = Quantization.UnquantizeCEValueFromRange(values[i], maxValue);
+        return result;
+    }
+
+    private static void UnquantizeInline(Span<int> values, int maxValue)
+    {
+        for (int i = 0; i < values.Length; ++i) values[i] = Quantization.UnquantizeCEValueFromRange(values[i], maxValue);
     }
 
     private static bool EncodeColorsLuma(RgbaColor endpointLow, RgbaColor endpointHigh, int maxValue, out ColorEndpointMode astcMode, List<int> values)
@@ -507,209 +562,154 @@ internal static class EndpointCodec
         throw new InvalidOperationException("Shouldn't have reached this point");
     }
 
-    /// <summary>
-    /// Decodes color endpoints for the specified mode, returning a polymorphic endpoint pair
-    /// that supports both LDR and HDR modes.
-    /// </summary>
-    /// <param name="values">Quantized integer values from the ASTC block</param>
-    /// <param name="maxValue">Maximum quantization value</param>
-    /// <param name="mode">The color endpoint mode</param>
-    /// <returns>A ColorEndpointPair representing either LDR or HDR endpoints</returns>
-    public static ColorEndpointPair DecodeColorsForModePolymorphic(ReadOnlySpan<int> values, int maxValue, ColorEndpointMode mode)
+    // TODO: Move to a separate file
+    private class QuantizedEndpointPair
     {
-        if (mode.IsHdr())
+        private readonly RgbaColor _originalLow;
+        private readonly RgbaColor _originalHigh;
+        private readonly int[] _quantizedLow;
+        private readonly int[] _quantizedHigh;
+        private readonly int[] _unquantizedLow;
+        private readonly int[] _unquantizedHigh;
+
+        public QuantizedEndpointPair(RgbaColor low, RgbaColor high, int maxValue)
         {
-            var (low, high) = HdrEndpointDecoder.DecodeHdrMode(values, maxValue, mode);
-            bool alphaIsLdr = mode == ColorEndpointMode.HdrRgbDirectLdrAlpha;
-            return ColorEndpointPair.Hdr(low, high, alphaIsLdr);
+            _originalLow = low;
+            _originalHigh = high;
+            _quantizedLow = QuantizeColorArray(low, maxValue);
+            _quantizedHigh = QuantizeColorArray(high, maxValue);
+            _unquantizedLow = UnquantizeArray(_quantizedLow, maxValue);
+            _unquantizedHigh = UnquantizeArray(_quantizedHigh, maxValue);
         }
-        else
-        {
-            var (low, high) = DecodeColorsForMode(values, maxValue, mode);
-            return ColorEndpointPair.Ldr(low, high);
-        }
+
+        public int[] QuantizedLow() => _quantizedLow;
+        public int[] QuantizedHigh() => _quantizedHigh;
+        public int[] UnquantizedLow() => _unquantizedLow;
+        public int[] UnquantizedHigh() => _unquantizedHigh;
+        public RgbaColor OriginalLow() => _originalLow;
+        public RgbaColor OriginalHigh() => _originalHigh;
     }
 
-    /// <summary>
-    /// Decodes color endpoints from already-unquantized values, supporting both LDR and HDR modes.
-    /// Called from the fused HDR decode path where BISE decode + batch unquantize
-    /// have already been performed. Returns a ColorEndpointPair (LDR or HDR).
-    /// </summary>
-    internal static ColorEndpointPair DecodeColorsForModePolymorphicUnquantized(ReadOnlySpan<int> unquantizedValues, ColorEndpointMode mode)
+    private class CEEncodingOption
     {
-        if (mode.IsHdr())
+        private readonly int _squaredError;
+        private readonly QuantizedEndpointPair _quantizedEndpoints;
+        private readonly bool _swapEndpoints;
+        private readonly bool _blueContract;
+        private readonly bool _useOffsetMode;
+
+        public CEEncodingOption(
+            int squaredError,
+            QuantizedEndpointPair quantizedEndpoints,
+            bool swapEndpoints,
+            bool blueContract,
+            bool useOffsetMode)
         {
-            var (low, high) = HdrEndpointDecoder.DecodeHdrModeUnquantized(unquantizedValues, mode);
-            bool alphaIsLdr = mode == ColorEndpointMode.HdrRgbDirectLdrAlpha;
-            return ColorEndpointPair.Hdr(low, high, alphaIsLdr);
+            _squaredError = squaredError;
+            _quantizedEndpoints = quantizedEndpoints;
+            _swapEndpoints = swapEndpoints;
+            _blueContract = blueContract;
+            _useOffsetMode = useOffsetMode;
         }
 
-        return DecodeColorsForModeUnquantized(unquantizedValues, mode);
-    }
-
-    /// <summary>
-    /// Decodes color endpoints from already-unquantized values.
-    /// Called from the fused decode path where BISE decode + batch unquantize
-    /// have already been performed. Returns an LDR ColorEndpointPair.
-    /// </summary>
-    internal static ColorEndpointPair DecodeColorsForModeUnquantized(ReadOnlySpan<int> unquantizedValues, ColorEndpointMode mode)
-    {
-        RgbaColor endpointLowRgba, endpointHighRgba;
-
-        switch (mode)
+        public bool Pack(bool hasAlpha, out ColorEndpointMode endpointMode, List<int> values, ref bool needsWeightSwap)
         {
-            case ColorEndpointMode.LdrLumaDirect:
-                endpointLowRgba = new RgbaColor(unquantizedValues[0], unquantizedValues[0], unquantizedValues[0]);
-                endpointHighRgba = new RgbaColor(unquantizedValues[1], unquantizedValues[1], unquantizedValues[1]);
-                break;
-            case ColorEndpointMode.LdrLumaBaseOffset:
+            endpointMode = ColorEndpointMode.LdrLumaDirect;
+            var unquantizedLowOriginal = _quantizedEndpoints.UnquantizedLow();
+            var unquantizedHighOriginal = _quantizedEndpoints.UnquantizedHigh();
+
+            var unquantizedLow = (int[])unquantizedLowOriginal.Clone();
+            var unquantizedHigh = (int[])unquantizedHighOriginal.Clone();
+
+            if (_useOffsetMode)
+            {
+                for (int i = 0; i < 4; ++i)
                 {
-                    int l0 = (unquantizedValues[0] >> 2) | (unquantizedValues[1] & 0xC0);
-                    int l1 = Math.Min(l0 + (unquantizedValues[1] & 0x3F), 0xFF);
-                    endpointLowRgba = new RgbaColor(l0, l0, l0);
-                    endpointHighRgba = new RgbaColor(l1, l1, l1);
-                    break;
+                    (unquantizedHigh[i], unquantizedLow[i]) = BitOperations.TransferPrecision(unquantizedHigh[i], unquantizedLow[i]);
                 }
-            case ColorEndpointMode.LdrLumaAlphaDirect:
-                endpointLowRgba = new RgbaColor(unquantizedValues[0], unquantizedValues[0], unquantizedValues[0], unquantizedValues[2]);
-                endpointHighRgba = new RgbaColor(unquantizedValues[1], unquantizedValues[1], unquantizedValues[1], unquantizedValues[3]);
-                break;
-            case ColorEndpointMode.LdrLumaAlphaBaseOffset:
+            }
+
+            int sum0 = 0, sum1 = 0;
+            for (int i = 0; i < 3; ++i)
+            {
+                sum0 += unquantizedLow[i];
+                sum1 += unquantizedHigh[i];
+            }
+
+            bool swapVals = false;
+            if (_useOffsetMode)
+            {
+                if (_blueContract)
                 {
-                    var (b0, a0) = BitOperations.TransferPrecision(unquantizedValues[1], unquantizedValues[0]);
-                    var (b2, a2) = BitOperations.TransferPrecision(unquantizedValues[3], unquantizedValues[2]);
-                    endpointLowRgba = new RgbaColor(a0, a0, a0, a2);
-                    int highLuma = a0 + b0;
-                    endpointHighRgba = new RgbaColor(highLuma, highLuma, highLuma, a2 + b2);
-                    break;
+                    swapVals = sum1 >= 0;
                 }
-            case ColorEndpointMode.LdrRgbBaseScale:
-                endpointLowRgba = new RgbaColor(
-                    (unquantizedValues[0] * unquantizedValues[3]) >> 8,
-                    (unquantizedValues[1] * unquantizedValues[3]) >> 8,
-                    (unquantizedValues[2] * unquantizedValues[3]) >> 8);
-                endpointHighRgba = new RgbaColor(unquantizedValues[0], unquantizedValues[1], unquantizedValues[2]);
-                break;
-            case ColorEndpointMode.LdrRgbDirect:
+                else
                 {
-                    int sum0 = unquantizedValues[0] + unquantizedValues[2] + unquantizedValues[4];
-                    int sum1 = unquantizedValues[1] + unquantizedValues[3] + unquantizedValues[5];
-                    if (sum1 < sum0)
-                    {
-                        endpointLowRgba = new RgbaColor(
-                            r: (unquantizedValues[1] + unquantizedValues[5]) >> 1,
-                            g: (unquantizedValues[3] + unquantizedValues[5]) >> 1,
-                            b: unquantizedValues[5]);
-                        endpointHighRgba = new RgbaColor(
-                            r: (unquantizedValues[0] + unquantizedValues[4]) >> 1,
-                            g: (unquantizedValues[2] + unquantizedValues[4]) >> 1,
-                            b: unquantizedValues[4]);
-                    }
-                    else
-                    {
-                        endpointLowRgba = new RgbaColor(unquantizedValues[0], unquantizedValues[2], unquantizedValues[4]);
-                        endpointHighRgba = new RgbaColor(unquantizedValues[1], unquantizedValues[3], unquantizedValues[5]);
-                    }
-                    break;
+                    swapVals = sum1 < 0;
                 }
-            case ColorEndpointMode.LdrRgbBaseOffset:
+
+                if (swapVals) return false;
+            }
+            else
+            {
+                if (_blueContract)
                 {
-                    var (b0, a0) = BitOperations.TransferPrecision(unquantizedValues[1], unquantizedValues[0]);
-                    var (b1, a1) = BitOperations.TransferPrecision(unquantizedValues[3], unquantizedValues[2]);
-                    var (b2, a2) = BitOperations.TransferPrecision(unquantizedValues[5], unquantizedValues[4]);
-                    if (b0 + b1 + b2 < 0)
-                    {
-                        endpointLowRgba = new RgbaColor(
-                            r: (a0 + b0 + a2 + b2) >> 1,
-                            g: (a1 + b1 + a2 + b2) >> 1,
-                            b: a2 + b2);
-                        endpointHighRgba = new RgbaColor(
-                            r: (a0 + a2) >> 1,
-                            g: (a1 + a2) >> 1,
-                            b: a2);
-                    }
-                    else
-                    {
-                        endpointLowRgba = new RgbaColor(a0, a1, a2);
-                        endpointHighRgba = new RgbaColor(a0 + b0, a1 + b1, a2 + b2);
-                    }
-                    break;
+                    if (sum1 == sum0) return false;
+                    swapVals = sum1 > sum0;
+                    needsWeightSwap = !needsWeightSwap;
                 }
-            case ColorEndpointMode.LdrRgbBaseScaleTwoA:
-                endpointLowRgba = new RgbaColor(
-                    r: (unquantizedValues[0] * unquantizedValues[3]) >> 8,
-                    g: (unquantizedValues[1] * unquantizedValues[3]) >> 8,
-                    b: (unquantizedValues[2] * unquantizedValues[3]) >> 8,
-                    a: unquantizedValues[4]);
-                endpointHighRgba = new RgbaColor(unquantizedValues[0], unquantizedValues[1], unquantizedValues[2], unquantizedValues[5]);
-                break;
-            case ColorEndpointMode.LdrRgbaDirect:
+                else
                 {
-                    int sum0 = unquantizedValues[0] + unquantizedValues[2] + unquantizedValues[4];
-                    int sum1 = unquantizedValues[1] + unquantizedValues[3] + unquantizedValues[5];
-                    if (sum1 >= sum0)
-                    {
-                        endpointLowRgba = new RgbaColor(unquantizedValues[0], unquantizedValues[2], unquantizedValues[4], unquantizedValues[6]);
-                        endpointHighRgba = new RgbaColor(unquantizedValues[1], unquantizedValues[3], unquantizedValues[5], unquantizedValues[7]);
-                    }
-                    else
-                    {
-                        endpointLowRgba = new RgbaColor(
-                            r: (unquantizedValues[1] + unquantizedValues[5]) >> 1,
-                            g: (unquantizedValues[3] + unquantizedValues[5]) >> 1,
-                            b: unquantizedValues[5],
-                            a: unquantizedValues[7]);
-                        endpointHighRgba = new RgbaColor(
-                            r: (unquantizedValues[0] + unquantizedValues[4]) >> 1,
-                            g: (unquantizedValues[2] + unquantizedValues[4]) >> 1,
-                            b: unquantizedValues[4],
-                            a: unquantizedValues[6]);
-                    }
-                    break;
+                    swapVals = sum1 < sum0;
                 }
-            case ColorEndpointMode.LdrRgbaBaseOffset:
-                {
-                    var (b0, a0) = BitOperations.TransferPrecision(unquantizedValues[1], unquantizedValues[0]);
-                    var (b1, a1) = BitOperations.TransferPrecision(unquantizedValues[3], unquantizedValues[2]);
-                    var (b2, a2) = BitOperations.TransferPrecision(unquantizedValues[5], unquantizedValues[4]);
-                    var (b3, a3) = BitOperations.TransferPrecision(unquantizedValues[7], unquantizedValues[6]);
-                    if (b0 + b1 + b2 < 0)
-                    {
-                        endpointLowRgba = new RgbaColor(
-                            r: (a0 + b0 + a2 + b2) >> 1,
-                            g: (a1 + b1 + a2 + b2) >> 1,
-                            b: a2 + b2,
-                            a: a3 + b3);
-                        endpointHighRgba = new RgbaColor(
-                            r: (a0 + a2) >> 1,
-                            g: (a1 + a2) >> 1,
-                            b: a2,
-                            a: a3);
-                    }
-                    else
-                    {
-                        endpointLowRgba = new RgbaColor(a0, a1, a2, a3);
-                        endpointHighRgba = new RgbaColor(a0 + b0, a1 + b1, a2 + b2, a3 + b3);
-                    }
-                    break;
-                }
-            default:
-                endpointLowRgba = RgbaColor.Empty;
-                endpointHighRgba = RgbaColor.Empty;
-                break;
+            }
+
+            var quantizedLowOriginal = _quantizedEndpoints.QuantizedLow();
+            var quantizedHighOriginal = _quantizedEndpoints.QuantizedHigh();
+
+            var quantizedLow = (int[])quantizedLowOriginal.Clone();
+            var quantizedHigh = (int[])quantizedHighOriginal.Clone();
+
+            if (swapVals)
+            {
+                if (_useOffsetMode) throw new InvalidOperationException();
+                var tmp = quantizedLow; quantizedLow = quantizedHigh; quantizedHigh = tmp;
+                needsWeightSwap = !needsWeightSwap;
+            }
+
+            values[0] = quantizedLow[0];
+            values[1] = quantizedHigh[0];
+            values[2] = quantizedLow[1];
+            values[3] = quantizedHigh[1];
+            values[4] = quantizedLow[2];
+            values[5] = quantizedHigh[2];
+
+            if (_useOffsetMode)
+            {
+                endpointMode = ColorEndpointMode.LdrRgbBaseOffset;
+            }
+            else
+            {
+                endpointMode = ColorEndpointMode.LdrRgbDirect;
+            }
+
+            if (hasAlpha)
+            {
+                values[6] = quantizedLow[3];
+                values[7] = quantizedHigh[3];
+                if (_useOffsetMode) endpointMode = ColorEndpointMode.LdrRgbaBaseOffset;
+                else endpointMode = ColorEndpointMode.LdrRgbaDirect;
+            }
+
+            if (_swapEndpoints)
+            {
+                needsWeightSwap = !needsWeightSwap;
+            }
+
+            return true;
         }
 
-        return ColorEndpointPair.Ldr(endpointLowRgba, endpointHighRgba);
-    }
-
-    public static (RgbaColor endpointLowRgba, RgbaColor endpointHighRgba) DecodeColorsForMode(ReadOnlySpan<int> values, int maxValue, ColorEndpointMode mode)
-    {
-        int count = mode.GetColorValuesCount();
-        Span<int> unquantizedValues = stackalloc int[count];
-        int copyLen = Math.Min(count, values.Length);
-        for (int i = 0; i < copyLen; i++) unquantizedValues[i] = values[i];
-        UnquantizeInline(unquantizedValues, maxValue);
-        var pair = DecodeColorsForModeUnquantized(unquantizedValues, mode);
-        return (pair.LdrLow, pair.LdrHigh);
+        public bool BlueContract() => _blueContract;
+        public int Error() => _squaredError;
     }
 }

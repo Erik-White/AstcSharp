@@ -11,7 +11,7 @@ internal class QuintQuantizationMap : QuantizationMap
 
         for (int quint = 0; quint < 5; ++quint)
             for (int bits = 0; bits < (1 << bitCount); ++bits)
-                unquantizationMapBuilder.Add(unquantFunc(quint, bits, range));
+                _unquantizationMapBuilder.Add(unquantFunc(quint, bits, range));
 
         GenerateQuantizationMap();
         Freeze();

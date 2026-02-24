@@ -10,9 +10,16 @@ namespace AstcSharp.TexelBlock;
 internal readonly struct PhysicalBlock
 {
     public const int SizeInBytes = 16;
+    private readonly BlockInfo _info;
 
     public UInt128 BlockBits { get; }
-    private readonly BlockInfo _info;
+
+    public bool IsVoidExtent => _info.IsVoidExtent;
+
+    public bool IsIllegalEncoding => !_info.IsValid;
+
+    public bool IsDualPlane
+        => _info.IsValid && !_info.IsVoidExtent && _info.IsDualPlane;
 
     private PhysicalBlock(UInt128 bits, BlockInfo info)
     {
@@ -29,13 +36,6 @@ internal readonly struct PhysicalBlock
     public static PhysicalBlock Create(ulong low) => Create((UInt128)low);
 
     public static PhysicalBlock Create(ulong low, ulong high) => Create(new UInt128(high, low));
-
-    public bool IsVoidExtent => _info.IsVoidExtent;
-
-    public bool IsIllegalEncoding => !_info.IsValid;
-
-    public bool IsDualPlane
-        => _info.IsValid && !_info.IsVoidExtent && _info.IsDualPlane;
 
     internal (int Width, int Height)? GetWeightGridDimensions()
         => _info.IsValid && !_info.IsVoidExtent
@@ -119,6 +119,17 @@ internal readonly struct PhysicalBlock
         return _info.IsValid ? _info.ColorValuesRange : null;
     }
 
+    internal static int[] DecodeVoidExtentCoordinates(UInt128 astcBits)
+    {
+        ulong lowBits = astcBits.Low();
+        var coords = new int[4];
+        for (int i = 0; i < 4; ++i)
+        {
+            coords[i] = (int)BitOperations.GetBits(lowBits, 12 + 13 * i, 13);
+        }
+        return coords;
+    }
+
     /// <summary>
     /// Full error-string version for void extent issues (used for error reporting)
     /// </summary>
@@ -140,16 +151,5 @@ internal readonly struct PhysicalBlock
             return "Void extent texture coordinates are invalid";
 
         return null;
-    }
-
-    internal static int[] DecodeVoidExtentCoordinates(UInt128 astcBits)
-    {
-        ulong lowBits = astcBits.Low();
-        var coords = new int[4];
-        for (int i = 0; i < 4; ++i)
-        {
-            coords[i] = (int)BitOperations.GetBits(lowBits, 12 + 13 * i, 13);
-        }
-        return coords;
     }
 }

@@ -4,7 +4,12 @@ namespace AstcSharp.BiseEncoding;
 
 internal class BoundedIntegerSequenceDecoder : BoundedIntegerSequenceCodec
 {
+
     private static readonly BoundedIntegerSequenceDecoder?[] _cache = new BoundedIntegerSequenceDecoder?[256];
+
+
+    public BoundedIntegerSequenceDecoder(int range) : base(range) { }
+
 
     public static BoundedIntegerSequenceDecoder GetCached(int range)
     {
@@ -16,8 +21,6 @@ internal class BoundedIntegerSequenceDecoder : BoundedIntegerSequenceCodec
         }
         return decoder;
     }
-
-    public BoundedIntegerSequenceDecoder(int range) : base(range) { }
 
     /// <summary>
     /// Decode a sequence of bounded integers into a caller-provided span.

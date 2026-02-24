@@ -13,12 +13,6 @@ internal class LogicalBlock
     private Partition _partition;
     private DualPlaneData? _dualPlane;
 
-    private class DualPlaneData
-    {
-        public int Channel;
-        public int[] Weights = [];
-    }
-
     public LogicalBlock(Footprint footprint)
     {
         _endpoints = [ColorEndpointPair.Ldr(RgbaColor.Empty, RgbaColor.Empty)];
@@ -120,88 +114,6 @@ internal class LogicalBlock
         }
     }
 
-    private static int DecodeEndpoints(in IntermediateBlock.IntermediateBlockData block, ColorEndpointPair[] endpointPair)
-    {
-        int endpointRange = block.endpointRange ?? IntermediateBlock.EndpointRangeForBlock(block);
-        if (endpointRange <= 0) throw new InvalidOperationException("Invalid endpoint range");
-        for (int i = 0; i < block.endpointCount; i++)
-        {
-            var ed = block.endpoints[i];
-            ReadOnlySpan<int> colorSpan = ((ReadOnlySpan<int>)ed.colors)[..ed.colorCount];
-            endpointPair[i] = EndpointCodec.DecodeColorsForModePolymorphic(colorSpan, endpointRange, ed.mode);
-        }
-        return block.endpointCount;
-    }
-
-    private static int DecodeEndpoints(IntermediateBlock.VoidExtentData block, ColorEndpointPair[] endpointPair)
-    {
-        if (block.isHdr)
-        {
-            // HDR void extent: ushort values are FP16 bit patterns (not LNS)
-            var hdrColor = new RgbaHdrColor(block.r, block.g, block.b, block.a);
-            endpointPair[0] = ColorEndpointPair.Hdr(hdrColor, hdrColor, valuesAreLns: false);
-        }
-        else
-        {
-            // LDR void extent: ushort values are UNORM16, convert to byte range
-            var ldrColor = new RgbaColor(
-                (byte)(block.r >> 8),
-                (byte)(block.g >> 8),
-                (byte)(block.b >> 8),
-                (byte)(block.a >> 8));
-            endpointPair[0] = ColorEndpointPair.Ldr(ldrColor, ldrColor);
-        }
-        return 1;
-    }
-
-    private static Partition GenerateSinglePartition(Footprint footprint)
-    {
-        return new Partition(footprint, 1, 0)
-        {
-            assignment = new int[footprint.PixelCount]
-        };
-    }
-
-    private static Partition ComputePartition(Footprint footprint, in IntermediateBlock.IntermediateBlockData block)
-        => block.partitionId.HasValue
-            ? Partition.GetASTCPartition(footprint, block.endpointCount, block.partitionId.Value)
-            : GenerateSinglePartition(footprint);
-
-    private static Partition ComputePartition(Footprint footprint, IntermediateBlock.VoidExtentData block)
-        => GenerateSinglePartition(footprint);
-
-    private void CalculateWeights(Footprint footprint, in IntermediateBlock.IntermediateBlockData block)
-    {
-        int gridSize = block.weightGridX * block.weightGridY;
-        int weightFrequency = block.dualPlaneChannel.HasValue ? 2 : 1;
-
-        // Get decimation info once for both planes
-        var decimationInfo = DecimationTable.Get(footprint, block.weightGridX, block.weightGridY);
-
-        // stackalloc avoids per-block heap allocation (max 12×12 = 144 ints = 576 bytes)
-        Span<int> unquantized = stackalloc int[gridSize];
-        for (int i = 0; i < gridSize; ++i)
-        {
-            unquantized[i] = Quantization.UnquantizeWeightFromRange(
-                block.weights[i * weightFrequency], block.weightRange);
-        }
-        DecimationTable.InfillWeights(unquantized, decimationInfo, _weights);
-
-        if (block.dualPlaneChannel.HasValue)
-        {
-            var dualPlane = new DualPlaneData();
-            dualPlane.Channel = block.dualPlaneChannel.Value;
-            dualPlane.Weights = new int[footprint.PixelCount];
-            _dualPlane = dualPlane;
-            for (int i = 0; i < gridSize; ++i)
-            {
-                unquantized[i] = Quantization.UnquantizeWeightFromRange(
-                    block.weights[i * weightFrequency + 1], block.weightRange);
-            }
-            DecimationTable.InfillWeights(unquantized, decimationInfo, _dualPlane.Weights);
-        }
-    }
-
     public Footprint GetFootprint() => _partition.footprint;
 
     public void SetWeightAt(int x, int y, int weight)
@@ -277,41 +189,6 @@ internal class LogicalBlock
                 b: InterpolateChannelHdr(endpoint.HdrLow[2], endpoint.HdrHigh[2], weight) >> 8,
                 a: InterpolateChannelHdr(endpoint.HdrLow[3], endpoint.HdrHigh[3], weight) >> 8);
         }
-    }
-
-    private static int InterpolateChannel(int p0, int p1, int weight)
-    {
-        int c0 = (p0 << 8) | p0;
-        int c1 = (p1 << 8) | p1;
-        int c = (c0 * (64 - weight) + c1 * weight + 32) / 64;
-        int quantized = ((c * byte.MaxValue) + short.MaxValue) / (ushort.MaxValue + 1);
-        return Math.Clamp(quantized, 0, byte.MaxValue);
-    }
-
-    /// <summary>
-    /// Interpolates an LDR channel value and returns the full 16-bit UNORM result
-    /// (before reduction to byte). Used by the HDR output path for LDR endpoints.
-    /// </summary>
-    private static ushort InterpolateLdrAsUnorm16(int p0, int p1, int weight)
-    {
-        int c0 = (p0 << 8) | p0;
-        int c1 = (p1 << 8) | p1;
-        int c = (c0 * (64 - weight) + c1 * weight + 32) / 64;
-        return (ushort)Math.Clamp(c, 0, 0xFFFF);
-    }
-
-    /// <summary>
-    /// Interpolates an HDR channel value between two endpoints using the specified weight.
-    /// </summary>
-    /// <remarks>
-    /// HDR endpoints are already 16-bit values (FP16 bit patterns). Unlike LDR interpolation
-    /// which expands 8-bit to 16-bit before interpolating, HDR interpolation operates directly
-    /// on the 16-bit values
-    /// </remarks>
-    private static ushort InterpolateChannelHdr(int p0, int p1, int weight)
-    {
-        int c = (p0 * (64 - weight) + p1 * weight + 32) / 64;
-        return (ushort)Math.Clamp(c, 0, 0xFFFF);
     }
 
     /// <summary>
@@ -438,31 +315,6 @@ internal class LogicalBlock
     }
 
     /// <summary>
-    /// Converts a 16-bit LNS (Log-Normalized Space) value to a 16-bit SF16 (FP16) bit pattern.
-    /// </summary>
-    /// <remarks>
-    /// The LNS value encodes a 5-bit exponent in the upper bits and an 11-bit mantissa
-    /// in the lower bits. The mantissa is transformed using a piecewise linear function
-    /// before being combined with the exponent to form the FP16 result.
-    /// </remarks>
-    internal static ushort LnsToSf16(int lns)
-    {
-        int mantissaComponent = lns & 0x7FF;       // Lower 11 bits: mantissa component
-        int exponentComponent = (lns >> 11) & 0x1F; // Upper 5 bits: exponent component
-
-        int mantissaTransformed;
-        if (mantissaComponent < 512)
-            mantissaTransformed = mantissaComponent * 3;
-        else if (mantissaComponent < 1536)
-            mantissaTransformed = mantissaComponent * 4 - 512;
-        else
-            mantissaTransformed = mantissaComponent * 5 - 2048;
-
-        int result = (exponentComponent << 10) | (mantissaTransformed >> 3);
-        return (ushort)Math.Min(result, 0x7BFF); // Clamp to max finite FP16
-    }
-
-    /// <summary>
     /// Writes all pixels in the block directly to the output buffer in RGBA byte format.
     /// Avoids per-pixel method call overhead, type dispatch, and RgbaColor allocation.
     /// </summary>
@@ -499,6 +351,200 @@ internal class LogicalBlock
             // General path: multi-partition or HDR blocks
             WriteAllPixelsGeneral(footprint, buffer);
         }
+    }
+
+    public void SetPartition(Partition p)
+    {
+        if (!p.footprint.Equals(_partition.footprint))
+            throw new InvalidOperationException("New partitions may not be for a different footprint");
+        _partition = p;
+        if (_endpointCount < p.numParts)
+        {
+            var newEndpoints = new ColorEndpointPair[p.numParts];
+            Array.Copy(_endpoints, newEndpoints, _endpointCount);
+            for (int i = _endpointCount; i < p.numParts; i++)
+                newEndpoints[i] = ColorEndpointPair.Ldr(RgbaColor.Empty, RgbaColor.Empty);
+            _endpoints = newEndpoints;
+        }
+        _endpointCount = p.numParts;
+    }
+
+    public void SetEndpoints(RgbaColor firstEndpoint, RgbaColor secondEndpoint, int subset)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(subset);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(subset, _partition.numParts);
+
+        _endpoints[subset] = ColorEndpointPair.Ldr(firstEndpoint, secondEndpoint);
+    }
+
+    public void SetDualPlaneChannel(int channel)
+    {
+        if (channel < 0) { _dualPlane = null; }
+        else if (_dualPlane != null) { _dualPlane.Channel = channel; }
+        else { _dualPlane = new DualPlaneData { Channel = channel, Weights = (int[])_weights.Clone() }; }
+    }
+
+    public bool IsDualPlane() => _dualPlane is not null;
+
+    public static LogicalBlock? UnpackLogicalBlock(Footprint footprint, UInt128 bits, in BlockInfo info)
+    {
+        if (!info.IsValid) return null;
+
+        if (info.IsVoidExtent)
+        {
+            // Void extent blocks are rare; fall back to existing PhysicalBlock path
+            var pb = PhysicalBlock.Create(bits);
+            var voidExtentData = IntermediateBlock.UnpackVoidExtent(pb);
+            if (voidExtentData is null) return null;
+
+            return new LogicalBlock(footprint, voidExtentData.Value);
+        }
+        else
+        {
+            return new LogicalBlock(footprint, bits, in info);
+        }
+    }
+
+    /// <summary>
+    /// Converts a 16-bit LNS (Log-Normalized Space) value to a 16-bit SF16 (FP16) bit pattern.
+    /// </summary>
+    /// <remarks>
+    /// The LNS value encodes a 5-bit exponent in the upper bits and an 11-bit mantissa
+    /// in the lower bits. The mantissa is transformed using a piecewise linear function
+    /// before being combined with the exponent to form the FP16 result.
+    /// </remarks>
+    internal static ushort LnsToSf16(int lns)
+    {
+        int mantissaComponent = lns & 0x7FF;       // Lower 11 bits: mantissa component
+        int exponentComponent = (lns >> 11) & 0x1F; // Upper 5 bits: exponent component
+
+        int mantissaTransformed;
+        if (mantissaComponent < 512)
+            mantissaTransformed = mantissaComponent * 3;
+        else if (mantissaComponent < 1536)
+            mantissaTransformed = mantissaComponent * 4 - 512;
+        else
+            mantissaTransformed = mantissaComponent * 5 - 2048;
+
+        int result = (exponentComponent << 10) | (mantissaTransformed >> 3);
+        return (ushort)Math.Min(result, 0x7BFF); // Clamp to max finite FP16
+    }
+
+    private static int DecodeEndpoints(in IntermediateBlock.IntermediateBlockData block, ColorEndpointPair[] endpointPair)
+    {
+        int endpointRange = block.endpointRange ?? IntermediateBlock.EndpointRangeForBlock(block);
+        if (endpointRange <= 0) throw new InvalidOperationException("Invalid endpoint range");
+        for (int i = 0; i < block.endpointCount; i++)
+        {
+            var ed = block.endpoints[i];
+            ReadOnlySpan<int> colorSpan = ((ReadOnlySpan<int>)ed.colors)[..ed.colorCount];
+            endpointPair[i] = EndpointCodec.DecodeColorsForModePolymorphic(colorSpan, endpointRange, ed.mode);
+        }
+        return block.endpointCount;
+    }
+
+    private static int DecodeEndpoints(IntermediateBlock.VoidExtentData block, ColorEndpointPair[] endpointPair)
+    {
+        if (block.isHdr)
+        {
+            // HDR void extent: ushort values are FP16 bit patterns (not LNS)
+            var hdrColor = new RgbaHdrColor(block.r, block.g, block.b, block.a);
+            endpointPair[0] = ColorEndpointPair.Hdr(hdrColor, hdrColor, valuesAreLns: false);
+        }
+        else
+        {
+            // LDR void extent: ushort values are UNORM16, convert to byte range
+            var ldrColor = new RgbaColor(
+                (byte)(block.r >> 8),
+                (byte)(block.g >> 8),
+                (byte)(block.b >> 8),
+                (byte)(block.a >> 8));
+            endpointPair[0] = ColorEndpointPair.Ldr(ldrColor, ldrColor);
+        }
+        return 1;
+    }
+
+    private static Partition GenerateSinglePartition(Footprint footprint)
+    {
+        return new Partition(footprint, 1, 0)
+        {
+            assignment = new int[footprint.PixelCount]
+        };
+    }
+
+    private static Partition ComputePartition(Footprint footprint, in IntermediateBlock.IntermediateBlockData block)
+        => block.partitionId.HasValue
+            ? Partition.GetASTCPartition(footprint, block.endpointCount, block.partitionId.Value)
+            : GenerateSinglePartition(footprint);
+
+    private static Partition ComputePartition(Footprint footprint, IntermediateBlock.VoidExtentData block)
+        => GenerateSinglePartition(footprint);
+
+    private void CalculateWeights(Footprint footprint, in IntermediateBlock.IntermediateBlockData block)
+    {
+        int gridSize = block.weightGridX * block.weightGridY;
+        int weightFrequency = block.dualPlaneChannel.HasValue ? 2 : 1;
+
+        // Get decimation info once for both planes
+        var decimationInfo = DecimationTable.Get(footprint, block.weightGridX, block.weightGridY);
+
+        // stackalloc avoids per-block heap allocation (max 12×12 = 144 ints = 576 bytes)
+        Span<int> unquantized = stackalloc int[gridSize];
+        for (int i = 0; i < gridSize; ++i)
+        {
+            unquantized[i] = Quantization.UnquantizeWeightFromRange(
+                block.weights[i * weightFrequency], block.weightRange);
+        }
+        DecimationTable.InfillWeights(unquantized, decimationInfo, _weights);
+
+        if (block.dualPlaneChannel.HasValue)
+        {
+            var dualPlane = new DualPlaneData();
+            dualPlane.Channel = block.dualPlaneChannel.Value;
+            dualPlane.Weights = new int[footprint.PixelCount];
+            _dualPlane = dualPlane;
+            for (int i = 0; i < gridSize; ++i)
+            {
+                unquantized[i] = Quantization.UnquantizeWeightFromRange(
+                    block.weights[i * weightFrequency + 1], block.weightRange);
+            }
+            DecimationTable.InfillWeights(unquantized, decimationInfo, _dualPlane.Weights);
+        }
+    }
+
+    private static int InterpolateChannel(int p0, int p1, int weight)
+    {
+        int c0 = (p0 << 8) | p0;
+        int c1 = (p1 << 8) | p1;
+        int c = (c0 * (64 - weight) + c1 * weight + 32) / 64;
+        int quantized = ((c * byte.MaxValue) + short.MaxValue) / (ushort.MaxValue + 1);
+        return Math.Clamp(quantized, 0, byte.MaxValue);
+    }
+
+    /// <summary>
+    /// Interpolates an LDR channel value and returns the full 16-bit UNORM result
+    /// (before reduction to byte). Used by the HDR output path for LDR endpoints.
+    /// </summary>
+    private static ushort InterpolateLdrAsUnorm16(int p0, int p1, int weight)
+    {
+        int c0 = (p0 << 8) | p0;
+        int c1 = (p1 << 8) | p1;
+        int c = (c0 * (64 - weight) + c1 * weight + 32) / 64;
+        return (ushort)Math.Clamp(c, 0, 0xFFFF);
+    }
+
+    /// <summary>
+    /// Interpolates an HDR channel value between two endpoints using the specified weight.
+    /// </summary>
+    /// <remarks>
+    /// HDR endpoints are already 16-bit values (FP16 bit patterns). Unlike LDR interpolation
+    /// which expands 8-bit to 16-bit before interpolating, HDR interpolation operates directly
+    /// on the 16-bit values
+    /// </remarks>
+    private static ushort InterpolateChannelHdr(int p0, int p1, int weight)
+    {
+        int c = (p0 * (64 - weight) + p1 * weight + 32) / 64;
+        return (ushort)Math.Clamp(c, 0, 0xFFFF);
     }
 
     private void WriteLdrSinglePartition(
@@ -563,55 +609,9 @@ internal class LogicalBlock
         }
     }
 
-    public void SetPartition(Partition p)
+    private class DualPlaneData
     {
-        if (!p.footprint.Equals(_partition.footprint))
-            throw new InvalidOperationException("New partitions may not be for a different footprint");
-        _partition = p;
-        if (_endpointCount < p.numParts)
-        {
-            var newEndpoints = new ColorEndpointPair[p.numParts];
-            Array.Copy(_endpoints, newEndpoints, _endpointCount);
-            for (int i = _endpointCount; i < p.numParts; i++)
-                newEndpoints[i] = ColorEndpointPair.Ldr(RgbaColor.Empty, RgbaColor.Empty);
-            _endpoints = newEndpoints;
-        }
-        _endpointCount = p.numParts;
-    }
-
-    public void SetEndpoints(RgbaColor firstEndpoint, RgbaColor secondEndpoint, int subset)
-    {
-        ArgumentOutOfRangeException.ThrowIfNegative(subset);
-        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(subset, _partition.numParts);
-
-        _endpoints[subset] = ColorEndpointPair.Ldr(firstEndpoint, secondEndpoint);
-    }
-
-    public void SetDualPlaneChannel(int channel)
-    {
-        if (channel < 0) { _dualPlane = null; }
-        else if (_dualPlane != null) { _dualPlane.Channel = channel; }
-        else { _dualPlane = new DualPlaneData { Channel = channel, Weights = (int[])_weights.Clone() }; }
-    }
-
-    public bool IsDualPlane() => _dualPlane is not null;
-
-    public static LogicalBlock? UnpackLogicalBlock(Footprint footprint, UInt128 bits, in BlockInfo info)
-    {
-        if (!info.IsValid) return null;
-
-        if (info.IsVoidExtent)
-        {
-            // Void extent blocks are rare; fall back to existing PhysicalBlock path
-            var pb = PhysicalBlock.Create(bits);
-            var voidExtentData = IntermediateBlock.UnpackVoidExtent(pb);
-            if (voidExtentData is null) return null;
-
-            return new LogicalBlock(footprint, voidExtentData.Value);
-        }
-        else
-        {
-            return new LogicalBlock(footprint, bits, in info);
-        }
+        public int Channel;
+        public int[] Weights = [];
     }
 }
