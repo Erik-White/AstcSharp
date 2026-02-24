@@ -5,7 +5,7 @@ using AstcSharp.Core;
 
 namespace AstcSharp.TexelBlock;
 
-internal class LogicalBlock
+internal sealed class LogicalBlock
 {
     private ColorEndpointPair[] _endpoints;
     private int _endpointCount;
@@ -20,13 +20,13 @@ internal class LogicalBlock
         _weights = new int[footprint.PixelCount];
         _partition = new Partition(footprint, 1, 0)
         {
-            assignment = new int[footprint.PixelCount]
+            Assignment = new int[footprint.PixelCount]
         };
     }
 
     public LogicalBlock(Footprint footprint, in IntermediateBlock.IntermediateBlockData block)
     {
-        _endpoints = new ColorEndpointPair[block.endpointCount];
+        _endpoints = new ColorEndpointPair[block.EndpointCount];
         _endpointCount = DecodeEndpoints(in block, _endpoints);
         _partition = ComputePartition(footprint, in block);
         _weights = new int[footprint.PixelCount];
@@ -114,7 +114,7 @@ internal class LogicalBlock
         }
     }
 
-    public Footprint GetFootprint() => _partition.footprint;
+    public Footprint GetFootprint() => _partition.Footprint;
 
     public void SetWeightAt(int x, int y, int weight)
     {
@@ -160,7 +160,7 @@ internal class LogicalBlock
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(y, footprint.Height);
 
         int index = y * footprint.Width + x;
-        int part = _partition.assignment[index];
+        int part = _partition.Assignment[index];
         ref var endpoint = ref _endpoints[part];
 
         int weight = _weights[index];
@@ -208,7 +208,7 @@ internal class LogicalBlock
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(y, footprint.Height);
 
         int index = y * footprint.Width + x;
-        int part = _partition.assignment[index];
+        int part = _partition.Assignment[index];
         ref var endpoint = ref _endpoints[part];
 
         int weight = _weights[index];
@@ -269,7 +269,7 @@ internal class LogicalBlock
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(y, footprint.Height);
 
         int index = y * footprint.Width + x;
-        int part = _partition.assignment[index];
+        int part = _partition.Assignment[index];
         ref var endpoint = ref _endpoints[part];
 
         int weight = _weights[index];
@@ -322,7 +322,7 @@ internal class LogicalBlock
     {
         ref var endpoint0 = ref _endpoints[0];
 
-        if (!endpoint0.IsHdr && _partition.numParts == 1)
+        if (!endpoint0.IsHdr && _partition.PartitionCount == 1)
         {
             // Fast path: single-partition LDR block (most common case)
             int lowR = endpoint0.LdrLow.R, lowG = endpoint0.LdrLow.G, lowB = endpoint0.LdrLow.B, lowA = endpoint0.LdrLow.A;
@@ -355,24 +355,24 @@ internal class LogicalBlock
 
     public void SetPartition(Partition p)
     {
-        if (!p.footprint.Equals(_partition.footprint))
+        if (!p.Footprint.Equals(_partition.Footprint))
             throw new InvalidOperationException("New partitions may not be for a different footprint");
         _partition = p;
-        if (_endpointCount < p.numParts)
+        if (_endpointCount < p.PartitionCount)
         {
-            var newEndpoints = new ColorEndpointPair[p.numParts];
+            var newEndpoints = new ColorEndpointPair[p.PartitionCount];
             Array.Copy(_endpoints, newEndpoints, _endpointCount);
-            for (int i = _endpointCount; i < p.numParts; i++)
+            for (int i = _endpointCount; i < p.PartitionCount; i++)
                 newEndpoints[i] = ColorEndpointPair.Ldr(RgbaColor.Empty, RgbaColor.Empty);
             _endpoints = newEndpoints;
         }
-        _endpointCount = p.numParts;
+        _endpointCount = p.PartitionCount;
     }
 
     public void SetEndpoints(RgbaColor firstEndpoint, RgbaColor secondEndpoint, int subset)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(subset);
-        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(subset, _partition.numParts);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(subset, _partition.PartitionCount);
 
         _endpoints[subset] = ColorEndpointPair.Ldr(firstEndpoint, secondEndpoint);
     }
@@ -432,33 +432,33 @@ internal class LogicalBlock
 
     private static int DecodeEndpoints(in IntermediateBlock.IntermediateBlockData block, ColorEndpointPair[] endpointPair)
     {
-        int endpointRange = block.endpointRange ?? IntermediateBlock.EndpointRangeForBlock(block);
+        int endpointRange = block.EndpointRange ?? IntermediateBlock.EndpointRangeForBlock(block);
         if (endpointRange <= 0) throw new InvalidOperationException("Invalid endpoint range");
-        for (int i = 0; i < block.endpointCount; i++)
+        for (int i = 0; i < block.EndpointCount; i++)
         {
-            var ed = block.endpoints[i];
-            ReadOnlySpan<int> colorSpan = ((ReadOnlySpan<int>)ed.colors)[..ed.colorCount];
-            endpointPair[i] = EndpointCodec.DecodeColorsForModePolymorphic(colorSpan, endpointRange, ed.mode);
+            var ed = block.Endpoints[i];
+            ReadOnlySpan<int> colorSpan = ((ReadOnlySpan<int>)ed.Colors)[..ed.ColorCount];
+            endpointPair[i] = EndpointCodec.DecodeColorsForModePolymorphic(colorSpan, endpointRange, ed.Mode);
         }
-        return block.endpointCount;
+        return block.EndpointCount;
     }
 
     private static int DecodeEndpoints(IntermediateBlock.VoidExtentData block, ColorEndpointPair[] endpointPair)
     {
-        if (block.isHdr)
+        if (block.IsHdr)
         {
             // HDR void extent: ushort values are FP16 bit patterns (not LNS)
-            var hdrColor = new RgbaHdrColor(block.r, block.g, block.b, block.a);
+            var hdrColor = new RgbaHdrColor(block.R, block.G, block.B, block.A);
             endpointPair[0] = ColorEndpointPair.Hdr(hdrColor, hdrColor, valuesAreLns: false);
         }
         else
         {
             // LDR void extent: ushort values are UNORM16, convert to byte range
             var ldrColor = new RgbaColor(
-                (byte)(block.r >> 8),
-                (byte)(block.g >> 8),
-                (byte)(block.b >> 8),
-                (byte)(block.a >> 8));
+                (byte)(block.R >> 8),
+                (byte)(block.G >> 8),
+                (byte)(block.B >> 8),
+                (byte)(block.A >> 8));
             endpointPair[0] = ColorEndpointPair.Ldr(ldrColor, ldrColor);
         }
         return 1;
@@ -468,13 +468,13 @@ internal class LogicalBlock
     {
         return new Partition(footprint, 1, 0)
         {
-            assignment = new int[footprint.PixelCount]
+            Assignment = new int[footprint.PixelCount]
         };
     }
 
     private static Partition ComputePartition(Footprint footprint, in IntermediateBlock.IntermediateBlockData block)
-        => block.partitionId.HasValue
-            ? Partition.GetASTCPartition(footprint, block.endpointCount, block.partitionId.Value)
+        => block.PartitionId.HasValue
+            ? Partition.GetASTCPartition(footprint, block.EndpointCount, block.PartitionId.Value)
             : GenerateSinglePartition(footprint);
 
     private static Partition ComputePartition(Footprint footprint, IntermediateBlock.VoidExtentData block)
@@ -482,31 +482,31 @@ internal class LogicalBlock
 
     private void CalculateWeights(Footprint footprint, in IntermediateBlock.IntermediateBlockData block)
     {
-        int gridSize = block.weightGridX * block.weightGridY;
-        int weightFrequency = block.dualPlaneChannel.HasValue ? 2 : 1;
+        int gridSize = block.WeightGridX * block.WeightGridY;
+        int weightFrequency = block.DualPlaneChannel.HasValue ? 2 : 1;
 
         // Get decimation info once for both planes
-        var decimationInfo = DecimationTable.Get(footprint, block.weightGridX, block.weightGridY);
+        var decimationInfo = DecimationTable.Get(footprint, block.WeightGridX, block.WeightGridY);
 
         // stackalloc avoids per-block heap allocation (max 12×12 = 144 ints = 576 bytes)
         Span<int> unquantized = stackalloc int[gridSize];
         for (int i = 0; i < gridSize; ++i)
         {
             unquantized[i] = Quantization.UnquantizeWeightFromRange(
-                block.weights[i * weightFrequency], block.weightRange);
+                block.Weights[i * weightFrequency], block.WeightRange);
         }
         DecimationTable.InfillWeights(unquantized, decimationInfo, _weights);
 
-        if (block.dualPlaneChannel.HasValue)
+        if (block.DualPlaneChannel.HasValue)
         {
             var dualPlane = new DualPlaneData();
-            dualPlane.Channel = block.dualPlaneChannel.Value;
+            dualPlane.Channel = block.DualPlaneChannel.Value;
             dualPlane.Weights = new int[footprint.PixelCount];
             _dualPlane = dualPlane;
             for (int i = 0; i < gridSize; ++i)
             {
                 unquantized[i] = Quantization.UnquantizeWeightFromRange(
-                    block.weights[i * weightFrequency + 1], block.weightRange);
+                    block.Weights[i * weightFrequency + 1], block.WeightRange);
             }
             DecimationTable.InfillWeights(unquantized, decimationInfo, _dualPlane.Weights);
         }
@@ -574,7 +574,7 @@ internal class LogicalBlock
         int pixelCount = footprint.PixelCount;
         for (int i = 0; i < pixelCount; i++)
         {
-            int part = _partition.assignment[i];
+            int part = _partition.Assignment[i];
             ref var endpoint = ref _endpoints[part];
 
             int weight = _weights[i];

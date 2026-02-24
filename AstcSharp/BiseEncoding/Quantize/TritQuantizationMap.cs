@@ -1,6 +1,6 @@
 namespace AstcSharp.BiseEncoding.Quantize;
 
-internal class TritQuantizationMap : QuantizationMap
+internal sealed class TritQuantizationMap : QuantizationMap
 {
     public TritQuantizationMap(int range, Func<int, int, int, int> unquantFunc)
     {

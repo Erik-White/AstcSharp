@@ -38,7 +38,7 @@ internal static class RgbaColorExtensions
 
     public static RgbaColor AsOffsetFrom(this RgbaColor color, RgbaColor baseColor)
     {
-        var offset = new int[] { color.R, color.G, color.B, color.A };
+        int[] offset = [color.R, color.G, color.B, color.A];
 
         for (int i = 0; i < RgbaColor.BytesPerPixel; ++i)
         {

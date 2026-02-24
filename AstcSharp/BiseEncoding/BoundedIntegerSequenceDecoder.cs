@@ -2,7 +2,7 @@ using AstcSharp.IO;
 
 namespace AstcSharp.BiseEncoding;
 
-internal class BoundedIntegerSequenceDecoder : BoundedIntegerSequenceCodec
+internal sealed class BoundedIntegerSequenceDecoder : BoundedIntegerSequenceCodec
 {
 
     private static readonly BoundedIntegerSequenceDecoder?[] _cache = new BoundedIntegerSequenceDecoder?[256];

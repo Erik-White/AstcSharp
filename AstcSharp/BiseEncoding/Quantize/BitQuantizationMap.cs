@@ -1,6 +1,6 @@
 namespace AstcSharp.BiseEncoding.Quantize;
 
-internal class BitQuantizationMap : QuantizationMap
+internal sealed class BitQuantizationMap : QuantizationMap
 {
     // TotalUnquantizedBits is 8 for endpoint values and 6 for weights
     public BitQuantizationMap(int range, int totalUnquantizedBits)

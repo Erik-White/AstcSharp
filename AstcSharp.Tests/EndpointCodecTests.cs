@@ -319,20 +319,20 @@ public class EndpointCodecTests
             var ib = intermediateBlock!.Value;
 
             // Verify endpoints exist
-            ib.endpointCount.Should().BeGreaterThan(0, "block should have endpoints");
+            ib.EndpointCount.Should().BeGreaterThan(0, "block should have endpoints");
 
             int colorRange = IntermediateBlock.EndpointRangeForBlock(ib);
             colorRange.Should().BeGreaterThan(0, "color range should be valid");
 
             // Check all endpoint pairs decode successfully to grayscale colors
-            for (int ep = 0; ep < ib.endpointCount; ep++)
+            for (int ep = 0; ep < ib.EndpointCount; ep++)
             {
-                var endpoints = ib.endpoints[ep];
-                ReadOnlySpan<int> colorSpan = ((ReadOnlySpan<int>)endpoints.colors)[..endpoints.colorCount];
+                var endpoints = ib.Endpoints[ep];
+                ReadOnlySpan<int> colorSpan = ((ReadOnlySpan<int>)endpoints.Colors)[..endpoints.ColorCount];
                 var (low, high) = EndpointCodec.DecodeColorsForMode(
                     colorSpan,
                     colorRange,
-                    endpoints.mode);
+                    endpoints.Mode);
 
                 // Assert - Checkerboard should produce grayscale colors (R == G == B)
                 low.R.Should().Be(low.G, $"block {i} low endpoint should be grayscale");
