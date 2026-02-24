@@ -38,10 +38,10 @@ internal static class BitOperations
         if (length <= 0)
             return 0UL;
 
-        int total_bits = sizeof(ulong) * 8;
-        ulong mask = length == total_bits
+        int totalBits = sizeof(ulong) * 8;
+        ulong mask = length == totalBits
             ? ~0UL
-            : ~0UL >> (total_bits - length);
+            : ~0UL >> (totalBits - length);
 
         return (value >> start) & mask;
     }

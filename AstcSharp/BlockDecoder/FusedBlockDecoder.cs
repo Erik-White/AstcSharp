@@ -29,7 +29,7 @@ internal static class FusedBlockDecoder
 
         // 2. Batch unquantize color values, then decode endpoint pair
         Quantization.UnquantizeCEValuesBatch(colors, colorCount, info.ColorValuesRange);
-        var ep = EndpointCodec.DecodeColorsForModePolymorphicUnquantized(colors, info.EndpointMode0);
+        var endpointPair = EndpointCodec.DecodeColorsForModePolymorphicUnquantized(colors, info.EndpointMode0);
 
         // 3. BISE decode weights
         int gridSize = info.GridWidth * info.GridHeight;
@@ -46,11 +46,11 @@ internal static class FusedBlockDecoder
         }
         else
         {
-            var di = DecimationTable.Get(footprint, info.GridWidth, info.GridHeight);
-            DecimationTable.InfillWeights(gridWeights, di, texelWeights);
+            var decimationInfo = DecimationTable.Get(footprint, info.GridWidth, info.GridHeight);
+            DecimationTable.InfillWeights(gridWeights, decimationInfo, texelWeights);
         }
 
-        return ep;
+        return endpointPair;
     }
 
     /// <summary>
@@ -83,21 +83,21 @@ internal static class FusedBlockDecoder
             {
                 // Spans both halves — use UInt128 shift then extract from low
                 var shifted = (bits >> startBit) & UInt128Extensions.OnesMask(totalBits);
-                ulong lo = shifted.Low();
-                ulong hi = shifted.High();
+                ulong lowBits = shifted.Low();
+                ulong highBits = shifted.High();
                 int bitPos = 0;
                 for (int i = 0; i < valuesCount; i++)
                 {
                     if (bitPos < 64)
                     {
-                        ulong val = (lo >> bitPos) & mask;
+                        ulong val = (lowBits >> bitPos) & mask;
                         if (bitPos + bitsPerValue > 64)
-                            val |= (hi << (64 - bitPos)) & mask;
+                            val |= (highBits << (64 - bitPos)) & mask;
                         result[i] = (int)val;
                     }
                     else
                     {
-                        result[i] = (int)((hi >> (bitPos - 64)) & mask);
+                        result[i] = (int)((highBits >> (bitPos - 64)) & mask);
                     }
                     bitPos += bitsPerValue;
                 }
@@ -140,21 +140,21 @@ internal static class FusedBlockDecoder
             }
             else
             {
-                ulong lo = weightBits.Low();
-                ulong hi = weightBits.High();
+                ulong lowBits = weightBits.Low();
+                ulong highBits = weightBits.High();
                 int bitPos = 0;
                 for (int i = 0; i < count; i++)
                 {
                     if (bitPos < 64)
                     {
-                        ulong val = (lo >> bitPos) & mask;
+                        ulong val = (lowBits >> bitPos) & mask;
                         if (bitPos + bitsPerValue > 64)
-                            val |= (hi << (64 - bitPos)) & mask;
+                            val |= (highBits << (64 - bitPos)) & mask;
                         result[i] = (int)val;
                     }
                     else
                     {
-                        result[i] = (int)((hi >> (bitPos - 64)) & mask);
+                        result[i] = (int)((highBits >> (bitPos - 64)) & mask);
                     }
                     bitPos += bitsPerValue;
                 }

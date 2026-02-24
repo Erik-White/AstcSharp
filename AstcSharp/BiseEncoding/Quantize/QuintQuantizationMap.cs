@@ -6,12 +6,12 @@ internal class QuintQuantizationMap : QuantizationMap
     {
         ArgumentOutOfRangeException.ThrowIfNotEqual((range + 1) % 5, 0);
 
-        int num_bits_pow_2 = (range + 1) / 5;
-        int num_bits = num_bits_pow_2 == 0 ? 0 : Log2Floor(num_bits_pow_2);
+        int bitsPowerOfTwo = (range + 1) / 5;
+        int bitCount = bitsPowerOfTwo == 0 ? 0 : Log2Floor(bitsPowerOfTwo);
 
         for (int quint = 0; quint < 5; ++quint)
-            for (int bits = 0; bits < (1 << num_bits); ++bits)
-                unquantization_map_builder.Add(unquantFunc(quint, bits, range));
+            for (int bits = 0; bits < (1 << bitCount); ++bits)
+                unquantizationMapBuilder.Add(unquantFunc(quint, bits, range));
 
         GenerateQuantizationMap();
         Freeze();

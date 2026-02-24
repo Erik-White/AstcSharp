@@ -2,52 +2,52 @@ namespace AstcSharp.BiseEncoding.Quantize;
 
 internal class QuantizationMap
 {
-    protected List<int> quantization_map_builder = [];
-    protected List<int> unquantization_map_builder = [];
+    protected List<int> quantizationMapBuilder = [];
+    protected List<int> unquantizationMapBuilder = [];
 
     // Flat arrays for O(1) lookup on the hot path (set by Freeze)
-    private int[] quantization_map_ = [];
-    private int[] unquantization_map_ = [];
+    private int[] quantizationMap = [];
+    private int[] unquantizationMap = [];
 
     public int Quantize(int x)
-        => (uint)x < (uint)quantization_map_.Length ? quantization_map_[x] : 0;
+        => (uint)x < (uint)quantizationMap.Length ? quantizationMap[x] : 0;
 
     public int Unquantize(int x)
-        => (uint)x < (uint)unquantization_map_.Length ? unquantization_map_[x] : 0;
+        => (uint)x < (uint)unquantizationMap.Length ? unquantizationMap[x] : 0;
 
     /// <summary>
     /// Converts builder lists to flat arrays. Called after construction is complete.
     /// </summary>
     protected void Freeze()
     {
-        unquantization_map_ = [.. unquantization_map_builder];
-        quantization_map_ = [.. quantization_map_builder];
-        unquantization_map_builder = [];
-        quantization_map_builder = [];
+        unquantizationMap = [.. unquantizationMapBuilder];
+        quantizationMap = [.. quantizationMapBuilder];
+        unquantizationMapBuilder = [];
+        quantizationMapBuilder = [];
     }
 
     protected void GenerateQuantizationMap()
     {
-        if (unquantization_map_builder.Count <= 1) return;
-        quantization_map_builder.Clear();
+        if (unquantizationMapBuilder.Count <= 1) return;
+        quantizationMapBuilder.Clear();
         for (int i = 0; i < 256; ++i)
         {
-            int bestIdx = 0;
+            int bestIndex = 0;
             int bestScore = int.MaxValue;
-            for (int idx = 0; idx < unquantization_map_builder.Count; ++idx)
+            for (int index = 0; index < unquantizationMapBuilder.Count; ++index)
             {
-                int diff = i - unquantization_map_builder[idx];
+                int diff = i - unquantizationMapBuilder[index];
                 int score = diff * diff;
-                if (score < bestScore) { bestIdx = idx; bestScore = score; }
+                if (score < bestScore) { bestIndex = index; bestScore = score; }
             }
-            quantization_map_builder.Add(bestIdx);
+            quantizationMapBuilder.Add(bestIndex);
         }
     }
 
-    internal static int Log2Floor(int v)
+    internal static int Log2Floor(int value)
     {
-        int r = 0;
-        while ((1 << (r + 1)) <= v) r++;
-        return r;
+        int result = 0;
+        while ((1 << (result + 1)) <= value) result++;
+        return result;
     }
 }

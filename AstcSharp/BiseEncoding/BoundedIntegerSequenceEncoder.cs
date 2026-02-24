@@ -56,69 +56,69 @@ internal class BoundedIntegerSequenceEncoder : BoundedIntegerSequenceCodec
     /// </summary>
     public void Reset() => _values.Clear();
 
-    private static void EncodeISEBlock<T>(List<int> vals, int bits_per_val, ref BitStream bit_sink, ref int bits_written, int total_num_bits) where T : unmanaged
+    private static void EncodeISEBlock<T>(List<int> values, int bitsPerValue, ref BitStream bitSink, ref int bitsWritten, int totalBitCount) where T : unmanaged
     {
-        int kNumVals = vals.Count;
-        int valRange = (kNumVals == 3) ? 5 : 3;
-        int num_bits_per_block = (valRange == 5) ? 7 : 8;
-        int[] kInterleavedBits = (valRange == 5) ? InterleavedQuintBits : InterleavedTritBits;
+        int valueCount = values.Count;
+        int valueRange = (valueCount == 3) ? 5 : 3;
+        int bitsPerBlock = (valueRange == 5) ? 7 : 8;
+        int[] interleavedBits = (valueRange == 5) ? InterleavedQuintBits : InterleavedTritBits;
 
-        var non_bits = new int[kNumVals];
-        var bits = new int[kNumVals];
-        for (int i = 0; i < kNumVals; ++i)
+        var nonBitComponents = new int[valueCount];
+        var bitComponents = new int[valueCount];
+        for (int i = 0; i < valueCount; ++i)
         {
-            bits[i] = vals[i] & ((1 << bits_per_val) - 1);
-            non_bits[i] = vals[i] >> bits_per_val;
+            bitComponents[i] = values[i] & ((1 << bitsPerValue) - 1);
+            nonBitComponents[i] = values[i] >> bitsPerValue;
         }
 
         // Determine how many interleaved bits for this block given the global
-        // total_num_bits and how many bits have already been written.
-        int temp_bits_added = bits_written;
-        int num_encoded_bits = 0;
-        for (int i = 0; i < kNumVals; ++i)
+        // totalBitCount and how many bits have already been written.
+        int tempBitsAdded = bitsWritten;
+        int encodedBitCount = 0;
+        for (int i = 0; i < valueCount; ++i)
         {
-            temp_bits_added += bits_per_val;
-            if (temp_bits_added >= total_num_bits) break;
-            num_encoded_bits += kInterleavedBits[i];
-            temp_bits_added += kInterleavedBits[i];
-            if (temp_bits_added >= total_num_bits) break;
+            tempBitsAdded += bitsPerValue;
+            if (tempBitsAdded >= totalBitCount) break;
+            encodedBitCount += interleavedBits[i];
+            tempBitsAdded += interleavedBits[i];
+            if (tempBitsAdded >= totalBitCount) break;
         }
 
-        int non_bit_encoding = -1;
-        for (int j = (1 << num_encoded_bits) - 1; j >= 0; --j)
+        int nonBitEncoding = -1;
+        for (int j = (1 << encodedBitCount) - 1; j >= 0; --j)
         {
             bool matches = true;
-            for (int i = 0; i < kNumVals; ++i)
+            for (int i = 0; i < valueCount; ++i)
             {
-                if (valRange == 5)
+                if (valueRange == 5)
                 {
-                    if (QuintEncodings[j][i] != non_bits[i]) { matches = false; break; }
+                    if (QuintEncodings[j][i] != nonBitComponents[i]) { matches = false; break; }
                 }
                 else
                 {
-                    if (TritEncodings[j][i] != non_bits[i]) { matches = false; break; }
+                    if (TritEncodings[j][i] != nonBitComponents[i]) { matches = false; break; }
                 }
             }
-            if (matches) { non_bit_encoding = j; break; }
+            if (matches) { nonBitEncoding = j; break; }
         }
 
-        if (non_bit_encoding < 0) throw new InvalidOperationException();
+        if (nonBitEncoding < 0) throw new InvalidOperationException();
 
-        int non_bit_encoding_copy = non_bit_encoding;
-        for (int i = 0; i < kNumVals; ++i)
+        int nonBitEncodingCopy = nonBitEncoding;
+        for (int i = 0; i < valueCount; ++i)
         {
-            if (bits_written + bits_per_val <= total_num_bits)
+            if (bitsWritten + bitsPerValue <= totalBitCount)
             {
-                bit_sink.PutBits((uint)bits[i], bits_per_val);
-                bits_written += bits_per_val;
+                bitSink.PutBits((uint)bitComponents[i], bitsPerValue);
+                bitsWritten += bitsPerValue;
             }
-            int num_int_bits = kInterleavedBits[i];
-            int int_bits = non_bit_encoding_copy & ((1 << num_int_bits) - 1);
-            if (bits_written + num_int_bits <= total_num_bits)
+            int interleavedBitCount = interleavedBits[i];
+            int interleavedBitsValue = nonBitEncodingCopy & ((1 << interleavedBitCount) - 1);
+            if (bitsWritten + interleavedBitCount <= totalBitCount)
             {
-                bit_sink.PutBits((uint)int_bits, num_int_bits);
-                bits_written += num_int_bits;
-                non_bit_encoding_copy >>= num_int_bits;
+                bitSink.PutBits((uint)interleavedBitsValue, interleavedBitCount);
+                bitsWritten += interleavedBitCount;
+                nonBitEncodingCopy >>= interleavedBitCount;
             }
         }
     }

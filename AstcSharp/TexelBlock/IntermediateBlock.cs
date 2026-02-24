@@ -64,8 +64,8 @@ internal static class IntermediateBlock
     }
 
     // Returns the maximum endpoint value range or negative on error
-    private const int kEndpointRange_ReturnInvalidWeightDims = -1;
-    private const int kEndpointRange_ReturnNotEnoughColorBits = -2;
+    private const int EndpointRangeInvalidWeightDimensions = -1;
+    private const int EndpointRangeNotEnoughColorBits = -2;
 
     private static (string? error, int[] range) GetEncodedWeightRange(int range)
     {
@@ -74,104 +74,104 @@ internal static class IntermediateBlock
             new[]{0,1,0}, new[]{1,1,0}, new[]{0,0,1}, new[]{1,0,1}, new[]{0,1,1}, new[]{1,1,1}
         };
 
-        int smallest_range = _validWeightRanges.First();
-        int largest_range = _validWeightRanges.Last();
-        if (range < smallest_range || largest_range < range)
+        int smallestRange = _validWeightRanges.First();
+        int largestRange = _validWeightRanges.Last();
+        if (range < smallestRange || largestRange < range)
         {
-            return ($"Could not find block mode. Invalid weight range: {range} not in [{smallest_range}, {largest_range}]", new int[3]);
+            return ($"Could not find block mode. Invalid weight range: {range} not in [{smallestRange}, {largestRange}]", new int[3]);
         }
 
-        int idx = Array.FindIndex(_validWeightRanges, v => v >= range);
-        if (idx < 0) idx = _validWeightRanges.Length - 1;
-        var enc = kValidRangeEncodings[idx];
-        return (null, [enc[0], enc[1], enc[2]]);
+        int index = Array.FindIndex(_validWeightRanges, v => v >= range);
+        if (index < 0) index = _validWeightRanges.Length - 1;
+        var encoding = kValidRangeEncodings[index];
+        return (null, [encoding[0], encoding[1], encoding[2]]);
     }
 
     private struct BlockModeInfo
     {
-        public int min_weight_grid_dim_x;
-        public int max_weight_grid_dim_x;
-        public int min_weight_grid_dim_y;
-        public int max_weight_grid_dim_y;
-        public int r0_bit_pos;
-        public int r1_bit_pos;
-        public int r2_bit_pos;
-        public int weight_grid_x_offset_bit_pos;
-        public int weight_grid_y_offset_bit_pos;
-        public bool require_single_plane_low_prec;
+        public int minWeightGridDimX;
+        public int maxWeightGridDimX;
+        public int minWeightGridDimY;
+        public int maxWeightGridDimY;
+        public int r0BitPos;
+        public int r1BitPos;
+        public int r2BitPos;
+        public int weightGridXOffsetBitPos;
+        public int weightGridYOffsetBitPos;
+        public bool requireSinglePlaneLowPrec;
     }
 
-    private static readonly BlockModeInfo[] kBlockModeInfo = new BlockModeInfo[]{
-        new BlockModeInfo{ min_weight_grid_dim_x=4, max_weight_grid_dim_x=7, min_weight_grid_dim_y=2, max_weight_grid_dim_y=5, r0_bit_pos=4, r1_bit_pos=0, r2_bit_pos=1, weight_grid_x_offset_bit_pos=7, weight_grid_y_offset_bit_pos=5, require_single_plane_low_prec=false },
-        new BlockModeInfo{ min_weight_grid_dim_x=8, max_weight_grid_dim_x=11, min_weight_grid_dim_y=2, max_weight_grid_dim_y=5, r0_bit_pos=4, r1_bit_pos=0, r2_bit_pos=1, weight_grid_x_offset_bit_pos=7, weight_grid_y_offset_bit_pos=5, require_single_plane_low_prec=false },
-        new BlockModeInfo{ min_weight_grid_dim_x=2, max_weight_grid_dim_x=5, min_weight_grid_dim_y=8, max_weight_grid_dim_y=11, r0_bit_pos=4, r1_bit_pos=0, r2_bit_pos=1, weight_grid_x_offset_bit_pos=5, weight_grid_y_offset_bit_pos=7, require_single_plane_low_prec=false },
-        new BlockModeInfo{ min_weight_grid_dim_x=2, max_weight_grid_dim_x=5, min_weight_grid_dim_y=6, max_weight_grid_dim_y=7, r0_bit_pos=4, r1_bit_pos=0, r2_bit_pos=1, weight_grid_x_offset_bit_pos=5, weight_grid_y_offset_bit_pos=7, require_single_plane_low_prec=false },
-        new BlockModeInfo{ min_weight_grid_dim_x=2, max_weight_grid_dim_x=3, min_weight_grid_dim_y=2, max_weight_grid_dim_y=5, r0_bit_pos=4, r1_bit_pos=0, r2_bit_pos=1, weight_grid_x_offset_bit_pos=7, weight_grid_y_offset_bit_pos=5, require_single_plane_low_prec=false },
-        new BlockModeInfo{ min_weight_grid_dim_x=12, max_weight_grid_dim_x=12, min_weight_grid_dim_y=2, max_weight_grid_dim_y=5, r0_bit_pos=4, r1_bit_pos=2, r2_bit_pos=3, weight_grid_x_offset_bit_pos=-1, weight_grid_y_offset_bit_pos=5, require_single_plane_low_prec=false },
-        new BlockModeInfo{ min_weight_grid_dim_x=2, max_weight_grid_dim_x=5, min_weight_grid_dim_y=12, max_weight_grid_dim_y=12, r0_bit_pos=4, r1_bit_pos=2, r2_bit_pos=3, weight_grid_x_offset_bit_pos=5, weight_grid_y_offset_bit_pos=-1, require_single_plane_low_prec=false },
-        new BlockModeInfo{ min_weight_grid_dim_x=6, max_weight_grid_dim_x=6, min_weight_grid_dim_y=10, max_weight_grid_dim_y=10, r0_bit_pos=4, r1_bit_pos=2, r2_bit_pos=3, weight_grid_x_offset_bit_pos=-1, weight_grid_y_offset_bit_pos=-1, require_single_plane_low_prec=false },
-        new BlockModeInfo{ min_weight_grid_dim_x=10, max_weight_grid_dim_x=10, min_weight_grid_dim_y=6, max_weight_grid_dim_y=6, r0_bit_pos=4, r1_bit_pos=2, r2_bit_pos=3, weight_grid_x_offset_bit_pos=-1, weight_grid_y_offset_bit_pos=-1, require_single_plane_low_prec=false },
-        new BlockModeInfo{ min_weight_grid_dim_x=6, max_weight_grid_dim_x=9, min_weight_grid_dim_y=6, max_weight_grid_dim_y=9, r0_bit_pos=4, r1_bit_pos=2, r2_bit_pos=3, weight_grid_x_offset_bit_pos=5, weight_grid_y_offset_bit_pos=9, require_single_plane_low_prec=true }
+    private static readonly BlockModeInfo[] blockModeInfoTable = new BlockModeInfo[]{
+        new BlockModeInfo{ minWeightGridDimX=4, maxWeightGridDimX=7, minWeightGridDimY=2, maxWeightGridDimY=5, r0BitPos=4, r1BitPos=0, r2BitPos=1, weightGridXOffsetBitPos=7, weightGridYOffsetBitPos=5, requireSinglePlaneLowPrec=false },
+        new BlockModeInfo{ minWeightGridDimX=8, maxWeightGridDimX=11, minWeightGridDimY=2, maxWeightGridDimY=5, r0BitPos=4, r1BitPos=0, r2BitPos=1, weightGridXOffsetBitPos=7, weightGridYOffsetBitPos=5, requireSinglePlaneLowPrec=false },
+        new BlockModeInfo{ minWeightGridDimX=2, maxWeightGridDimX=5, minWeightGridDimY=8, maxWeightGridDimY=11, r0BitPos=4, r1BitPos=0, r2BitPos=1, weightGridXOffsetBitPos=5, weightGridYOffsetBitPos=7, requireSinglePlaneLowPrec=false },
+        new BlockModeInfo{ minWeightGridDimX=2, maxWeightGridDimX=5, minWeightGridDimY=6, maxWeightGridDimY=7, r0BitPos=4, r1BitPos=0, r2BitPos=1, weightGridXOffsetBitPos=5, weightGridYOffsetBitPos=7, requireSinglePlaneLowPrec=false },
+        new BlockModeInfo{ minWeightGridDimX=2, maxWeightGridDimX=3, minWeightGridDimY=2, maxWeightGridDimY=5, r0BitPos=4, r1BitPos=0, r2BitPos=1, weightGridXOffsetBitPos=7, weightGridYOffsetBitPos=5, requireSinglePlaneLowPrec=false },
+        new BlockModeInfo{ minWeightGridDimX=12, maxWeightGridDimX=12, minWeightGridDimY=2, maxWeightGridDimY=5, r0BitPos=4, r1BitPos=2, r2BitPos=3, weightGridXOffsetBitPos=-1, weightGridYOffsetBitPos=5, requireSinglePlaneLowPrec=false },
+        new BlockModeInfo{ minWeightGridDimX=2, maxWeightGridDimX=5, minWeightGridDimY=12, maxWeightGridDimY=12, r0BitPos=4, r1BitPos=2, r2BitPos=3, weightGridXOffsetBitPos=5, weightGridYOffsetBitPos=-1, requireSinglePlaneLowPrec=false },
+        new BlockModeInfo{ minWeightGridDimX=6, maxWeightGridDimX=6, minWeightGridDimY=10, maxWeightGridDimY=10, r0BitPos=4, r1BitPos=2, r2BitPos=3, weightGridXOffsetBitPos=-1, weightGridYOffsetBitPos=-1, requireSinglePlaneLowPrec=false },
+        new BlockModeInfo{ minWeightGridDimX=10, maxWeightGridDimX=10, minWeightGridDimY=6, maxWeightGridDimY=6, r0BitPos=4, r1BitPos=2, r2BitPos=3, weightGridXOffsetBitPos=-1, weightGridYOffsetBitPos=-1, requireSinglePlaneLowPrec=false },
+        new BlockModeInfo{ minWeightGridDimX=6, maxWeightGridDimX=9, minWeightGridDimY=6, maxWeightGridDimY=9, r0BitPos=4, r1BitPos=2, r2BitPos=3, weightGridXOffsetBitPos=5, weightGridYOffsetBitPos=9, requireSinglePlaneLowPrec=true }
     };
 
-    private static readonly uint[] kBlockModeMask = { 0x0u, 0x4u, 0x8u, 0xCu, 0x10Cu, 0x0u, 0x80u, 0x180u, 0x1A0u, 0x100u };
+    private static readonly uint[] blockModeMasks = { 0x0u, 0x4u, 0x8u, 0xCu, 0x10Cu, 0x0u, 0x80u, 0x180u, 0x1A0u, 0x100u };
 
     private static string? PackBlockMode(int dimX, int dimY, int range, bool dualPlane, ref BitStream bitSink)
     {
         bool highPrec = range > 7;
-        var (maybeErr, rvals) = GetEncodedWeightRange(range);
+        var (maybeErr, rangeValues) = GetEncodedWeightRange(range);
         if (maybeErr != null) return maybeErr;
 
         // Ensure top two bits of r1 and r2 not both zero per reference
-        if ((rvals[1] | rvals[2]) <= 0)
-            throw new InvalidOperationException($"{nameof(rvals)}[1] | {nameof(rvals)}[2] must be > 0");
+        if ((rangeValues[1] | rangeValues[2]) <= 0)
+            throw new InvalidOperationException($"{nameof(rangeValues)}[1] | {nameof(rangeValues)}[2] must be > 0");
 
-        for (int mode = 0; mode < kBlockModeInfo.Length; ++mode)
+        for (int mode = 0; mode < blockModeInfoTable.Length; ++mode)
         {
-            var blockMode = kBlockModeInfo[mode];
+            var blockMode = blockModeInfoTable[mode];
             bool isValidMode = true;
-            isValidMode &= blockMode.min_weight_grid_dim_x <= dimX;
-            isValidMode &= dimX <= blockMode.max_weight_grid_dim_x;
-            isValidMode &= blockMode.min_weight_grid_dim_y <= dimY;
-            isValidMode &= dimY <= blockMode.max_weight_grid_dim_y;
-            isValidMode &= !(blockMode.require_single_plane_low_prec && dualPlane);
-            isValidMode &= !(blockMode.require_single_plane_low_prec && highPrec);
+            isValidMode &= blockMode.minWeightGridDimX <= dimX;
+            isValidMode &= dimX <= blockMode.maxWeightGridDimX;
+            isValidMode &= blockMode.minWeightGridDimY <= dimY;
+            isValidMode &= dimY <= blockMode.maxWeightGridDimY;
+            isValidMode &= !(blockMode.requireSinglePlaneLowPrec && dualPlane);
+            isValidMode &= !(blockMode.requireSinglePlaneLowPrec && highPrec);
 
             if (!isValidMode) continue;
 
-            uint encoded_mode = kBlockModeMask[mode];
+            uint encodedMode = blockModeMasks[mode];
             void setBit(uint value, int offset)
             {
                 if (offset < 0) return;
-                encoded_mode = (encoded_mode & ~(1u << offset)) | ((value & 1u) << offset);
+                encodedMode = (encodedMode & ~(1u << offset)) | ((value & 1u) << offset);
             }
 
-            setBit((uint)rvals[0], blockMode.r0_bit_pos);
-            setBit((uint)rvals[1], blockMode.r1_bit_pos);
-            setBit((uint)rvals[2], blockMode.r2_bit_pos);
+            setBit((uint)rangeValues[0], blockMode.r0BitPos);
+            setBit((uint)rangeValues[1], blockMode.r1BitPos);
+            setBit((uint)rangeValues[2], blockMode.r2BitPos);
 
-            int offsetX = dimX - blockMode.min_weight_grid_dim_x;
-            int offsetY = dimY - blockMode.min_weight_grid_dim_y;
+            int offsetX = dimX - blockMode.minWeightGridDimX;
+            int offsetY = dimY - blockMode.minWeightGridDimY;
 
-            if (blockMode.weight_grid_x_offset_bit_pos >= 0)
+            if (blockMode.weightGridXOffsetBitPos >= 0)
             {
-                encoded_mode |= (uint)(offsetX << blockMode.weight_grid_x_offset_bit_pos);
+                encodedMode |= (uint)(offsetX << blockMode.weightGridXOffsetBitPos);
             }
             else
             {
                 ArgumentOutOfRangeException.ThrowIfNotEqual(offsetX, 0);
             }
 
-            if (blockMode.weight_grid_y_offset_bit_pos >= 0)
+            if (blockMode.weightGridYOffsetBitPos >= 0)
             {
-                encoded_mode |= (uint)(offsetY << blockMode.weight_grid_y_offset_bit_pos);
+                encodedMode |= (uint)(offsetY << blockMode.weightGridYOffsetBitPos);
             }
             else
             {
                 ArgumentOutOfRangeException.ThrowIfNotEqual(offsetY, 0);
             }
 
-            if (!blockMode.require_single_plane_low_prec)
+            if (!blockMode.requireSinglePlaneLowPrec)
             {
                 setBit((uint)(highPrec ? 1u : 0u), 9);
                 setBit((uint)(dualPlane ? 1u : 0u), 10);
@@ -179,7 +179,7 @@ internal static class IntermediateBlock
 
             if (bitSink.Bits != 0)
                 throw new InvalidOperationException($"{nameof(bitSink)}.{nameof(bitSink.Bits)} must be 0");
-            bitSink.PutBits(encoded_mode, 11);
+            bitSink.PutBits(encodedMode, 11);
             return null;
         }
 
@@ -202,14 +202,14 @@ internal static class IntermediateBlock
     {
         var weightSink = new BitStream(0UL, 0);
         var weightsEncoder = new BoundedIntegerSequenceEncoder(data.weightRange);
-        int wc = data.weightsCount > 0 ? data.weightsCount : (data.weights?.Length ?? 0);
+        int weightCount = data.weightsCount > 0 ? data.weightsCount : (data.weights?.Length ?? 0);
         if (data.weights is null)
             throw new InvalidOperationException($"{nameof(data.weights)} is null in {nameof(EncodeWeights)}");
-        for (var i = 0; i < wc; i++) weightsEncoder.AddValue(data.weights[i]);
+        for (var i = 0; i < weightCount; i++) weightsEncoder.AddValue(data.weights[i]);
         weightsEncoder.Encode(ref weightSink);
 
         int weightBitsCount = (int)weightSink.Bits;
-        if ((int)weightSink.Bits != BoundedIntegerSequenceCodec.GetBitCountForRange(wc, data.weightRange))
+        if ((int)weightSink.Bits != BoundedIntegerSequenceCodec.GetBitCountForRange(weightCount, data.weightRange))
             throw new InvalidOperationException($"{nameof(weightSink)}.{nameof(weightSink.Bits)} does not match expected bit count");
 
         return (weightSink, weightBitsCount);
@@ -277,20 +277,20 @@ internal static class IntermediateBlock
 
     private static int ExtraConfigBitPosition(in IntermediateBlockData data)
     {
-        bool has_dual_channel = data.dualPlaneChannel.HasValue;
-        int num_weights = data.weightGridX * data.weightGridY * (has_dual_channel ? 2 : 1);
-        int num_weight_bits = BoundedIntegerSequenceCodec.GetBitCountForRange(num_weights, data.weightRange);
+        bool hasDualChannel = data.dualPlaneChannel.HasValue;
+        int weightCount = data.weightGridX * data.weightGridY * (hasDualChannel ? 2 : 1);
+        int weightBitCount = BoundedIntegerSequenceCodec.GetBitCountForRange(weightCount, data.weightRange);
 
-        int extra_config_bits = 0;
+        int extraConfigBitCount = 0;
         if (!SharedEndpointModes(data))
         {
-            int num_encoded_cem_bits = 2 + data.endpointCount * 3;
-            extra_config_bits = num_encoded_cem_bits - 6;
+            int encodedCemBitCount = 2 + data.endpointCount * 3;
+            extraConfigBitCount = encodedCemBitCount - 6;
         }
 
-        if (has_dual_channel) extra_config_bits += 2;
+        if (hasDualChannel) extraConfigBitCount += 2;
 
-        return 128 - num_weight_bits - extra_config_bits;
+        return 128 - weightBitCount - extraConfigBitCount;
     }
 
     public static IntermediateBlockData? UnpackIntermediateBlock(PhysicalBlock physicalBlock)
@@ -365,7 +365,7 @@ internal static class IntermediateBlock
     public static int EndpointRangeForBlock(in IntermediateBlockData data)
     {
         if (BoundedIntegerSequenceCodec.GetBitCountForRange(data.weightGridX * data.weightGridY * (data.dualPlaneChannel.HasValue ? 2 : 1), data.weightRange) > 96)
-            return kEndpointRange_ReturnInvalidWeightDims;
+            return EndpointRangeInvalidWeightDimensions;
 
         int partitionCount = data.endpointCount;
         int bitsWrittenCount = 11 + 2 + ((partitionCount > 1) ? 10 : 0) + ((partitionCount == 1) ? 4 : 6);
@@ -375,7 +375,7 @@ internal static class IntermediateBlock
         for (int i = 0; i < data.endpointCount; i++) colorValuesCount += data.endpoints[i].mode.GetColorValuesCount();
 
         int bitsNeededCount = (13 * colorValuesCount + 4) / 5;
-        if (availableColorBitsCount < bitsNeededCount) return kEndpointRange_ReturnNotEnoughColorBits;
+        if (availableColorBitsCount < bitsNeededCount) return EndpointRangeNotEnoughColorBits;
 
         int colorValueRange = byte.MaxValue;
         for (; colorValueRange > 1; --colorValueRange)
@@ -416,16 +416,16 @@ internal static class IntermediateBlock
         }
         else
         {
-            ushort all_ones = (ushort)((1 << 13) - 1);
-            for (int i = 0; i < 4; ++i) data.coords[i] = all_ones;
+            ushort allOnes = (ushort)((1 << 13) - 1);
+            for (int i = 0; i < 4; ++i) data.coords[i] = allOnes;
         }
 
         return data;
     }
 
-    public static (string? error, UInt128 pb) Pack(in IntermediateBlockData data)
+    public static (string? error, UInt128 physicalBlockBits) Pack(in IntermediateBlockData data)
     {
-        UInt128 pb = 0;
+        UInt128 physicalBlockBits = 0;
         int expectedWeightsCount = data.weightGridX * data.weightGridY * (data.dualPlaneChannel.HasValue ? 2 : 1);
         int actualWeightsCount = data.weightsCount > 0 ? data.weightsCount : (data.weights?.Length ?? 0);
         if (actualWeightsCount != expectedWeightsCount)
@@ -456,9 +456,9 @@ internal static class IntermediateBlock
         if (error != null) return (error, 0);
 
         int colorValueRange = data.endpointRange.HasValue ? data.endpointRange.Value : EndpointRangeForBlock(data);
-        if (colorValueRange == kEndpointRange_ReturnInvalidWeightDims)
-            throw new InvalidOperationException($"{nameof(colorValueRange)} must not be {nameof(kEndpointRange_ReturnInvalidWeightDims)}");
-        if (colorValueRange == kEndpointRange_ReturnNotEnoughColorBits)
+        if (colorValueRange == EndpointRangeInvalidWeightDimensions)
+            throw new InvalidOperationException($"{nameof(colorValueRange)} must not be {nameof(EndpointRangeInvalidWeightDimensions)}");
+        if (colorValueRange == EndpointRangeNotEnoughColorBits)
         {
             return ("Intermediate block emits illegal color range", 0);
         }
@@ -505,15 +505,15 @@ internal static class IntermediateBlock
             throw new InvalidOperationException();
 
         var combined = astcBits | UInt128Extensions.ReverseBits(revWeightBits);
-        pb = combined;
+        physicalBlockBits = combined;
 
-        var block = PhysicalBlock.Create(pb);
+        var block = PhysicalBlock.Create(physicalBlockBits);
         var illegal = block.IdentifyInvalidEncodingIssues();
 
-        return (illegal, pb);
+        return (illegal, physicalBlockBits);
     }
 
-    public static (string? error, UInt128 pb) Pack(VoidExtentData data)
+    public static (string? error, UInt128 physicalBlockBits) Pack(VoidExtentData data)
     {
         // Pack void extent
         // Assemble the 128-bit value explicitly: low 64 bits = RGBA (4x16)
@@ -527,28 +527,28 @@ internal static class IntermediateBlock
             low64 |= ((ulong)(data.coords[i] & 0x1FFF)) << (12 + 13 * i);
         }
 
-        UInt128 pb;
+        UInt128 physicalBlockBits;
         // Decide representation: if the RGBA low word is zero we emit the
         // compact single-ulong representation (low word = header+coords,
         // high word = 0) to match the reference tests. Otherwise the
         // low word holds RGBA and the high word holds header+coords.
         if (high64 == 0UL)
         {
-            pb = (UInt128)low64;
+            physicalBlockBits = (UInt128)low64;
             // using compact void extent representation
         }
         else
         {
-            pb = new UInt128(high64, low64);
+            physicalBlockBits = new UInt128(high64, low64);
             // using full void extent representation
         }
 
-        var block = PhysicalBlock.Create(pb);
+        var block = PhysicalBlock.Create(physicalBlockBits);
         var illegal = block.IdentifyInvalidEncodingIssues();
         if (illegal is not null)
         {
             throw new InvalidOperationException($"{nameof(Pack)}(void extent) produced illegal encoding");
         }
-        return (illegal, pb);
+        return (illegal, physicalBlockBits);
     }
 }

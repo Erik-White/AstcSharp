@@ -13,15 +13,15 @@ namespace AstcSharp.ColorEncoding
         public int? partitionId;
         public int[] assignment;
 
-        public Partition(Footprint f, int numParts, int? id = null)
+        public Partition(Footprint footprint, int numParts, int? id = null)
         {
-            footprint = f; this.numParts = numParts; partitionId = id; assignment = [];
+            this.footprint = footprint; this.numParts = numParts; partitionId = id; assignment = [];
         }
 
         public override bool Equals(object? obj)
         {
-            if (obj is not Partition p) return false;
-            return PartitionMetric(this, p) == 0;
+            if (obj is not Partition other) return false;
+            return PartitionMetric(this, other) == 0;
         }
 
         public override int GetHashCode() => HashCode.Combine(footprint, numParts, partitionId);
@@ -32,17 +32,17 @@ namespace AstcSharp.ColorEncoding
             ArgumentOutOfRangeException.ThrowIfNotEqual(a.footprint, b.footprint);
 
             const int kMaxNumSubsets = 4;
-            int w = a.footprint.Width;
-            int h = a.footprint.Height;
+            int width = a.footprint.Width;
+            int height = a.footprint.Height;
 
             var pairCounts = new List<(int a, int b, int count)>();
             for (int y = 0; y < 4; ++y) for (int x = 0; x < 4; ++x) pairCounts.Add((x, y, 0));
 
-            for (int y = 0; y < h; ++y)
+            for (int y = 0; y < height; ++y)
             {
-                for (int x = 0; x < w; ++x)
+                for (int x = 0; x < width; ++x)
                 {
-                    int idx = y * w + x;
+                    int idx = y * width + x;
                     int aVal = a.assignment[idx];
                     int bVal = b.assignment[idx];
                     pairCounts[bVal * 4 + aVal] = (aVal, bVal, pairCounts[bVal * 4 + aVal].count + 1);
@@ -52,21 +52,21 @@ namespace AstcSharp.ColorEncoding
             var sorted = pairCounts.OrderByDescending(p => p.count).ToList();
             var assigned = new bool[kMaxNumSubsets, kMaxNumSubsets];
             int pixelsMatched = 0;
-            foreach (var pc in sorted)
+            foreach (var pairCount in sorted)
             {
                 bool isAssigned = false;
                 for (int i = 0; i < kMaxNumSubsets; ++i)
                 {
-                    if (assigned[pc.a, i] || assigned[i, pc.b]) { isAssigned = true; break; }
+                    if (assigned[pairCount.a, i] || assigned[i, pairCount.b]) { isAssigned = true; break; }
                 }
                 if (!isAssigned)
                 {
-                    assigned[pc.a, pc.b] = true;
-                    pixelsMatched += pc.count;
+                    assigned[pairCount.a, pairCount.b] = true;
+                    pixelsMatched += pairCount.count;
                 }
             }
 
-            return w * h - pixelsMatched;
+            return width * height - pixelsMatched;
         }
 
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<(Footprint, int, int), Partition> _partitionCache = new();
@@ -92,57 +92,57 @@ namespace AstcSharp.ColorEncoding
         }
 
         // Very small port of selection function; behavior taken from C++ file.
-        private static int SelectASTCPartition(int seed, int x, int y, int z, int partitioncount, int num_pixels)
+        private static int SelectASTCPartition(int seed, int x, int y, int z, int partitionCount, int pixelCount)
         {
-            if (partitioncount <= 1) return 0;
-            if (num_pixels < 31) { x <<= 1; y <<= 1; z <<= 1; }
-            seed += (partitioncount - 1) * 1024;
-            uint rnum = (uint)seed;
-            rnum ^= rnum >> 15;
-            rnum -= rnum << 17;
-            rnum += rnum << 7;
-            rnum += rnum << 4;
-            rnum ^= rnum >> 5;
-            rnum += rnum << 16;
-            rnum ^= rnum >> 7;
-            rnum ^= rnum >> 3;
-            rnum ^= rnum << 6;
-            rnum ^= rnum >> 17;
+            if (partitionCount <= 1) return 0;
+            if (pixelCount < 31) { x <<= 1; y <<= 1; z <<= 1; }
+            seed += (partitionCount - 1) * 1024;
+            uint randomNumber = (uint)seed;
+            randomNumber ^= randomNumber >> 15;
+            randomNumber -= randomNumber << 17;
+            randomNumber += randomNumber << 7;
+            randomNumber += randomNumber << 4;
+            randomNumber ^= randomNumber >> 5;
+            randomNumber += randomNumber << 16;
+            randomNumber ^= randomNumber >> 7;
+            randomNumber ^= randomNumber >> 3;
+            randomNumber ^= randomNumber << 6;
+            randomNumber ^= randomNumber >> 17;
 
-            uint seed1 = rnum & 0xF;
-            uint seed2 = (rnum >> 4) & 0xF;
-            uint seed3 = (rnum >> 8) & 0xF;
-            uint seed4 = (rnum >> 12) & 0xF;
-            uint seed5 = (rnum >> 16) & 0xF;
-            uint seed6 = (rnum >> 20) & 0xF;
-            uint seed7 = (rnum >> 24) & 0xF;
-            uint seed8 = (rnum >> 28) & 0xF;
-            uint seed9 = (rnum >> 18) & 0xF;
-            uint seed10 = (rnum >> 22) & 0xF;
-            uint seed11 = (rnum >> 26) & 0xF;
-            uint seed12 = ((rnum >> 30) | (rnum << 2)) & 0xF;
+            uint seed1 = randomNumber & 0xF;
+            uint seed2 = (randomNumber >> 4) & 0xF;
+            uint seed3 = (randomNumber >> 8) & 0xF;
+            uint seed4 = (randomNumber >> 12) & 0xF;
+            uint seed5 = (randomNumber >> 16) & 0xF;
+            uint seed6 = (randomNumber >> 20) & 0xF;
+            uint seed7 = (randomNumber >> 24) & 0xF;
+            uint seed8 = (randomNumber >> 28) & 0xF;
+            uint seed9 = (randomNumber >> 18) & 0xF;
+            uint seed10 = (randomNumber >> 22) & 0xF;
+            uint seed11 = (randomNumber >> 26) & 0xF;
+            uint seed12 = ((randomNumber >> 30) | (randomNumber << 2)) & 0xF;
 
             seed1 *= seed1; seed2 *= seed2; seed3 *= seed3; seed4 *= seed4;
             seed5 *= seed5; seed6 *= seed6; seed7 *= seed7; seed8 *= seed8;
             seed9 *= seed9; seed10 *= seed10; seed11 *= seed11; seed12 *= seed12;
 
             int sh1, sh2, sh3;
-            if ((seed & 1) != 0) { sh1 = (seed & 2) != 0 ? 4 : 5; sh2 = (partitioncount == 3) ? 6 : 5; }
-            else { sh1 = (partitioncount == 3) ? 6 : 5; sh2 = (seed & 2) != 0 ? 4 : 5; }
+            if ((seed & 1) != 0) { sh1 = (seed & 2) != 0 ? 4 : 5; sh2 = (partitionCount == 3) ? 6 : 5; }
+            else { sh1 = (partitionCount == 3) ? 6 : 5; sh2 = (seed & 2) != 0 ? 4 : 5; }
             sh3 = (seed & 0x10) != 0 ? sh1 : sh2;
 
             seed1 >>= sh1; seed2 >>= sh2; seed3 >>= sh1; seed4 >>= sh2;
             seed5 >>= sh1; seed6 >>= sh2; seed7 >>= sh1; seed8 >>= sh2;
             seed9 >>= sh3; seed10 >>= sh3; seed11 >>= sh3; seed12 >>= sh3;
 
-            int a = (int)(seed1 * x + seed2 * y + seed11 * z + (rnum >> 14));
-            int b = (int)(seed3 * x + seed4 * y + seed12 * z + (rnum >> 10));
-            int c = (int)(seed5 * x + seed6 * y + seed9 * z + (rnum >> 6));
-            int d = (int)(seed7 * x + seed8 * y + seed10 * z + (rnum >> 2));
+            int a = (int)(seed1 * x + seed2 * y + seed11 * z + (randomNumber >> 14));
+            int b = (int)(seed3 * x + seed4 * y + seed12 * z + (randomNumber >> 10));
+            int c = (int)(seed5 * x + seed6 * y + seed9 * z + (randomNumber >> 6));
+            int d = (int)(seed7 * x + seed8 * y + seed10 * z + (randomNumber >> 2));
 
             a &= 0x3F; b &= 0x3F; c &= 0x3F; d &= 0x3F;
-            if (partitioncount <= 3) d = 0;
-            if (partitioncount <= 2) c = 0;
+            if (partitionCount <= 3) d = 0;
+            if (partitionCount <= 2) c = 0;
 
             if (a >= b && a >= c && a >= d) return 0;
             else if (b >= c && b >= d) return 1;

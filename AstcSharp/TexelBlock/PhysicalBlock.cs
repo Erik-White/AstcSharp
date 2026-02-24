@@ -127,11 +127,11 @@ internal readonly struct PhysicalBlock
         if (BitOperations.GetBits(bits, 10, 2).Low() != 0x3UL)
             return "Reserved bits set for void extent block";
 
-        ulong low_bits = bits.Low();
-        int c0 = (int)BitOperations.GetBits(low_bits, 12, 13);
-        int c1 = (int)BitOperations.GetBits(low_bits, 25, 13);
-        int c2 = (int)BitOperations.GetBits(low_bits, 38, 13);
-        int c3 = (int)BitOperations.GetBits(low_bits, 51, 13);
+        ulong lowBits = bits.Low();
+        int c0 = (int)BitOperations.GetBits(lowBits, 12, 13);
+        int c1 = (int)BitOperations.GetBits(lowBits, 25, 13);
+        int c2 = (int)BitOperations.GetBits(lowBits, 38, 13);
+        int c3 = (int)BitOperations.GetBits(lowBits, 51, 13);
 
         const int all1s = (1 << 13) - 1;
         bool coordsAll1s = c0 == all1s && c1 == all1s && c2 == all1s && c3 == all1s;
@@ -144,11 +144,11 @@ internal readonly struct PhysicalBlock
 
     internal static int[] DecodeVoidExtentCoordinates(UInt128 astcBits)
     {
-        ulong low_bits = astcBits.Low();
+        ulong lowBits = astcBits.Low();
         var coords = new int[4];
         for (int i = 0; i < 4; ++i)
         {
-            coords[i] = (int)BitOperations.GetBits(low_bits, 12 + 13 * i, 13);
+            coords[i] = (int)BitOperations.GetBits(lowBits, 12 + 13 * i, 13);
         }
         return coords;
     }

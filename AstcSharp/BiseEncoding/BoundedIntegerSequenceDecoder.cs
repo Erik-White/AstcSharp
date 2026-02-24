@@ -8,13 +8,13 @@ internal class BoundedIntegerSequenceDecoder : BoundedIntegerSequenceCodec
 
     public static BoundedIntegerSequenceDecoder GetCached(int range)
     {
-        var d = _cache[range];
-        if (d is null)
+        var decoder = _cache[range];
+        if (decoder is null)
         {
-            d = new BoundedIntegerSequenceDecoder(range);
-            _cache[range] = d;
+            decoder = new BoundedIntegerSequenceDecoder(range);
+            _cache[range] = decoder;
         }
-        return d;
+        return decoder;
     }
 
     public BoundedIntegerSequenceDecoder(int range) : base(range) { }

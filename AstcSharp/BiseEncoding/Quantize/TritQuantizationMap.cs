@@ -6,12 +6,12 @@ internal class TritQuantizationMap : QuantizationMap
     {
         ArgumentOutOfRangeException.ThrowIfNotEqual((range + 1) % 3, 0);
 
-        int num_bits_pow_2 = (range + 1) / 3;
-        int num_bits = num_bits_pow_2 == 0 ? 0 : Log2Floor(num_bits_pow_2);
+        int bitsPowerOfTwo = (range + 1) / 3;
+        int bitCount = bitsPowerOfTwo == 0 ? 0 : Log2Floor(bitsPowerOfTwo);
 
         for (int trit = 0; trit < 3; ++trit)
-            for (int bits = 0; bits < (1 << num_bits); ++bits)
-                unquantization_map_builder.Add(unquantFunc(trit, bits, range));
+            for (int bits = 0; bits < (1 << bitCount); ++bits)
+                unquantizationMapBuilder.Add(unquantFunc(trit, bits, range));
 
         GenerateQuantizationMap();
         Freeze();

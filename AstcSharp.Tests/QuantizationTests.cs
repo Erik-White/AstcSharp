@@ -9,7 +9,7 @@ public class QuantizationTests
     [Fact]
     public void QuantizeCEValueToRange_WithMaxValue_ShouldNotExceedRange()
     {
-        for (int range = Quantization.kEndpointRangeMinValue; range <= byte.MaxValue; range++)
+        for (int range = Quantization.EndpointRangeMinValue; range <= byte.MaxValue; range++)
         {
             Quantization.QuantizeCEValueToRange(byte.MaxValue, range).Should().BeLessThanOrEqualTo(range);
         }
@@ -18,7 +18,7 @@ public class QuantizationTests
     [Fact]
     public void QuantizeWeightToRange_WithMaxValue_ShouldNotExceedRange()
     {
-        for (int range = 1; range < Quantization.kWeightRangeMaxValue; range++)
+        for (int range = 1; range < Quantization.WeightRangeMaxValue; range++)
         {
             Quantization.QuantizeWeightToRange(64, range).Should().BeLessThanOrEqualTo(range);
         }
@@ -30,7 +30,7 @@ public class QuantizationTests
         var ranges = BoundedIntegerSequenceCodec.MaxRanges;
         var testValues = new[] { 0, 4, 15, 22, 66, 91, 126 };
 
-        foreach (var range in ranges.Where(r => r >= Quantization.kEndpointRangeMinValue))
+        foreach (var range in ranges.Where(r => r >= Quantization.EndpointRangeMinValue))
         {
             foreach (var value in testValues)
             {
@@ -45,7 +45,7 @@ public class QuantizationTests
         var ranges = BoundedIntegerSequenceCodec.MaxRanges;
         var testValues = new[] { 0, 4, 15, 22 };
 
-        foreach (var range in ranges.Where(r => r <= Quantization.kWeightRangeMaxValue))
+        foreach (var range in ranges.Where(r => r <= Quantization.WeightRangeMaxValue))
         {
             foreach (var value in testValues)
             {
@@ -59,7 +59,7 @@ public class QuantizationTests
     {
         var ranges = BoundedIntegerSequenceCodec.MaxRanges;
 
-        foreach (var range in ranges.Where(r => r <= Quantization.kWeightRangeMaxValue))
+        foreach (var range in ranges.Where(r => r <= Quantization.WeightRangeMaxValue))
         {
             for (int quantizedValue = 0; quantizedValue <= range; ++quantizedValue)
             {
@@ -76,7 +76,7 @@ public class QuantizationTests
     {
         var ranges = BoundedIntegerSequenceCodec.MaxRanges;
 
-        foreach (var range in ranges.Where(r => r >= Quantization.kEndpointRangeMinValue))
+        foreach (var range in ranges.Where(r => r >= Quantization.EndpointRangeMinValue))
         {
             for (int quantizedValue = 0; quantizedValue <= range; ++quantizedValue)
             {
@@ -129,7 +129,7 @@ public class QuantizationTests
             int expectedRange = ranges[rangeIndex];
 
             // Test CE values
-            if (desiredRange >= Quantization.kEndpointRangeMinValue)
+            if (desiredRange >= Quantization.EndpointRangeMinValue)
             {
                 var testValues = new[] { 0, 13, 173, 208, 255 };
                 foreach (var value in testValues)
@@ -140,7 +140,7 @@ public class QuantizationTests
             }
 
             // Test weight values
-            if (desiredRange <= Quantization.kWeightRangeMaxValue)
+            if (desiredRange <= Quantization.WeightRangeMaxValue)
             {
                 var testValues = new[] { 0, 12, 23, 63 };
                 foreach (var value in testValues)
@@ -190,7 +190,7 @@ public class QuantizationTests
         {
             int range = (1 << numBits) - 1;
 
-            if (range > Quantization.kWeightRangeMaxValue)
+            if (range > Quantization.WeightRangeMaxValue)
                 continue;
 
             int lastQuantizedValue = -1;
@@ -214,7 +214,7 @@ public class QuantizationTests
         {
             int range = (1 << numBits) - 1;
 
-            if (range < Quantization.kEndpointRangeMinValue)
+            if (range < Quantization.EndpointRangeMinValue)
                 continue;
 
             const int cevBits = 8;
@@ -232,7 +232,7 @@ public class QuantizationTests
         {
             int range = (1 << numBits) - 1;
 
-            if (range > Quantization.kWeightRangeMaxValue)
+            if (range > Quantization.WeightRangeMaxValue)
                 continue;
 
             const int weightBits = 6;
@@ -268,7 +268,7 @@ public class QuantizationTests
     [Fact]
     public void QuantizeCEValueToRange_WithInvalidMinRange_ShouldThrowArgumentOutOfRangeException()
     {
-        for (int range = 0; range < Quantization.kEndpointRangeMinValue; range++)
+        for (int range = 0; range < Quantization.EndpointRangeMinValue; range++)
         {
             var action = () => Quantization.QuantizeCEValueToRange(0, range);
             action.Should().Throw<ArgumentOutOfRangeException>();
@@ -278,7 +278,7 @@ public class QuantizationTests
     [Fact]
     public void UnquantizeCEValueFromRange_WithInvalidMinRange_ShouldThrowArgumentOutOfRangeException()
     {
-        for (int range = 0; range < Quantization.kEndpointRangeMinValue; range++)
+        for (int range = 0; range < Quantization.EndpointRangeMinValue; range++)
         {
             var action = () => Quantization.UnquantizeCEValueFromRange(0, range);
             action.Should().Throw<ArgumentOutOfRangeException>();

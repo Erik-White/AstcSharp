@@ -65,16 +65,16 @@ internal struct BlockInfo
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public static BlockInfo Decode(UInt128 bits)
     {
-        ulong low_bits = bits.Low();
+        ulong lowBits = bits.Low();
 
         // ---- Step 1: Check void extent ----
         // Void extent: bits[0:9] == 0x1FC (9 bits)
-        if ((low_bits & 0x1FF) == 0x1FC)
+        if ((lowBits & 0x1FF) == 0x1FC)
         {
             return new BlockInfo
             {
                 IsVoidExtent = true,
-                IsValid = !CheckVoidExtentIsIllegal(bits, low_bits)
+                IsValid = !CheckVoidExtentIsIllegal(bits, lowBits)
             };
         }
 
@@ -84,38 +84,38 @@ internal struct BlockInfo
         bool isWidthA6HeightB6 = false;
         uint rBits; // 3-bit range index component
 
-        if ((low_bits & 0x3) != 0) // bits[0:2] != 0
+        if ((lowBits & 0x3) != 0) // bits[0:2] != 0
         {
-            ulong mode_bits = (low_bits >> 2) & 0x3; // bits[2:4]
-            int a = (int)((low_bits >> 5) & 0x3); // bits[5:7]
+            ulong modeBits = (lowBits >> 2) & 0x3; // bits[2:4]
+            int a = (int)((lowBits >> 5) & 0x3); // bits[5:7]
 
-            switch (mode_bits)
+            switch (modeBits)
             {
                 case 0: // WidthB4HeightA2
                     {
-                        int b = (int)((low_bits >> 7) & 0x3); // bits[7:9]
+                        int b = (int)((lowBits >> 7) & 0x3); // bits[7:9]
                         gridWidth = b + 4;
                         gridHeight = a + 2;
                         break;
                     }
                 case 1: // WidthB8HeightA2
                     {
-                        int b = (int)((low_bits >> 7) & 0x3);
+                        int b = (int)((lowBits >> 7) & 0x3);
                         gridWidth = b + 8;
                         gridHeight = a + 2;
                         break;
                     }
                 case 2: // WidthA2HeightB8
                     {
-                        int b = (int)((low_bits >> 7) & 0x3);
+                        int b = (int)((lowBits >> 7) & 0x3);
                         gridWidth = a + 2;
                         gridHeight = b + 8;
                         break;
                     }
                 case 3: // WidthB2HeightA2 or WidthA2HeightB6
                     {
-                        int b = (int)((low_bits >> 7) & 0x1); // 1 bit only!
-                        if (((low_bits >> 8) & 1) != 0)
+                        int b = (int)((lowBits >> 7) & 0x1); // 1 bit only!
+                        if (((lowBits >> 8) & 1) != 0)
                         {
                             gridWidth = b + 2;
                             gridHeight = a + 2;
@@ -132,44 +132,44 @@ internal struct BlockInfo
             }
 
             // Range r[2:0] = {bit4, bit1, bit0} for these modes
-            rBits = (uint)(((low_bits >> 4) & 1) | (((low_bits >> 0) & 0x3) << 1));
+            rBits = (uint)(((lowBits >> 4) & 1) | (((lowBits >> 0) & 0x3) << 1));
         }
         else // bits[0:2] == 0
         {
-            ulong mode_bits = (low_bits >> 5) & 0xF; // bits[5:9]
-            int a = (int)((low_bits >> 5) & 0x3); // bits[5:7]
+            ulong modeBits = (lowBits >> 5) & 0xF; // bits[5:9]
+            int a = (int)((lowBits >> 5) & 0x3); // bits[5:7]
 
-            if ((mode_bits & 0xC) == 0x0)
+            if ((modeBits & 0xC) == 0x0)
             {
-                if ((low_bits & 0xF) == 0)
+                if ((lowBits & 0xF) == 0)
                     return default; // reserved block mode
 
                 // Width12HeightA2
                 gridWidth = 12;
                 gridHeight = a + 2;
             }
-            else if ((mode_bits & 0xC) == 0x4)
+            else if ((modeBits & 0xC) == 0x4)
             {
                 // WidthA2Height12
                 gridWidth = a + 2;
                 gridHeight = 12;
             }
-            else if (mode_bits == 0xC)
+            else if (modeBits == 0xC)
             {
                 // Width6Height10
                 gridWidth = 6;
                 gridHeight = 10;
             }
-            else if (mode_bits == 0xD)
+            else if (modeBits == 0xD)
             {
                 // Width10Height6
                 gridWidth = 10;
                 gridHeight = 6;
             }
-            else if ((mode_bits & 0xC) == 0x8)
+            else if ((modeBits & 0xC) == 0x8)
             {
                 // WidthA6HeightB6
-                int b = (int)((low_bits >> 9) & 0x3); // bits[9:11]
+                int b = (int)((lowBits >> 9) & 0x3); // bits[9:11]
                 gridWidth = a + 6;
                 gridHeight = b + 6;
                 isWidthA6HeightB6 = true;
@@ -180,11 +180,11 @@ internal struct BlockInfo
             }
 
             // Range r[2:0] = {bit4, bit3, bit2} for these modes
-            rBits = (uint)(((low_bits >> 4) & 1) | (((low_bits >> 2) & 0x3) << 1));
+            rBits = (uint)(((lowBits >> 4) & 1) | (((lowBits >> 2) & 0x3) << 1));
         }
 
         // ---- Step 3: Compute weight range from r and h bits ----
-        uint hBit = isWidthA6HeightB6 ? 0u : (uint)((low_bits >> 9) & 1);
+        uint hBit = isWidthA6HeightB6 ? 0u : (uint)((lowBits >> 9) & 1);
         int rangeIdx = (int)((hBit << 3) | rBits);
         if ((uint)rangeIdx >= (uint)_weightRanges.Length)
             return default;
@@ -194,10 +194,10 @@ internal struct BlockInfo
 
         // ---- Step 4: Dual plane ----
         // WidthA6HeightB6 mode never has dual plane; otherwise check bit 10
-        bool isDualPlane = !isWidthA6HeightB6 && ((low_bits >> 10) & 1) != 0;
+        bool isDualPlane = !isWidthA6HeightB6 && ((lowBits >> 10) & 1) != 0;
 
         // ---- Step 5: Partition count ----
-        int partitionCount = 1 + (int)((low_bits >> 11) & 0x3);
+        int partitionCount = 1 + (int)((lowBits >> 11) & 0x3);
 
         // ---- Step 6: Validate weight count ----
         int numWeights = gridWidth * gridHeight;
@@ -221,18 +221,18 @@ internal struct BlockInfo
 
         if (partitionCount == 1)
         {
-            cem0 = (ColorEndpointMode)((low_bits >> 13) & 0xF);
+            cem0 = (ColorEndpointMode)((lowBits >> 13) & 0xF);
             colorValuesCount = (((int)cem0 / 4) + 1) * 2;
         }
         else
         {
             // Multi-partition CEM decode
-            ulong sharedCemMarker = (low_bits >> 23) & 0x3;
+            ulong sharedCemMarker = (lowBits >> 23) & 0x3;
 
             if (sharedCemMarker == 0)
             {
                 // Shared CEM: all partitions use the same mode
-                var sharedCem = (ColorEndpointMode)((low_bits >> 25) & 0xF);
+                var sharedCem = (ColorEndpointMode)((lowBits >> 25) & 0xF);
                 cem0 = cem1 = cem2 = cem3 = sharedCem;
                 for (int i = 0; i < partitionCount; i++)
                     colorValuesCount += sharedCem.GetColorValuesCount();
@@ -245,7 +245,7 @@ internal struct BlockInfo
                 int extraCemStartPos = 128 - numExtraCEMBits - weightBitCount;
                 var extraCem = BitOperations.GetBits(bits, extraCemStartPos, numExtraCEMBits);
 
-                ulong cemval = (low_bits >> 23) & 0x3F; // 6 bits starting at bit 23
+                ulong cemval = (lowBits >> 23) & 0x3F; // 6 bits starting at bit 23
                 int baseCem = (int)(((cemval & 0x3) - 1) * 4);
                 cemval >>= 2;
 
@@ -341,15 +341,15 @@ internal struct BlockInfo
     /// <summary>
     /// Inline void extent validation (replaces PhysicalBlock.CheckVoidExtentIsIllegal).
     /// </summary>
-    private static bool CheckVoidExtentIsIllegal(UInt128 bits, ulong low_bits)
+    private static bool CheckVoidExtentIsIllegal(UInt128 bits, ulong lowBits)
     {
         if (BitOperations.GetBits(bits, 10, 2).Low() != 0x3UL)
             return true;
 
-        int c0 = (int)BitOperations.GetBits(low_bits, 12, 13);
-        int c1 = (int)BitOperations.GetBits(low_bits, 25, 13);
-        int c2 = (int)BitOperations.GetBits(low_bits, 38, 13);
-        int c3 = (int)BitOperations.GetBits(low_bits, 51, 13);
+        int c0 = (int)BitOperations.GetBits(lowBits, 12, 13);
+        int c1 = (int)BitOperations.GetBits(lowBits, 25, 13);
+        int c2 = (int)BitOperations.GetBits(lowBits, 38, 13);
+        int c3 = (int)BitOperations.GetBits(lowBits, 51, 13);
 
         const int all1s = (1 << 13) - 1;
         bool coordsAll1s = c0 == all1s && c1 == all1s && c2 == all1s && c3 == all1s;

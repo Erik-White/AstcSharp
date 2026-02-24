@@ -2,8 +2,8 @@ namespace AstcSharp.BiseEncoding.Quantize;
 
 internal static class Quantization
 {
-    public const int kEndpointRangeMinValue = 5;
-    public const int kWeightRangeMaxValue = 31;
+    public const int EndpointRangeMinValue = 5;
+    public const int WeightRangeMaxValue = 31;
 
     // Flat lookup tables indexed by range value for O(1) access.
     // Each slot maps to the QuantizationMap for the greatest supported range <= that index.
@@ -89,51 +89,51 @@ internal static class Quantization
         return weightMapByRange[r];
     }
 
-    public static int QuantizeCEValueToRange(int value, int range_max_value)
+    public static int QuantizeCEValueToRange(int value, int rangeMaxValue)
     {
-        ArgumentOutOfRangeException.ThrowIfLessThan(range_max_value, kEndpointRangeMinValue);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(range_max_value, byte.MaxValue);
+        ArgumentOutOfRangeException.ThrowIfLessThan(rangeMaxValue, EndpointRangeMinValue);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(rangeMaxValue, byte.MaxValue);
         ArgumentOutOfRangeException.ThrowIfLessThan(value, 0);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(value, byte.MaxValue);
 
-        var map = GetQuantMapForValueRange(range_max_value);
+        var map = GetQuantMapForValueRange(rangeMaxValue);
         return map != null ? map.Quantize(value) : 0;
     }
 
-    public static int UnquantizeCEValueFromRange(int value, int range_max_value)
+    public static int UnquantizeCEValueFromRange(int value, int rangeMaxValue)
     {
-        ArgumentOutOfRangeException.ThrowIfLessThan(range_max_value, kEndpointRangeMinValue);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(range_max_value, byte.MaxValue);
+        ArgumentOutOfRangeException.ThrowIfLessThan(rangeMaxValue, EndpointRangeMinValue);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(rangeMaxValue, byte.MaxValue);
         ArgumentOutOfRangeException.ThrowIfLessThan(value, 0);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(value, range_max_value);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(value, rangeMaxValue);
 
-        var map = GetQuantMapForValueRange(range_max_value);
+        var map = GetQuantMapForValueRange(rangeMaxValue);
         return map != null ? map.Unquantize(value) : 0;
     }
 
-    public static int QuantizeWeightToRange(int weight, int range_max_value)
+    public static int QuantizeWeightToRange(int weight, int rangeMaxValue)
     {
-        ArgumentOutOfRangeException.ThrowIfLessThan(range_max_value, 1);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(range_max_value, kWeightRangeMaxValue);
+        ArgumentOutOfRangeException.ThrowIfLessThan(rangeMaxValue, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(rangeMaxValue, WeightRangeMaxValue);
         ArgumentOutOfRangeException.ThrowIfLessThan(weight, 0);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(weight, 64);
 
         if (weight > 33) weight -= 1;
-        var map = GetQuantMapForWeightRange(range_max_value);
+        var map = GetQuantMapForWeightRange(rangeMaxValue);
         return map != null ? map.Quantize(weight) : 0;
     }
 
-    public static int UnquantizeWeightFromRange(int weight, int range_max_value)
+    public static int UnquantizeWeightFromRange(int weight, int rangeMaxValue)
     {
-        ArgumentOutOfRangeException.ThrowIfLessThan(range_max_value, 1);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(range_max_value, kWeightRangeMaxValue);
+        ArgumentOutOfRangeException.ThrowIfLessThan(rangeMaxValue, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(rangeMaxValue, WeightRangeMaxValue);
         ArgumentOutOfRangeException.ThrowIfLessThan(weight, 0);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(weight, range_max_value);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(weight, rangeMaxValue);
 
-        var map = GetQuantMapForWeightRange(range_max_value);
-        int dq = map != null ? map.Unquantize(weight) : 0;
-        if (dq > 32) dq += 1;
-        return dq;
+        var map = GetQuantMapForWeightRange(rangeMaxValue);
+        int dequantized = map != null ? map.Unquantize(weight) : 0;
+        if (dequantized > 32) dequantized += 1;
+        return dequantized;
     }
 
     // Pre-computed flat tables for weight unquantization: entry[quantizedValue] = final unquantized weight.
@@ -143,7 +143,7 @@ internal static class Quantization
 
     private static int[]?[] InitializeUnquantizeWeightsFlat()
     {
-        var tables = new int[]?[kWeightRangeMaxValue + 1];
+        var tables = new int[]?[WeightRangeMaxValue + 1];
         foreach (var kvp in weightMaps)
         {
             int range = kvp.Key;
@@ -151,8 +151,8 @@ internal static class Quantization
             var table = new int[range + 1];
             for (int i = 0; i <= range; i++)
             {
-                int dq = map.Unquantize(i);
-                table[i] = dq > 32 ? dq + 1 : dq;
+                int dequantized = map.Unquantize(i);
+                table[i] = dequantized > 32 ? dequantized + 1 : dequantized;
             }
             tables[range] = table;
         }
