@@ -316,71 +316,14 @@ internal static class IntermediateBlock
 
     public static IntermediateBlockData? UnpackIntermediateBlock(PhysicalBlock physicalBlock)
     {
-        if (physicalBlock.IsIllegalEncoding) return null;
-        if (physicalBlock.IsVoidExtent) return null;
-
-        var data = new IntermediateBlockData();
-
-        var colorBitCount = physicalBlock.GetColorBitCount();
-        var colorStartBit = physicalBlock.GetColorStartBit();
-        var colorValuesRangeOpt = physicalBlock.GetColorValuesRange();
-        var colorValuesCount = physicalBlock.GetColorValuesCount();
-        var weightGridDimensions = physicalBlock.GetWeightGridDimensions();
-        var weightRange = physicalBlock.GetWeightRange();
-        var partitionCount = physicalBlock.GetPartitionsCount();
-        var weightBitCount = physicalBlock.GetWeightBitCount();
-
-        if (!colorBitCount.HasValue || !colorStartBit.HasValue || !colorValuesRangeOpt.HasValue || !colorValuesCount.HasValue || !weightGridDimensions.HasValue || !weightRange.HasValue || !partitionCount.HasValue || !weightBitCount.HasValue)
+        if (physicalBlock.IsIllegalEncoding || physicalBlock.IsVoidExtent)
             return null;
 
-        var colorBitMask = UInt128Extensions.OnesMask(colorBitCount.Value);
-        var colorBits = (physicalBlock.BlockBits >> colorStartBit.Value) & colorBitMask;
-        var colorBitStream = new BitStream(colorBits, 128);
+        var info = BlockInfo.Decode(physicalBlock.BlockBits);
+        if (!info.IsValid || info.IsVoidExtent)
+            return null;
 
-        var colorDecoder = BoundedIntegerSequenceDecoder.GetCached(colorValuesRangeOpt.Value);
-        int colorCountInBlock = colorValuesCount.Value;
-        Span<int> colors = stackalloc int[colorCountInBlock];
-        colorDecoder.Decode(colorCountInBlock, ref colorBitStream, colors);
-
-        var weight_dims = weightGridDimensions.Value;
-        data.weightGridX = weight_dims.Item1;
-        data.weightGridY = weight_dims.Item2;
-        data.weightRange = weightRange.Value;
-
-        data.partitionId = physicalBlock.GetPartitionId();
-        data.dualPlaneChannel = physicalBlock.GetDualPlaneChannel();
-
-        int colorIndex = 0;
-        int pc = partitionCount.Value;
-        data.endpointCount = pc;
-        for (int i = 0; i < pc; ++i)
-        {
-            var endpointModeOpt = physicalBlock.GetEndpointMode(i);
-            if (!endpointModeOpt.HasValue)
-                return null;
-
-            var mode = endpointModeOpt.Value;
-            int colorCount = mode.GetColorValuesCount();
-            var ep = new IntermediateEndpointData { mode = mode, colorCount = colorCount };
-            for (int j = 0; j < colorCount; ++j)
-            {
-                ep.colors[j] = colors[colorIndex++];
-            }
-            data.endpoints[i] = ep;
-        }
-
-        data.endpointRange = colorValuesRangeOpt.Value;
-
-        var weightBits = UInt128Extensions.ReverseBits(physicalBlock.BlockBits) & UInt128Extensions.OnesMask(weightBitCount.Value);
-        colorBitStream = new BitStream(weightBits, 128);
-
-        var weightDecoder = BoundedIntegerSequenceDecoder.GetCached(data.weightRange);
-        int weightsCount = data.weightGridX * data.weightGridY;
-        if (physicalBlock.IsDualPlane) weightsCount *= 2;
-        data.RentWeights(weightsCount);
-        weightDecoder.Decode(weightsCount, ref colorBitStream, data.weights);
-
-        return data;
+        return UnpackIntermediateBlock(physicalBlock.BlockBits, in info);
     }
 
     /// <summary>

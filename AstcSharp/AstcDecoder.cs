@@ -3,6 +3,7 @@ using System.Buffers.Binary;
 using AstcSharp.ColorEncoding;
 using AstcSharp.Core;
 using AstcSharp.IO;
+using AstcSharp.BlockDecoder;
 using AstcSharp.TexelBlock;
 
 namespace AstcSharp;
@@ -110,7 +111,7 @@ public static class AstcDecoder
                         && !info.EndpointMode0.IsHdr()
                         && copyWidth == fW && copyHeight == fH)
                     {
-                        FusedBlockDecoder.DecompressBlockFusedLdrToImage(
+                        FusedLdrBlockDecoder.DecompressBlockFusedLdrToImage(
                             blockBits, in info, footprint,
                             dstBaseX, dstBaseY, width, imageBuffer);
                         continue;
@@ -120,7 +121,7 @@ public static class AstcDecoder
                     if (!info.IsVoidExtent && info.PartitionCount == 1 && !info.IsDualPlane
                         && !info.EndpointMode0.IsHdr())
                     {
-                        FusedBlockDecoder.DecompressBlockFusedLdr(blockBits, in info, footprint, decodedPixels);
+                        FusedLdrBlockDecoder.DecompressBlockFusedLdr(blockBits, in info, footprint, decodedPixels);
                     }
                     else
                     {
@@ -194,7 +195,7 @@ public static class AstcDecoder
         if (!info.IsVoidExtent && info.PartitionCount == 1 && !info.IsDualPlane
             && !info.EndpointMode0.IsHdr())
         {
-            FusedBlockDecoder.DecompressBlockFusedLdr(blockBits, in info, footprint, buffer);
+            FusedLdrBlockDecoder.DecompressBlockFusedLdr(blockBits, in info, footprint, buffer);
             return;
         }
 
@@ -286,7 +287,7 @@ public static class AstcDecoder
                     if (!info.IsVoidExtent && info.PartitionCount == 1 && !info.IsDualPlane
                         && copyWidth == fW && copyHeight == fH)
                     {
-                        FusedBlockDecoder.DecompressBlockFusedHdrToImage(
+                        FusedHdrBlockDecoder.DecompressBlockFusedHdrToImage(
                             blockBits, in info, footprint,
                             dstBaseX, dstBaseY, width, imageBuffer);
                         continue;
@@ -295,7 +296,7 @@ public static class AstcDecoder
                     // Fused decode to temp buffer for single-partition non-dual-plane
                     if (!info.IsVoidExtent && info.PartitionCount == 1 && !info.IsDualPlane)
                     {
-                        FusedBlockDecoder.DecompressBlockFusedHdr(blockBits, in info, footprint, decodedPixels);
+                        FusedHdrBlockDecoder.DecompressBlockFusedHdr(blockBits, in info, footprint, decodedPixels);
                     }
                     else
                     {
@@ -366,7 +367,7 @@ public static class AstcDecoder
         // Fused fast path for single-partition, non-dual-plane blocks
         if (!info.IsVoidExtent && info.PartitionCount == 1 && !info.IsDualPlane)
         {
-            FusedBlockDecoder.DecompressBlockFusedHdr(blockBits, in info, footprint, buffer);
+            FusedHdrBlockDecoder.DecompressBlockFusedHdr(blockBits, in info, footprint, buffer);
             return;
         }
 
