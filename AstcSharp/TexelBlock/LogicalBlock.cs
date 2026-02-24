@@ -1,4 +1,3 @@
-using System.Buffers;
 using AstcSharp.BiseEncoding;
 using AstcSharp.ColorEncoding;
 using AstcSharp.Core;
@@ -7,12 +6,9 @@ namespace AstcSharp.TexelBlock;
 
 internal class LogicalBlock
 {
-    private static readonly ArrayPool<int> _weightsPool = ArrayPool<int>.Shared;
-
     private ColorEndpointPair[] _endpoints;
     private int _endpointCount;
     private int[] _weights;
-    private bool _weightsPooled;
     private Partition _partition;
     private DualPlaneData? _dualPlane;
 
@@ -20,7 +16,6 @@ internal class LogicalBlock
     {
         public int Channel;
         public int[] Weights = [];
-        public bool WeightsPooled;
     }
 
     public LogicalBlock(Footprint footprint)
@@ -39,8 +34,7 @@ internal class LogicalBlock
         _endpoints = new ColorEndpointPair[block.endpointCount];
         _endpointCount = DecodeEndpoints(in block, _endpoints);
         _partition = ComputePartition(footprint, in block);
-        _weights = _weightsPool.Rent(footprint.PixelCount);
-        _weightsPooled = true;
+        _weights = new int[footprint.PixelCount];
         CalculateWeights(footprint, in block);
     }
 
@@ -49,9 +43,7 @@ internal class LogicalBlock
         _endpoints = new ColorEndpointPair[1];
         _endpointCount = DecodeEndpoints(block, _endpoints);
         _partition = ComputePartition(footprint, block);
-        _weights = _weightsPool.Rent(footprint.PixelCount);
-        _weightsPooled = true;
-        Array.Clear(_weights, 0, footprint.PixelCount);
+        _weights = new int[footprint.PixelCount];
     }
 
     private static int DecodeEndpoints(in IntermediateBlock.IntermediateBlockData block, ColorEndpointPair[] endpointPair)
@@ -125,8 +117,7 @@ internal class LogicalBlock
         {
             var dp = new DualPlaneData();
             dp.Channel = block.dualPlaneChannel.Value;
-            dp.Weights = _weightsPool.Rent(footprint.PixelCount);
-            dp.WeightsPooled = true;
+            dp.Weights = new int[footprint.PixelCount];
             _dualPlane = dp;
             for (int i = 0; i < gridSize; ++i)
             {
@@ -530,27 +521,6 @@ internal class LogicalBlock
     }
 
     public bool IsDualPlane() => _dualPlane is not null;
-
-    /// <summary>
-    /// Returns any pooled arrays to the shared ArrayPool.
-    /// Must be called after the block is no longer needed.
-    /// </summary>
-    internal void ReturnPooledArrays()
-    {
-        if (_weightsPooled)
-        {
-            _weightsPool.Return(_weights);
-            _weights = [];
-            _weightsPooled = false;
-        }
-        if (_dualPlane is { WeightsPooled: true })
-        {
-            _weightsPool.Return(_dualPlane.Weights);
-            _dualPlane.Weights = [];
-            _dualPlane.WeightsPooled = false;
-        }
-        _dualPlane = null;
-    }
 
     public static LogicalBlock? UnpackLogicalBlock(Footprint footprint, PhysicalBlock physicalBlock)
     {

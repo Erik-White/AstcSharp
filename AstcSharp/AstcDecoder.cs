@@ -130,7 +130,6 @@ public static class AstcDecoder
                         var logicalBlock = LogicalBlock.UnpackLogicalBlock(footprint, blockBits, in info);
                         if (logicalBlock is null) continue;
                         logicalBlock.WriteAllPixelsLdr(footprint, decodedPixels);
-                        logicalBlock.ReturnPooledArrays();
                     }
 
                     int copyBytes = copyWidth * BytesPerPixelUnorm8;
@@ -206,7 +205,6 @@ public static class AstcDecoder
         var logicalBlock = LogicalBlock.UnpackLogicalBlock(footprint, blockBits, in info);
         if (logicalBlock is null) return;
         logicalBlock.WriteAllPixelsLdr(footprint, buffer);
-        logicalBlock.ReturnPooledArrays();
     }
 
     /// <summary>
@@ -898,7 +896,6 @@ public static class AstcDecoder
                                 logicalBlock.WriteHdrPixel(column, row, decodedPixels.Slice(pixelOffset, channelsPerPixel));
                             }
                         }
-                        logicalBlock.ReturnPooledArrays();
                     }
 
                     int copyFloats = copyWidth * channelsPerPixel;
@@ -972,6 +969,5 @@ public static class AstcDecoder
                 logicalBlock.WriteHdrPixel(column, row, buffer.Slice(pixelOffset, channelsPerPixel));
             }
         }
-        logicalBlock.ReturnPooledArrays();
     }
 }
