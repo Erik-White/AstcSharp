@@ -5,10 +5,10 @@ using AstcSharp.IO;
 
 namespace AstcSharp.TexelBlock;
 
-// From Table C.2.7 -- valid weight ranges
 internal static class IntermediateBlock
 {
-    public static readonly int[] kValidWeightRanges = [1, 2, 3, 4, 5, 7, 9, 11, 15, 19, 23, 31];
+    // From Table C.2.7 -- valid weight ranges
+    public static readonly int[] _validWeightRanges = [1, 2, 3, 4, 5, 7, 9, 11, 15, 19, 23, 31];
 
     internal struct VoidExtentData
     {
@@ -29,6 +29,24 @@ internal static class IntermediateBlock
 #pragma warning restore CS0169, S1144
     }
 
+    internal struct IntermediateBlockData
+    {
+        public int weightGridX;
+        public int weightGridY;
+        public int weightRange;
+
+        public int[] weights;
+        public int weightsCount;
+
+        public int? partitionId;
+        public int? dualPlaneChannel;
+
+        public IntermediateEndpointBuffer endpoints;
+        public int endpointCount;
+
+        public int? endpointRange;
+    }
+
     internal struct IntermediateEndpointData
     {
         public ColorEndpointMode mode;
@@ -45,45 +63,6 @@ internal static class IntermediateBlock
 #pragma warning restore CS0169, S1144
     }
 
-    internal struct IntermediateBlockData
-    {
-        private static readonly System.Buffers.ArrayPool<int> _intPool = System.Buffers.ArrayPool<int>.Shared;
-
-        public int weightGridX;
-        public int weightGridY;
-        public int weightRange;
-
-        public int[] weights;
-        public int weightsCount;
-        public bool weightsPooled;
-
-        public int? partitionId;
-        public int? dualPlaneChannel;
-
-        public IntermediateEndpointBuffer endpoints;
-        public int endpointCount;
-
-        public int? endpointRange;
-
-        public int[] RentWeights(int size)
-        {
-            weights = _intPool.Rent(size);
-            weightsCount = size;
-            weightsPooled = true;
-            return weights;
-        }
-
-        public void ReturnPooledArrays()
-        {
-            if (weightsPooled)
-            {
-                _intPool.Return(weights);
-                weights = null!;
-                weightsPooled = false;
-            }
-        }
-    }
-
     // Returns the maximum endpoint value range or negative on error
     private const int kEndpointRange_ReturnInvalidWeightDims = -1;
     private const int kEndpointRange_ReturnNotEnoughColorBits = -2;
@@ -95,15 +74,15 @@ internal static class IntermediateBlock
             new[]{0,1,0}, new[]{1,1,0}, new[]{0,0,1}, new[]{1,0,1}, new[]{0,1,1}, new[]{1,1,1}
         };
 
-        int smallest_range = kValidWeightRanges.First();
-        int largest_range = kValidWeightRanges.Last();
+        int smallest_range = _validWeightRanges.First();
+        int largest_range = _validWeightRanges.Last();
         if (range < smallest_range || largest_range < range)
         {
             return ($"Could not find block mode. Invalid weight range: {range} not in [{smallest_range}, {largest_range}]", new int[3]);
         }
 
-        int idx = Array.FindIndex(kValidWeightRanges, v => v >= range);
-        if (idx < 0) idx = kValidWeightRanges.Length - 1;
+        int idx = Array.FindIndex(_validWeightRanges, v => v >= range);
+        if (idx < 0) idx = _validWeightRanges.Length - 1;
         var enc = kValidRangeEncodings[idx];
         return (null, [enc[0], enc[1], enc[2]]);
     }
@@ -376,7 +355,8 @@ internal static class IntermediateBlock
         var weightDecoder = BoundedIntegerSequenceDecoder.GetCached(data.weightRange);
         int weightsCount = data.weightGridX * data.weightGridY;
         if (info.IsDualPlane) weightsCount *= 2;
-        data.RentWeights(weightsCount);
+        data.weights = new int[weightsCount];
+        data.weightsCount = weightsCount;
         weightDecoder.Decode(weightsCount, ref weightBitStream, data.weights);
 
         return data;
