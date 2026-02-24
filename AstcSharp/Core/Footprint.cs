@@ -1,10 +1,20 @@
 namespace AstcSharp.Core;
 
+/// <summary>
+/// Represents the dimensions of an ASTC block footprint.
+/// </summary>
 public readonly record struct Footprint
 {
+    /// <summary>The block width in texels.</summary>
     public int Width { get; }
+
+    /// <summary>The block height in texels.</summary>
     public int Height { get; }
+
+    /// <summary>The footprint type enum value.</summary>
     public FootprintType Type { get; }
+
+    /// <summary>The total number of texels in the block (Width * Height).</summary>
     public int PixelCount { get; }
 
     private Footprint(FootprintType type, int width, int height)
@@ -18,6 +28,9 @@ public readonly record struct Footprint
         PixelCount = width * height;
     }
 
+    /// <summary>
+    /// Creates a <see cref="Footprint"/> from the specified <see cref="FootprintType"/>.
+    /// </summary>
     public static Footprint FromFootprintType(FootprintType type) => type switch
     {
         FootprintType.Footprint4x4 => Get4x4(),

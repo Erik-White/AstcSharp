@@ -18,13 +18,17 @@ internal static class BitOperations
         {
             ulong lowMask = ~0UL;
             int highBits = length - 64;
-            ulong highMask = (highBits == 64) ? ~0UL : ((1UL << highBits) - 1UL);
+            ulong highMask = (highBits == 64)
+                ? ~0UL
+                : ((1UL << highBits) - 1UL);
 
             return new UInt128(shifted.High() & highMask, shifted.Low() & lowMask);
         }
         else
         {
-            ulong mask = (length == 64) ? ~0UL : ((1UL << length) - 1UL);
+            ulong mask = (length == 64)
+                ? ~0UL
+                : ((1UL << length) - 1UL);
 
             return new UInt128(0, shifted.Low() & mask);
         }
@@ -38,14 +42,14 @@ internal static class BitOperations
         if (length <= 0)
             return 0UL;
 
-        int total_bits = sizeof(ulong) * 8;
-        ulong mask = length == total_bits
+        int totalBits = sizeof(ulong) * 8;
+        ulong mask = length == totalBits
             ? ~0UL
-            : ~0UL >> (total_bits - length);
+            : ~0UL >> (totalBits - length);
 
         return (value >> start) & mask;
     }
-    
+
     /// <summary>
     /// Transfers a few bits of precision from one value to another.
     /// </summary>

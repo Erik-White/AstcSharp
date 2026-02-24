@@ -12,7 +12,7 @@ public class PartitionTests
     {
         var partitionA = new Partition(Footprint.Get6x6(), 2)
         {
-            assignment =
+            Assignment =
             [
                 0,0,0,0,0,0,
                 0,0,0,0,0,0,
@@ -25,7 +25,7 @@ public class PartitionTests
 
         var partitionB = new Partition(Footprint.Get6x6(), 2)
         {
-            assignment =
+            Assignment =
             [
                 1,0,0,0,0,0,
                 0,0,0,0,0,0,
@@ -46,7 +46,7 @@ public class PartitionTests
     {
         var partitionA = new Partition(Footprint.Get4x4(), 2)
         {
-            assignment =
+            Assignment =
             [
                 2,2,2,0,
                 0,0,0,0,
@@ -57,7 +57,7 @@ public class PartitionTests
 
         var partitionB = new Partition(Footprint.Get4x4(), 3)
         {
-            assignment =
+            Assignment =
             [
                 1,0,0,0,
                 0,0,0,0,
@@ -76,7 +76,7 @@ public class PartitionTests
     {
         var partitionA = new Partition(Footprint.Get4x4(), 2)
         {
-            assignment =
+            Assignment =
             [
                 0,1,2,2,
                 2,2,2,2,
@@ -87,7 +87,7 @@ public class PartitionTests
 
         var partitionB = new Partition(Footprint.Get4x4(), 3)
         {
-            assignment =
+            Assignment =
             [
                 1,0,0,0,
                 0,0,0,0,
@@ -116,7 +116,7 @@ public class PartitionTests
 
         var partition = Partition.GetASTCPartition(Footprint.Get10x6(), 3, 557);
 
-        partition.assignment.Should().Equal(expected);
+        partition.Assignment.Should().Equal(expected);
     }
 
     [Fact]
@@ -125,7 +125,7 @@ public class PartitionTests
         var partition0 = Partition.GetASTCPartition(Footprint.Get6x6(), 2, 0);
         var partition1 = Partition.GetASTCPartition(Footprint.Get6x6(), 2, 1);
 
-        partition0.assignment.Should().NotEqual(partition1.assignment);
+        partition0.Assignment.Should().NotEqual(partition1.Assignment);
     }
 
 
@@ -135,7 +135,7 @@ public class PartitionTests
     {
         var partition = new Partition(Footprint.Get6x6(), 2)
         {
-            assignment =
+            Assignment =
             [
                 0,0,1,1,1,0,
                 0,0,0,0,0,0,
@@ -148,32 +148,32 @@ public class PartitionTests
 
         var closestAstcPartition = Partition.FindClosestASTCPartition(partition);
 
-        closestAstcPartition.numParts.Should().Be(partition.numParts);
+        closestAstcPartition.PartitionCount.Should().Be(partition.PartitionCount);
     }
 
     [Fact]
     public void FindClosestASTCPartition_WithModifiedPartition_ShouldReturnValidASTCPartition()
     {
         var astcPartition = Partition.GetASTCPartition(Footprint.Get12x12(), 3, 0x3CB);
-        var modifiedPartition = new Partition(astcPartition.footprint, astcPartition.numParts)
+        var modifiedPartition = new Partition(astcPartition.Footprint, astcPartition.PartitionCount)
         {
-            assignment = [.. astcPartition.assignment]
+            Assignment = [.. astcPartition.Assignment]
         };
-        modifiedPartition.assignment[0]++;
+        modifiedPartition.Assignment[0]++;
 
         // Find closest ASTC partition
         var closestPartition = Partition.FindClosestASTCPartition(modifiedPartition);
 
         // The closest partition should be a valid ASTC partition with the same footprint and number of parts
-        closestPartition.footprint.Should().Be(astcPartition.footprint);
-        closestPartition.numParts.Should().Be(astcPartition.numParts);
-        closestPartition.partitionId.Should().HaveValue("returned partition should have a valid ID");
+        closestPartition.Footprint.Should().Be(astcPartition.Footprint);
+        closestPartition.PartitionCount.Should().Be(astcPartition.PartitionCount);
+        closestPartition.PartitionId.Should().HaveValue("returned partition should have a valid ID");
 
         // Verify we can retrieve the same partition again using its ID
         var verifyPartition = Partition.GetASTCPartition(
-            closestPartition.footprint,
-            closestPartition.numParts,
-            closestPartition.partitionId!.Value);
+            closestPartition.Footprint,
+            closestPartition.PartitionCount,
+            closestPartition.PartitionId!.Value);
         verifyPartition.Should().Be(closestPartition);
     }
 
@@ -209,17 +209,17 @@ public class PartitionTests
             }
             var partition = new Partition(footprint, numParts)
             {
-                assignment = assignment
+                Assignment = assignment
             };
 
             var astcPartition = Partition.FindClosestASTCPartition(partition);
 
             // Matched partition should have fewer or equal subsets
-            astcPartition.numParts
+            astcPartition.PartitionCount
                 .Should()
                 .BeLessThanOrEqualTo(
-                    partition.numParts,
-                    $"Footprint {footprintType}, Test #{i}: Selected partition with ID {astcPartition.partitionId?.ToString() ?? "null"}");
+                    partition.PartitionCount,
+                    $"Footprint {footprintType}, Test #{i}: Selected partition with ID {astcPartition.PartitionId?.ToString() ?? "null"}");
         }
     }
 }

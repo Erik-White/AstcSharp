@@ -22,8 +22,8 @@ internal static class FusedLdrBlockDecoder
     internal static void DecompressBlockFusedLdr(UInt128 bits, in BlockInfo info, Footprint footprint, Span<byte> buffer)
     {
         Span<int> texelWeights = stackalloc int[footprint.PixelCount];
-        var ep = FusedBlockDecoder.DecodeFusedCore(bits, in info, footprint, texelWeights);
-        WriteLdrPixels(buffer, footprint.PixelCount, in ep, texelWeights);
+        var endpointPair = FusedBlockDecoder.DecodeFusedCore(bits, in info, footprint, texelWeights);
+        WriteLdrPixels(buffer, footprint.PixelCount, in endpointPair, texelWeights);
     }
 
     /// <summary>
@@ -41,18 +41,18 @@ internal static class FusedLdrBlockDecoder
         Span<byte> imageBuffer)
     {
         Span<int> texelWeights = stackalloc int[footprint.PixelCount];
-        var ep = FusedBlockDecoder.DecodeFusedCore(bits, in info, footprint, texelWeights);
-        WriteLdrPixelsToImage(imageBuffer, footprint, dstBaseX, dstBaseY, imageWidth, in ep, texelWeights);
+        var endpointPair = FusedBlockDecoder.DecodeFusedCore(bits, in info, footprint, texelWeights);
+        WriteLdrPixelsToImage(imageBuffer, footprint, dstBaseX, dstBaseY, imageWidth, in endpointPair, texelWeights);
     }
 
     /// <summary>
     /// Writes all pixels for a single-partition LDR block using SIMD where possible.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void WriteLdrPixels(Span<byte> buffer, int pixelCount, in ColorEndpointPair ep, Span<int> texelWeights)
+    private static void WriteLdrPixels(Span<byte> buffer, int pixelCount, in ColorEndpointPair endpointPair, Span<int> texelWeights)
     {
-        int lowR = ep.LdrLow.R, lowG = ep.LdrLow.G, lowB = ep.LdrLow.B, lowA = ep.LdrLow.A;
-        int highR = ep.LdrHigh.R, highG = ep.LdrHigh.G, highB = ep.LdrHigh.B, highA = ep.LdrHigh.A;
+        int lowR = endpointPair.LdrLow.R, lowG = endpointPair.LdrLow.G, lowB = endpointPair.LdrLow.B, lowA = endpointPair.LdrLow.A;
+        int highR = endpointPair.LdrHigh.R, highG = endpointPair.LdrHigh.G, highB = endpointPair.LdrHigh.B, highA = endpointPair.LdrHigh.A;
 
         int i = 0;
         if (Vector128.IsHardwareAccelerated)
@@ -105,44 +105,44 @@ internal static class FusedLdrBlockDecoder
         int dstBaseX,
         int dstBaseY,
         int imageWidth,
-        in ColorEndpointPair ep,
+        in ColorEndpointPair endpointPair,
         Span<int> texelWeights)
     {
-        int lowR = ep.LdrLow.R, lowG = ep.LdrLow.G, lowB = ep.LdrLow.B, lowA = ep.LdrLow.A;
-        int highR = ep.LdrHigh.R, highG = ep.LdrHigh.G, highB = ep.LdrHigh.B, highA = ep.LdrHigh.A;
+        int lowR = endpointPair.LdrLow.R, lowG = endpointPair.LdrLow.G, lowB = endpointPair.LdrLow.B, lowA = endpointPair.LdrLow.A;
+        int highR = endpointPair.LdrHigh.R, highG = endpointPair.LdrHigh.G, highB = endpointPair.LdrHigh.B, highA = endpointPair.LdrHigh.A;
 
-        int fW = footprint.Width;
-        int fH = footprint.Height;
+        int footprintWidth = footprint.Width;
+        int footprintHeight = footprint.Height;
         int rowStride = imageWidth * BytesPerPixelUnorm8;
 
-        for (int py = 0; py < fH; py++)
+        for (int pixelY = 0; pixelY < footprintHeight; pixelY++)
         {
-            int dstRowOffset = (dstBaseY + py) * rowStride + dstBaseX * BytesPerPixelUnorm8;
-            int srcRowBase = py * fW;
-            int px = 0;
+            int dstRowOffset = (dstBaseY + pixelY) * rowStride + dstBaseX * BytesPerPixelUnorm8;
+            int srcRowBase = pixelY * footprintWidth;
+            int pixelX = 0;
 
             if (Vector128.IsHardwareAccelerated)
             {
-                int limit = fW - 3;
-                for (; px < limit; px += 4)
+                int limit = footprintWidth - 3;
+                for (; pixelX < limit; pixelX += 4)
                 {
-                    int ti = srcRowBase + px;
+                    int texelIndex = srcRowBase + pixelX;
                     var weights = Vector128.Create(
-                        texelWeights[ti], texelWeights[ti + 1],
-                        texelWeights[ti + 2], texelWeights[ti + 3]);
+                        texelWeights[texelIndex], texelWeights[texelIndex + 1],
+                        texelWeights[texelIndex + 2], texelWeights[texelIndex + 3]);
                     SimdHelpers.Write4PixelLdr(
-                        imageBuffer, dstRowOffset + px * BytesPerPixelUnorm8,
+                        imageBuffer, dstRowOffset + pixelX * BytesPerPixelUnorm8,
                         lowR, lowG, lowB, lowA, highR, highG, highB, highA,
                         weights);
                 }
             }
 
-            for (; px < fW; px++)
+            for (; pixelX < footprintWidth; pixelX++)
             {
                 SimdHelpers.WriteSinglePixelLdr(
-                    imageBuffer, dstRowOffset + px * BytesPerPixelUnorm8,
+                    imageBuffer, dstRowOffset + pixelX * BytesPerPixelUnorm8,
                     lowR, lowG, lowB, lowA, highR, highG, highB, highA,
-                    texelWeights[srcRowBase + px]);
+                    texelWeights[srcRowBase + pixelX]);
             }
         }
     }

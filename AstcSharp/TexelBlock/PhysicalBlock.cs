@@ -10,9 +10,16 @@ namespace AstcSharp.TexelBlock;
 internal readonly struct PhysicalBlock
 {
     public const int SizeInBytes = 16;
+    private readonly BlockInfo _info;
 
     public UInt128 BlockBits { get; }
-    private readonly BlockInfo _info;
+
+    public bool IsVoidExtent => _info.IsVoidExtent;
+
+    public bool IsIllegalEncoding => !_info.IsValid;
+
+    public bool IsDualPlane
+        => _info.IsValid && !_info.IsVoidExtent && _info.IsDualPlane;
 
     private PhysicalBlock(UInt128 bits, BlockInfo info)
     {
@@ -30,20 +37,15 @@ internal readonly struct PhysicalBlock
 
     public static PhysicalBlock Create(ulong low, ulong high) => Create(new UInt128(high, low));
 
-    public bool IsVoidExtent => _info.IsVoidExtent;
-
-    public bool IsIllegalEncoding => !_info.IsValid;
-
-    public bool IsDualPlane
-        => _info.IsValid && !_info.IsVoidExtent && _info.IsDualPlane;
-
     internal (int Width, int Height)? GetWeightGridDimensions()
         => _info.IsValid && !_info.IsVoidExtent
             ? (_info.GridWidth, _info.GridHeight)
             : null;
 
     internal int? GetWeightRange()
-        => _info.IsValid && !_info.IsVoidExtent ? _info.WeightRange : null;
+        => _info.IsValid && !_info.IsVoidExtent
+            ? _info.WeightRange
+            : null;
 
     internal int[]? GetVoidExtentCoordinates()
     {
@@ -63,7 +65,9 @@ internal readonly struct PhysicalBlock
     /// </summary>
     /// <returns>The dual plane channel if enabled, otherwise null.</returns>
     internal int? GetDualPlaneChannel()
-        => _info.IsValid && _info.IsDualPlane ? _info.DualPlaneChannel : null;
+        => _info.IsValid && _info.IsDualPlane
+            ? _info.DualPlaneChannel
+            : null;
 
     internal string? IdentifyInvalidEncodingIssues()
     {
@@ -74,13 +78,19 @@ internal readonly struct PhysicalBlock
     }
 
     internal int? GetWeightBitCount()
-        => _info.IsValid && !_info.IsVoidExtent ? _info.WeightBitCount : null;
+        => _info.IsValid && !_info.IsVoidExtent
+            ? _info.WeightBitCount
+            : null;
 
     internal int? GetWeightStartBit()
-        => _info.IsValid && !_info.IsVoidExtent ? 128 - _info.WeightBitCount : null;
+        => _info.IsValid && !_info.IsVoidExtent
+            ? 128 - _info.WeightBitCount
+            : null;
 
     internal int? GetPartitionsCount()
-        => _info.IsValid && !_info.IsVoidExtent ? _info.PartitionCount : null;
+        => _info.IsValid && !_info.IsVoidExtent
+            ? _info.PartitionCount
+            : null;
 
     internal int? GetPartitionId()
     {
@@ -98,25 +108,44 @@ internal readonly struct PhysicalBlock
     internal int? GetColorStartBit()
     {
         if (_info.IsVoidExtent) return 64;
-        return _info.IsValid ? _info.ColorStartBit : null;
+        return _info.IsValid
+            ? _info.ColorStartBit
+            : null;
     }
 
     internal int? GetColorValuesCount()
     {
         if (_info.IsVoidExtent) return 4;
-        return _info.IsValid ? _info.ColorValuesCount : null;
+        return _info.IsValid
+            ? _info.ColorValuesCount
+            : null;
     }
 
     internal int? GetColorBitCount()
     {
         if (_info.IsVoidExtent) return 64;
-        return _info.IsValid ? _info.ColorBitCount : null;
+        return _info.IsValid
+            ? _info.ColorBitCount
+            : null;
     }
 
     internal int? GetColorValuesRange()
     {
         if (_info.IsVoidExtent) return (1 << 16) - 1;
-        return _info.IsValid ? _info.ColorValuesRange : null;
+        return _info.IsValid
+            ? _info.ColorValuesRange
+            : null;
+    }
+
+    internal static int[] DecodeVoidExtentCoordinates(UInt128 astcBits)
+    {
+        ulong lowBits = astcBits.Low();
+        var coords = new int[4];
+        for (int i = 0; i < 4; ++i)
+        {
+            coords[i] = (int)BitOperations.GetBits(lowBits, 12 + 13 * i, 13);
+        }
+        return coords;
     }
 
     /// <summary>
@@ -127,11 +156,11 @@ internal readonly struct PhysicalBlock
         if (BitOperations.GetBits(bits, 10, 2).Low() != 0x3UL)
             return "Reserved bits set for void extent block";
 
-        ulong low_bits = bits.Low();
-        int c0 = (int)BitOperations.GetBits(low_bits, 12, 13);
-        int c1 = (int)BitOperations.GetBits(low_bits, 25, 13);
-        int c2 = (int)BitOperations.GetBits(low_bits, 38, 13);
-        int c3 = (int)BitOperations.GetBits(low_bits, 51, 13);
+        ulong lowBits = bits.Low();
+        int c0 = (int)BitOperations.GetBits(lowBits, 12, 13);
+        int c1 = (int)BitOperations.GetBits(lowBits, 25, 13);
+        int c2 = (int)BitOperations.GetBits(lowBits, 38, 13);
+        int c3 = (int)BitOperations.GetBits(lowBits, 51, 13);
 
         const int all1s = (1 << 13) - 1;
         bool coordsAll1s = c0 == all1s && c1 == all1s && c2 == all1s && c3 == all1s;
@@ -140,16 +169,5 @@ internal readonly struct PhysicalBlock
             return "Void extent texture coordinates are invalid";
 
         return null;
-    }
-
-    internal static int[] DecodeVoidExtentCoordinates(UInt128 astcBits)
-    {
-        ulong low_bits = astcBits.Low();
-        var coords = new int[4];
-        for (int i = 0; i < 4; ++i)
-        {
-            coords[i] = (int)BitOperations.GetBits(low_bits, 12 + 13 * i, 13);
-        }
-        return coords;
     }
 }

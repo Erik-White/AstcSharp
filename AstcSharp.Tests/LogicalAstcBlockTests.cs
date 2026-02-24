@@ -257,7 +257,7 @@ public class LogicalAstcBlockTests
         // Create partition with 2 subsets, all pixels assigned to subset 0
         var newPartition = new Partition(footprint, 2, 5)
         {
-            assignment = new int[footprint.PixelCount]
+            Assignment = new int[footprint.PixelCount]
         };
 
         logicalBlock.SetPartition(newPartition);
@@ -284,7 +284,7 @@ public class LogicalAstcBlockTests
         var logicalBlock = new LogicalBlock(Footprint.Get4x4());
         var wrongPartition = new Partition(Footprint.Get8x8(), 1, 0)
         {
-            assignment = new int[64]
+            Assignment = new int[64]
         };
 
         var action = () => logicalBlock.SetPartition(wrongPartition);
@@ -379,7 +379,7 @@ public class LogicalAstcBlockTests
     {
         var footprint = Footprint.FromFootprintType(footprintType);
         var astcData = FileBasedHelpers.LoadASTCFile(imageName);
-        
+
         var decodedImage = ImageBuffer.FromAstcBuffer(footprint, astcData, width, height, hasAlpha);
 
         var expectedPath = Path.Combine("TestData", "Expected", imageName + ".bmp");

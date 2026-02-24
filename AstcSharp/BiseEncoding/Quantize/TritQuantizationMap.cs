@@ -1,17 +1,17 @@
 namespace AstcSharp.BiseEncoding.Quantize;
 
-internal class TritQuantizationMap : QuantizationMap
+internal sealed class TritQuantizationMap : QuantizationMap
 {
     public TritQuantizationMap(int range, Func<int, int, int, int> unquantFunc)
     {
         ArgumentOutOfRangeException.ThrowIfNotEqual((range + 1) % 3, 0);
 
-        int num_bits_pow_2 = (range + 1) / 3;
-        int num_bits = num_bits_pow_2 == 0 ? 0 : Log2Floor(num_bits_pow_2);
+        int bitsPowerOfTwo = (range + 1) / 3;
+        int bitCount = bitsPowerOfTwo == 0 ? 0 : Log2Floor(bitsPowerOfTwo);
 
         for (int trit = 0; trit < 3; ++trit)
-            for (int bits = 0; bits < (1 << num_bits); ++bits)
-                unquantization_map_builder.Add(unquantFunc(trit, bits, range));
+            for (int bits = 0; bits < (1 << bitCount); ++bits)
+                _unquantizationMapBuilder.Add(unquantFunc(trit, bits, range));
 
         GenerateQuantizationMap();
         Freeze();
@@ -20,49 +20,16 @@ internal class TritQuantizationMap : QuantizationMap
     internal static int GetUnquantizedValue(int trit, int bits, int range)
     {
         int a = (bits & 1) != 0 ? 0x1FF : 0;
-        int b = 0, c = 0;
-        switch (range)
+        var (b, c) = range switch
         {
-            case 5:
-                b = 0; c = 204; break;
-            case 11:
-            {
-                int x = (bits >> 1) & 0x1;
-                b = (x << 1) | (x << 2) | (x << 4) | (x << 8);
-                c = 93;
-            }
-            break;
-            case 23:
-            {
-                int x = (bits >> 1) & 0x3;
-                b = x | (x << 2) | (x << 7);
-                c = 44;
-            }
-            break;
-            case 47:
-            {
-                int x = (bits >> 1) & 0x7;
-                b = x | (x << 6);
-                c = 22;
-            }
-            break;
-            case 95:
-            {
-                int x = (bits >> 1) & 0xF;
-                b = (x >> 2) | (x << 5);
-                c = 11;
-            }
-            break;
-            case 191:
-            {
-                int x = (bits >> 1) & 0x1F;
-                b = (x >> 4) | (x << 4);
-                c = 5;
-            }
-            break;
-            default:
-                throw new ArgumentException("Illegal trit encoding");
-        }
+            5 => (0, 204),
+            11 => ((bits >> 1) & 0x1) is var x ? ((x << 1) | (x << 2) | (x << 4) | (x << 8), 93) : default,
+            23 => ((bits >> 1) & 0x3) is var x ? (x | (x << 2) | (x << 7), 44) : default,
+            47 => ((bits >> 1) & 0x7) is var x ? (x | (x << 6), 22) : default,
+            95 => ((bits >> 1) & 0xF) is var x ? ((x >> 2) | (x << 5), 11) : default,
+            191 => ((bits >> 1) & 0x1F) is var x ? ((x >> 4) | (x << 4), 5) : default,
+            _ => throw new ArgumentException("Illegal trit encoding")
+        };
         int t = trit * c + b;
         t ^= a;
         t = (a & 0x80) | (t >> 2);

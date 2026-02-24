@@ -51,6 +51,29 @@ internal static class DecimationTable
         return decimationInfo;
     }
 
+    /// <summary>
+    /// Performs weight infill using pre-computed tables.
+    /// Maps unquantized grid weights to per-texel weights via bilinear interpolation
+    /// with pre-computed indices and factors.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    public static void InfillWeights(ReadOnlySpan<int> gridWeights, DecimationInfo decimationInfo, Span<int> result)
+    {
+        int texelCount = decimationInfo.TexelCount;
+        int[] weightIndices = decimationInfo.WeightIndices;
+        int[] weightFactors = decimationInfo.WeightFactors;
+        int offset1 = texelCount, offset2 = texelCount * 2, offset3 = texelCount * 3;
+
+        for (int i = 0; i < texelCount; i++)
+        {
+            result[i] = (8
+                + gridWeights[weightIndices[i]] * weightFactors[i]
+                + gridWeights[weightIndices[offset1 + i]] * weightFactors[offset1 + i]
+                + gridWeights[weightIndices[offset2 + i]] * weightFactors[offset2 + i]
+                + gridWeights[weightIndices[offset3 + i]] * weightFactors[offset3 + i]) >> 4;
+        }
+    }
+
     private static int GetScaleFactorD(int blockDimensions)
     {
         return (int)((1024f + (blockDimensions >> 1)) / (blockDimensions - 1));
@@ -115,28 +138,5 @@ internal static class DecimationTable
         }
 
         return new DecimationInfo(texelCount, indices, factors);
-    }
-
-    /// <summary>
-    /// Performs weight infill using pre-computed tables.
-    /// Maps unquantized grid weights to per-texel weights via bilinear interpolation
-    /// with pre-computed indices and factors.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    public static void InfillWeights(ReadOnlySpan<int> gridWeights, DecimationInfo di, Span<int> result)
-    {
-        int texelCount = di.TexelCount;
-        int[] wi = di.WeightIndices;
-        int[] wf = di.WeightFactors;
-        int p1 = texelCount, p2 = texelCount * 2, p3 = texelCount * 3;
-
-        for (int i = 0; i < texelCount; i++)
-        {
-            result[i] = (8
-                + gridWeights[wi[i]] * wf[i]
-                + gridWeights[wi[p1 + i]] * wf[p1 + i]
-                + gridWeights[wi[p2 + i]] * wf[p2 + i]
-                + gridWeights[wi[p3 + i]] * wf[p3 + i]) >> 4;
-        }
     }
 }

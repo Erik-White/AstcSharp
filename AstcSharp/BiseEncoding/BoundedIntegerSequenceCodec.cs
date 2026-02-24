@@ -7,6 +7,7 @@ namespace AstcSharp.BiseEncoding;
 /// </summary>
 internal partial class BoundedIntegerSequenceCodec
 {
+
     /// <summary>
     /// The maximum number of bits needed to encode an ISE value.
     /// </summary>
@@ -111,19 +112,11 @@ internal partial class BoundedIntegerSequenceCodec
     protected static readonly int[] FlatTritEncodings = FlattenEncodings(TritEncodings, 5);
     protected static readonly int[] FlatQuintEncodings = FlattenEncodings(QuintEncodings, 3);
 
-    private static int[] FlattenEncodings(int[][] jagged, int stride)
-    {
-        var flat = new int[jagged.Length * stride];
-        for (int i = 0; i < jagged.Length; i++)
-        {
-            for (int j = 0; j < stride; j++)
-                flat[i * stride + j] = jagged[i][j];
-        }
-        return flat;
-    }
+    private static readonly (BiseEncodingMode Mode, int BitCount)[] _packingModeCache = InitPackingModeCache();
 
     protected BiseEncodingMode _encoding;
     protected int _bitCount;
+
 
     /// <summary>
     ///  Base class for ASTC integer sequence encoders and decoders. These codecs
@@ -154,58 +147,6 @@ internal partial class BoundedIntegerSequenceCodec
         _bitCount = bitCount;
     }
 
-    /// <summary>
-    /// The size of a single ISE block in bits
-    /// </summary>
-    protected int GetEncodedBlockSize()
-    {
-        var (blockSize, extraBlockSize) = _encoding switch
-        {
-            BiseEncodingMode.TritEncoding => (5, 8),
-            BiseEncodingMode.QuintEncoding => (3, 7),
-            BiseEncodingMode.BitEncoding => (1, 0),
-            _ => (0, 0),
-        };
-        
-        return extraBlockSize + blockSize * _bitCount;
-    }
-
-    private static readonly (BiseEncodingMode Mode, int BitCount)[] _packingModeCache = InitPackingModeCache();
-
-    private static (BiseEncodingMode, int)[] InitPackingModeCache()
-    {
-        var cache = new (BiseEncodingMode, int)[1 << Log2MaxRangeForBits];
-        // Precompute for all valid ranges [1, 255]
-        for (int range = 1; range < cache.Length; range++)
-        {
-            int index = -1;
-            for (int i = 0; i < MaxRanges.Length; i++)
-            {
-                if (MaxRanges[i] >= range) { index = i; break; }
-            }
-            int maxValue = index < 0
-                ? MaxRanges[MaxRanges.Length - 1] + 1
-                : MaxRanges[index] + 1;
-
-            // Check QuintEncoding (5), TritEncoding (3), BitEncoding (1) in descending order
-            BiseEncodingMode encodingMode = BiseEncodingMode.Unknown;
-            ReadOnlySpan<BiseEncodingMode> modes = [BiseEncodingMode.QuintEncoding, BiseEncodingMode.TritEncoding, BiseEncodingMode.BitEncoding];
-            foreach (var em in modes)
-            {
-                if (maxValue % (int)em == 0 && int.IsPow2(maxValue / (int)em))
-                {
-                    encodingMode = em;
-                    break;
-                }
-            }
-
-            if (encodingMode == BiseEncodingMode.Unknown)
-                throw new InvalidOperationException($"Invalid range for BISE encoding: {range}");
-
-            cache[range] = (encodingMode, int.Log2(maxValue / (int)encodingMode));
-        }
-        return cache;
-    }
 
     /// <summary>
     /// The number of bits needed to encode the given number of values with respect to the
@@ -244,5 +185,69 @@ internal partial class BoundedIntegerSequenceCodec
         var (mode, bitCount) = GetPackingModeBitCount(range);
 
         return GetBitCount(mode, valuesCount, bitCount);
+    }
+
+
+    /// <summary>
+    /// The size of a single ISE block in bits
+    /// </summary>
+    protected int GetEncodedBlockSize()
+    {
+        var (blockSize, extraBlockSize) = _encoding switch
+        {
+            BiseEncodingMode.TritEncoding => (5, 8),
+            BiseEncodingMode.QuintEncoding => (3, 7),
+            BiseEncodingMode.BitEncoding => (1, 0),
+            _ => (0, 0),
+        };
+
+        return extraBlockSize + blockSize * _bitCount;
+    }
+
+
+    private static int[] FlattenEncodings(int[][] jagged, int stride)
+    {
+        var flat = new int[jagged.Length * stride];
+        for (int i = 0; i < jagged.Length; i++)
+        {
+            for (int j = 0; j < stride; j++)
+                flat[i * stride + j] = jagged[i][j];
+        }
+        return flat;
+    }
+
+    private static (BiseEncodingMode, int)[] InitPackingModeCache()
+    {
+        var cache = new (BiseEncodingMode, int)[1 << Log2MaxRangeForBits];
+        // Precompute for all valid ranges [1, 255]
+        for (int range = 1; range < cache.Length; range++)
+        {
+            int index = -1;
+            for (int i = 0; i < MaxRanges.Length; i++)
+            {
+                if (MaxRanges[i] >= range) { index = i; break; }
+            }
+            int maxValue = index < 0
+                ? MaxRanges[MaxRanges.Length - 1] + 1
+                : MaxRanges[index] + 1;
+
+            // Check QuintEncoding (5), TritEncoding (3), BitEncoding (1) in descending order
+            BiseEncodingMode encodingMode = BiseEncodingMode.Unknown;
+            ReadOnlySpan<BiseEncodingMode> modes = [BiseEncodingMode.QuintEncoding, BiseEncodingMode.TritEncoding, BiseEncodingMode.BitEncoding];
+            foreach (var em in modes)
+            {
+                if (maxValue % (int)em == 0 && int.IsPow2(maxValue / (int)em))
+                {
+                    encodingMode = em;
+                    break;
+                }
+            }
+
+            if (encodingMode == BiseEncodingMode.Unknown)
+                throw new InvalidOperationException($"Invalid range for BISE encoding: {range}");
+
+            cache[range] = (encodingMode, int.Log2(maxValue / (int)encodingMode));
+        }
+        return cache;
     }
 }

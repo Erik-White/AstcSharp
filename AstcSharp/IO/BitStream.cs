@@ -12,6 +12,8 @@ internal struct BitStream
     private ulong _high;
     private uint _dataSize; // number of valid bits in the 128-bit buffer
 
+    public uint Bits => _dataSize;
+
     public BitStream(ulong data = 0, uint dataSize = 0)
     {
         _low = data;
@@ -19,18 +21,12 @@ internal struct BitStream
         _dataSize = dataSize;
     }
 
-    // New overload: initialize BitStream with a 128-bit value
     public BitStream(UInt128 data, uint dataSize)
     {
         _low = data.Low();
         _high = data.High();
         _dataSize = dataSize;
     }
-
-    public uint Bits => _dataSize;
-
-    private static ulong MaskFor(int bits)
-        => bits == 64 ? ~0UL : ((1UL << bits) - 1UL);
 
     public void PutBits<T>(T x, int size) where T : unmanaged
     {
@@ -124,6 +120,11 @@ internal struct BitStream
         ShiftBuffer(count);
         return true;
     }
+
+    private static ulong MaskFor(int bits)
+        => bits == 64
+            ? ~0UL
+            : ((1UL << bits) - 1UL);
 
     private UInt128? GetBitsUInt128(int count)
     {

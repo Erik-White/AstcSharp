@@ -2,22 +2,25 @@ using AstcSharp.IO;
 
 namespace AstcSharp.BiseEncoding;
 
-internal class BoundedIntegerSequenceDecoder : BoundedIntegerSequenceCodec
+internal sealed class BoundedIntegerSequenceDecoder : BoundedIntegerSequenceCodec
 {
+
     private static readonly BoundedIntegerSequenceDecoder?[] _cache = new BoundedIntegerSequenceDecoder?[256];
+
+
+    public BoundedIntegerSequenceDecoder(int range) : base(range) { }
+
 
     public static BoundedIntegerSequenceDecoder GetCached(int range)
     {
-        var d = _cache[range];
-        if (d is null)
+        var decoder = _cache[range];
+        if (decoder is null)
         {
-            d = new BoundedIntegerSequenceDecoder(range);
-            _cache[range] = d;
+            decoder = new BoundedIntegerSequenceDecoder(range);
+            _cache[range] = decoder;
         }
-        return d;
+        return decoder;
     }
-
-    public BoundedIntegerSequenceDecoder(int range) : base(range) { }
 
     /// <summary>
     /// Decode a sequence of bounded integers into a caller-provided span.

@@ -107,10 +107,14 @@ internal static class SimdHelpers
         int dpChannel,
         int dpWeight)
     {
-        output[offset + 0] = (byte)InterpolateChannelScalar(lowR, highR, dpChannel == 0 ? dpWeight : weight);
-        output[offset + 1] = (byte)InterpolateChannelScalar(lowG, highG, dpChannel == 1 ? dpWeight : weight);
-        output[offset + 2] = (byte)InterpolateChannelScalar(lowB, highB, dpChannel == 2 ? dpWeight : weight);
-        output[offset + 3] = (byte)InterpolateChannelScalar(lowA, highA, dpChannel == 3 ? dpWeight : weight);
+        output[offset + 0] = (byte)InterpolateChannelScalar(lowR, highR,
+            dpChannel == 0 ? dpWeight : weight);
+        output[offset + 1] = (byte)InterpolateChannelScalar(lowG, highG,
+            dpChannel == 1 ? dpWeight : weight);
+        output[offset + 2] = (byte)InterpolateChannelScalar(lowB, highB,
+            dpChannel == 2 ? dpWeight : weight);
+        output[offset + 3] = (byte)InterpolateChannelScalar(lowA, highA,
+            dpChannel == 3 ? dpWeight : weight);
     }
 
     // Keep the old API for ColorAt() (used by tests and non-hot paths)
@@ -127,10 +131,14 @@ internal static class SimdHelpers
         RgbaColor low, RgbaColor high,
         int weight, int dualPlaneChannel, int dualPlaneWeight)
         => new(
-            r: InterpolateChannelScalar(low.R, high.R, dualPlaneChannel == 0 ? dualPlaneWeight : weight),
-            g: InterpolateChannelScalar(low.G, high.G, dualPlaneChannel == 1 ? dualPlaneWeight : weight),
-            b: InterpolateChannelScalar(low.B, high.B, dualPlaneChannel == 2 ? dualPlaneWeight : weight),
-            a: InterpolateChannelScalar(low.A, high.A, dualPlaneChannel == 3 ? dualPlaneWeight : weight));
+            r: InterpolateChannelScalar(low.R, high.R,
+                dualPlaneChannel == 0 ? dualPlaneWeight : weight),
+            g: InterpolateChannelScalar(low.G, high.G,
+                dualPlaneChannel == 1 ? dualPlaneWeight : weight),
+            b: InterpolateChannelScalar(low.B, high.B,
+                dualPlaneChannel == 2 ? dualPlaneWeight : weight),
+            a: InterpolateChannelScalar(low.A, high.A,
+                dualPlaneChannel == 3 ? dualPlaneWeight : weight));
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static int InterpolateChannelScalar(int p0, int p1, int weight)
