@@ -596,28 +596,6 @@ internal class LogicalBlock
 
     public bool IsDualPlane() => _dualPlane is not null;
 
-    public static LogicalBlock? UnpackLogicalBlock(Footprint footprint, PhysicalBlock physicalBlock)
-    {
-        if (physicalBlock.IsVoidExtent)
-        {
-            var voidExtantIntermediateBlock = IntermediateBlock.UnpackVoidExtent(physicalBlock);
-
-            return voidExtantIntermediateBlock is not null
-                ? new LogicalBlock(footprint, voidExtantIntermediateBlock.Value)
-                : null;
-        }
-        else
-        {
-            var info = BlockInfo.Decode(physicalBlock.BlockBits);
-            if (!info.IsValid) return null;
-
-            return new LogicalBlock(footprint, physicalBlock.BlockBits, in info);
-        }
-    }
-
-    /// <summary>
-    /// Fast path with pre-computed BlockInfo (avoids re-decoding when caller already has it).
-    /// </summary>
     public static LogicalBlock? UnpackLogicalBlock(Footprint footprint, UInt128 bits, in BlockInfo info)
     {
         if (!info.IsValid) return null;

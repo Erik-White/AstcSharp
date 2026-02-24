@@ -23,7 +23,7 @@ public class WeightInfillTests
     public void CountBitsForWeights_WithVariousParameters_ShouldReturnCorrectBitCount(
         int width, int height, int range, int expectedBitCount)
     {
-        var bitCount = WeightInfill.CountBitsForWeights(width, height, range);
+        var bitCount = BoundedIntegerSequenceCodec.GetBitCountForRange(width * height, range);
 
         bitCount.Should().Be(expectedBitCount);
     }
@@ -34,7 +34,10 @@ public class WeightInfillTests
         int[] weights = [1, 3, 5, 3, 5, 7, 5, 7, 9];
         int[] expected = [1, 2, 3, 4, 5, 2, 3, 4, 5, 6, 3, 4, 5, 6, 7, 4, 5, 6, 7, 8, 5, 6, 7, 8, 9];
 
-        var result = WeightInfill.InfillWeights(weights, Footprint.Get5x5(), 3, 3);
+        var footprint = Footprint.Get5x5();
+        var di = DecimationTable.Get(footprint, 3, 3);
+        var result = new int[footprint.PixelCount];
+        DecimationTable.InfillWeights(weights, di, result);
 
         result.Should().HaveCount(expected.Length);
         result.Should().Equal(expected);

@@ -83,8 +83,9 @@ public class CodecTests
         for (int i = 0; i < astcData.Length; i += PhysicalBlock.SizeInBytes)
         {
             var block = astcData.AsSpan(i, PhysicalBlock.SizeInBytes).ToArray();
-            var physicalBlock = PhysicalBlock.Create(BitConverter.ToUInt64(block, 0), BitConverter.ToUInt64(block, 8));
-            var logicalBlock = LogicalBlock.UnpackLogicalBlock(footprint, physicalBlock);
+            var bits = new UInt128(BitConverter.ToUInt64(block, 8), BitConverter.ToUInt64(block, 0));
+            var info = BlockInfo.Decode(bits);
+            var logicalBlock = LogicalBlock.UnpackLogicalBlock(footprint, bits, in info);
 
             logicalBlock.Should().NotBeNull("all blocks should unpack successfully");
         }
