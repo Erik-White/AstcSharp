@@ -29,9 +29,17 @@ Span<byte> ldrPixels = AstcDecoder.DecompressImage(astcData, width, height, foot
 Span<float> hdrPixels = AstcDecoder.DecompressHdrImage(astcData, width, height, footprint);
 ```
 
+## Decoding paths
+
+There are three block decoding paths, chosen automatically:
+
+- **Direct decode** — the default for normal blocks. Decodes weights and endpoints directly from raw bits using batch unquantization, bypassing intermediate allocations.
+- **Fused decode** — a SIMD-accelerated path for single-partition, single-plane LDR blocks (the most common case). Decodes and interpolates in one pass without constructing a `LogicalBlock`.
+- **Void extent** — handles constant-color blocks via `IntermediateBlock.UnpackVoidExtent`.
+
 ## Future improvements
 
-- Improved performance
+- 3D block types
 - Encoding
 
 ## References
