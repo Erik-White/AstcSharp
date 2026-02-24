@@ -54,11 +54,10 @@ namespace AstcSharp.Benchmarks
             blocks.Slice(0, 16).CopyTo(blockBytes);
             var low = BitConverter.ToUInt64(blockBytes);
             var high = BitConverter.ToUInt64(blockBytes.Slice(8));
-            var physicalBlock = PhysicalBlock.Create(((UInt128)low | ((UInt128)high << 64)));
-            var intermediateBlockData = IntermediateBlock.UnpackIntermediateBlock(physicalBlock);
-            var logicalBlock = intermediateBlockData is not null
-                ? new LogicalBlock(Footprint.Get4x4(), intermediateBlockData.Value)
-                : throw new InvalidOperationException("Failed to unpack intermediate block");
+            var bits = (UInt128)low | ((UInt128)high << 64);
+            var info = BlockInfo.Decode(bits);
+            var logicalBlock = LogicalBlock.UnpackLogicalBlock(Footprint.Get4x4(), bits, in info)
+                ?? throw new InvalidOperationException("Failed to unpack block");
 
             return logicalBlock is not null;
         }
