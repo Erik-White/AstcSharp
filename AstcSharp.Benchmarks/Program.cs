@@ -8,9 +8,9 @@ namespace AstcSharp.Benchmarks
         {
             var switcher = new BenchmarkSwitcher(
             [
-                typeof(AstcDecodingBenchmarks),
+                typeof(DecodingBenchmark),
                 typeof(AstcFullImageDecodeBenchmark),
-                typeof(ArmReferenceComparisonBenchmark)
+                typeof(ReferenceDecoderBenchmark)
             ]);
             switcher.Run(args);
         }

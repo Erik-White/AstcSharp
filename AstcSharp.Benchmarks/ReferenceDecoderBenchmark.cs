@@ -6,7 +6,7 @@ namespace AstcSharp.Benchmarks;
 
 [MemoryDiagnoser]
 [Config(typeof(InProcessConfig))]
-public class ArmReferenceComparisonBenchmark
+public class ReferenceDecoderBenchmark
 {
     private AstcFile? _astcFile;
 
