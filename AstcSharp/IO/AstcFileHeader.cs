@@ -10,7 +10,7 @@ namespace AstcSharp.IO;
 /// 
 /// Note that the image is not required to be an exact multiple of the compressed block
 /// size; the compressed data may include padding that is discarded during decompression.
-// </remarks>
+/// </remarks>
 internal readonly record struct AstcFileHeader(byte BlockWidth, byte BlockHeight, byte BlockDepth, int ImageWidth, int ImageHeight, int ImageDepth)
 {
     public const uint Magic = 0x5CA1AB13;
