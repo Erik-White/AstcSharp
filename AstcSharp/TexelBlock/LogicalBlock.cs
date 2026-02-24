@@ -1,8 +1,7 @@
-using AstcSharp.BiseEncoding;
 using AstcSharp.BiseEncoding.Quantize;
+using AstcSharp.BlockDecoder;
 using AstcSharp.ColorEncoding;
 using AstcSharp.Core;
-using AstcSharp.IO;
 
 namespace AstcSharp.TexelBlock;
 
@@ -55,14 +54,9 @@ internal class LogicalBlock
     private LogicalBlock(Footprint footprint, UInt128 bits, in BlockInfo info)
     {
         // --- BISE decode + batch unquantize color endpoint values ---
-        var colorBitMask = UInt128Extensions.OnesMask(info.ColorBitCount);
-        var colorBits = (bits >> info.ColorStartBit) & colorBitMask;
-        var colorBitStream = new BitStream(colorBits, 128);
-
-        var colorDecoder = BoundedIntegerSequenceDecoder.GetCached(info.ColorValuesRange);
         Span<int> colors = stackalloc int[info.ColorValuesCount];
-        colorDecoder.Decode(info.ColorValuesCount, ref colorBitStream, colors);
-
+        FusedBlockDecoder.DecodeBiseValues(bits, info.ColorStartBit, info.ColorBitCount,
+            info.ColorValuesRange, info.ColorValuesCount, colors);
         Quantization.UnquantizeCEValuesBatch(colors, info.ColorValuesCount, info.ColorValuesRange);
 
         // --- Decode endpoints per partition ---
@@ -84,19 +78,15 @@ internal class LogicalBlock
                 (int)BitOperations.GetBits(bits.Low(), 13, 10))
             : GenerateSinglePartition(footprint);
 
-        // --- BISE decode weights ---
+        // --- BISE decode + unquantize + infill weights ---
         int gridSize = info.GridWidth * info.GridHeight;
         bool isDualPlane = info.IsDualPlane;
         int totalWeights = isDualPlane ? gridSize * 2 : gridSize;
 
-        var weightBits = UInt128Extensions.ReverseBits(bits) & UInt128Extensions.OnesMask(info.WeightBitCount);
-        var weightBitStream = new BitStream(weightBits, 128);
-
-        var weightDecoder = BoundedIntegerSequenceDecoder.GetCached(info.WeightRange);
         Span<int> rawWeights = stackalloc int[totalWeights];
-        weightDecoder.Decode(totalWeights, ref weightBitStream, rawWeights);
+        FusedBlockDecoder.DecodeBiseWeights(bits, info.WeightBitCount, info.WeightRange,
+            totalWeights, rawWeights);
 
-        // --- Unquantize + infill weights ---
         var di = DecimationTable.Get(footprint, info.GridWidth, info.GridHeight);
         _weights = new int[footprint.PixelCount];
 

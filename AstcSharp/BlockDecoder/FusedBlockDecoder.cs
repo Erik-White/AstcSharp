@@ -59,7 +59,7 @@ internal static class FusedBlockDecoder
     /// without creating a BitStream (avoids per-value ShiftBuffer overhead).
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void DecodeBiseValues(UInt128 bits, int startBit, int bitCount, int range, int valuesCount, Span<int> result)
+    internal static void DecodeBiseValues(UInt128 bits, int startBit, int bitCount, int range, int valuesCount, Span<int> result)
     {
         var (encMode, bitsPerValue) = BoundedIntegerSequenceCodec.GetPackingModeBitCount(range);
 
@@ -118,7 +118,7 @@ internal static class FusedBlockDecoder
     /// For bit-only encoding, extracts directly from the reversed bits without BitStream.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void DecodeBiseWeights(UInt128 bits, int weightBitCount, int weightRange, int gridSize, Span<int> result)
+    internal static void DecodeBiseWeights(UInt128 bits, int weightBitCount, int weightRange, int count, Span<int> result)
     {
         var (encMode, bitsPerValue) = BoundedIntegerSequenceCodec.GetPackingModeBitCount(weightRange);
         var weightBits = UInt128Extensions.ReverseBits(bits) & UInt128Extensions.OnesMask(weightBitCount);
@@ -126,13 +126,13 @@ internal static class FusedBlockDecoder
         if (encMode == BiseEncodingMode.BitEncoding)
         {
             // Fast path: extract N-bit values directly via shifts
-            int totalBits = gridSize * bitsPerValue;
+            int totalBits = count * bitsPerValue;
             ulong mask = (1UL << bitsPerValue) - 1;
 
             if (totalBits <= 64)
             {
                 ulong data = weightBits.Low();
-                for (int i = 0; i < gridSize; i++)
+                for (int i = 0; i < count; i++)
                 {
                     result[i] = (int)(data & mask);
                     data >>= bitsPerValue;
@@ -143,7 +143,7 @@ internal static class FusedBlockDecoder
                 ulong lo = weightBits.Low();
                 ulong hi = weightBits.High();
                 int bitPos = 0;
-                for (int i = 0; i < gridSize; i++)
+                for (int i = 0; i < count; i++)
                 {
                     if (bitPos < 64)
                     {
@@ -165,6 +165,6 @@ internal static class FusedBlockDecoder
         // Trit/quint encoding: fall back to full BISE decoder
         var weightBitStream = new BitStream(weightBits, 128);
         var decoder = BoundedIntegerSequenceDecoder.GetCached(weightRange);
-        decoder.Decode(gridSize, ref weightBitStream, result);
+        decoder.Decode(count, ref weightBitStream, result);
     }
 }
