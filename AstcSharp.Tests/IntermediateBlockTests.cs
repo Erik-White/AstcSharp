@@ -5,7 +5,7 @@ using AwesomeAssertions;
 
 namespace AstcSharp.Tests;
 
-public class IntermediateAstcBlockTests
+public class IntermediateBlockTests
 {
     private static readonly UInt128 ErrorBlock = UInt128.Zero;
 
@@ -54,7 +54,7 @@ public class IntermediateAstcBlockTests
             WeightGridY = 6
         };
 
-        var (error, _) = IntermediateBlock.Pack(data);
+        var (error, _) = IntermediateBlockPacker.Pack(data);
 
         error.Should().NotBeNull();
         error.Should().Contain("Incorrect number of weights");
@@ -96,7 +96,7 @@ public class IntermediateAstcBlockTests
         data.Endpoints[1] = new() { Mode = ColorEndpointMode.LdrRgbDirect };
         data.Endpoints[2] = new() { Mode = ColorEndpointMode.LdrRgbDirect };
 
-        var (error, _) = IntermediateBlock.Pack(data);
+        var (error, _) = IntermediateBlockPacker.Pack(data);
 
         error.Should().NotBeNull();
         error.Should().Contain("illegal color range");
@@ -203,7 +203,7 @@ public class IntermediateAstcBlockTests
         data.Endpoints[0] = endpoint;
         data.EndpointCount = 1;
 
-        var (error, packed) = IntermediateBlock.Pack(data);
+        var (error, packed) = IntermediateBlockPacker.Pack(data);
 
         error.Should().BeNull();
         packed.Should().Be((UInt128)0x0000000001FE000173UL);
@@ -232,7 +232,7 @@ public class IntermediateAstcBlockTests
         intermediate.Endpoints[0].Colors[1].Should().Be(0);
 
         // Repack
-        var (error, repacked) = IntermediateBlock.Pack(intermediate);
+        var (error, repacked) = IntermediateBlockPacker.Pack(intermediate);
 
         error.Should().BeNull();
         repacked.Should().Be(original);
@@ -293,7 +293,7 @@ public class IntermediateAstcBlockTests
         for (int i = 0; i < 4; ++i)
             data.Coords[i] = (ushort)((1 << 13) - 1);
 
-        var (error, packed) = IntermediateBlock.Pack(data);
+        var (error, packed) = IntermediateBlockPacker.Pack(data);
 
         error.Should().BeNull();
         packed.Should().Be((UInt128)0xFFFFFFFFFFFFFDFCUL);
@@ -311,7 +311,7 @@ public class IntermediateAstcBlockTests
             Coords = new ushort[4] { 0, 8191, 0, 8191 }
         };
 
-        var (error, packed) = IntermediateBlock.Pack(data);
+        var (error, packed) = IntermediateBlockPacker.Pack(data);
 
         error.Should().BeNull();
         packed.Should().Be(new UInt128(0xdeadbeefdeadbeefUL, 0xFFF8003FFE000DFCUL));
@@ -330,7 +330,7 @@ public class IntermediateAstcBlockTests
         unpacked.Should().NotBeNull();
         var ib = unpacked!.Value;
 
-        var (error, repacked) = IntermediateBlock.Pack(ib);
+        var (error, repacked) = IntermediateBlockPacker.Pack(ib);
 
         error.Should().BeNull();
         repacked.Should().Be(original);
@@ -370,7 +370,7 @@ public class IntermediateAstcBlockTests
                 var voidData = IntermediateBlock.UnpackVoidExtent(originalBlock);
                 voidData.Should().NotBeNull();
 
-                var (error, packed) = IntermediateBlock.Pack(voidData!.Value);
+                var (error, packed) = IntermediateBlockPacker.Pack(voidData!.Value);
                 error.Should().BeNull();
                 repacked = packed;
             }
@@ -385,7 +385,7 @@ public class IntermediateAstcBlockTests
 
                 // Clear endpoint range before repacking (to test calculation)
                 ibData.EndpointRange = null;
-                var (error, packed) = IntermediateBlock.Pack(ibData);
+                var (error, packed) = IntermediateBlockPacker.Pack(ibData);
                 error.Should().BeNull();
                 repacked = packed;
             }
