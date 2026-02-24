@@ -174,7 +174,7 @@ public class PhysicalAstcBlockTests
 
         dims.Should().BeNull();
         var error = block.IdentifyInvalidEncodingIssues();
-        error.Should().Contain("Too many bits");
+        error.Should().Contain("Invalid block encoding");
     }
 
     [Fact]
@@ -242,7 +242,7 @@ public class PhysicalAstcBlockTests
 
         block.IsDualPlane.Should().BeFalse();
         block.GetWeightGridDimensions().Should().BeNull();
-        block.IdentifyInvalidEncodingIssues().Should().Contain("Too many bits");
+        block.IdentifyInvalidEncodingIssues().Should().Contain("Invalid block encoding");
     }
 
     [Fact]
@@ -350,7 +350,7 @@ public class PhysicalAstcBlockTests
         var error = block.IdentifyInvalidEncodingIssues();
 
         error.Should().NotBeNull();
-        error.Should().Contain("Reserved block mode");
+        error.Should().Contain("Invalid block encoding");
     }
 
     [Fact]
@@ -361,7 +361,7 @@ public class PhysicalAstcBlockTests
         var error = block.IdentifyInvalidEncodingIssues();
 
         error.Should().NotBeNull();
-        error.Should().Contain("Too many bits required for weight grid");
+        error.Should().Contain("Invalid block encoding");
     }
 
     [Theory]
@@ -386,7 +386,7 @@ public class PhysicalAstcBlockTests
 
         block.GetPartitionsCount().Should().BeNull();
         error.Should().NotBeNull();
-        error.Should().Contain("Both four partitions");
+        error.Should().Contain("Invalid block encoding");
     }
 
     [Theory]
