@@ -6,20 +6,17 @@ using AstcSharp.Core;
 namespace AstcSharp.TexelBlock;
 
 /// <summary>
-/// Fused block info computed in a single pass from raw ASTC block bits.
-/// Replaces ~25-30 redundant DecodeBlockMode calls per block with exactly 1.
-/// Used by the hot decode path; existing PhysicalBlock API remains unchanged
-/// for tests, encoding, and non-hot paths.
+/// Fused block info computed in a single pass from raw ASTC block bits
 /// </summary>
 internal struct BlockInfo
 {
-    private static readonly int[] s_weightRanges =
+    private static readonly int[] _weightRanges =
         [-1, -1, 1, 2, 3, 4, 5, 7, -1, -1, 9, 11, 15, 19, 23, 31];
 
-    private static readonly int[] s_extraCemBitsForPartition = [0, 2, 5, 8];
+    private static readonly int[] _extraCemBitsForPartition = [0, 2, 5, 8];
 
     // Valid BISE endpoint ranges in descending order (only these produce valid encodings)
-    private static readonly int[] s_validEndpointRanges =
+    private static readonly int[] _validEndpointRanges =
         [255, 191, 159, 127, 95, 79, 63, 47, 39, 31, 23, 19, 15, 11, 9, 7, 5];
 
     public bool IsValid;
@@ -51,17 +48,14 @@ internal struct BlockInfo
     public ColorEndpointMode EndpointMode3;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public readonly ColorEndpointMode GetEndpointMode(int partition)
+    public readonly ColorEndpointMode GetEndpointMode(int partition) => partition switch
     {
-        return partition switch
-        {
-            0 => EndpointMode0,
-            1 => EndpointMode1,
-            2 => EndpointMode2,
-            3 => EndpointMode3,
-            _ => EndpointMode0
-        };
-    }
+        0 => EndpointMode0,
+        1 => EndpointMode1,
+        2 => EndpointMode2,
+        3 => EndpointMode3,
+        _ => EndpointMode0
+    };
 
     /// <summary>
     /// Decode all block info from raw 128-bit ASTC block data in a single pass.
@@ -192,9 +186,9 @@ internal struct BlockInfo
         // ---- Step 3: Compute weight range from r and h bits ----
         uint hBit = isWidthA6HeightB6 ? 0u : (uint)((low_bits >> 9) & 1);
         int rangeIdx = (int)((hBit << 3) | rBits);
-        if ((uint)rangeIdx >= (uint)s_weightRanges.Length)
+        if ((uint)rangeIdx >= (uint)_weightRanges.Length)
             return default;
-        int weightRange = s_weightRanges[rangeIdx];
+        int weightRange = _weightRanges[rangeIdx];
         if (weightRange < 0)
             return default;
 
@@ -246,7 +240,7 @@ internal struct BlockInfo
             else
             {
                 // Non-shared CEM: per-partition modes
-                numExtraCEMBits = s_extraCemBitsForPartition[partitionCount - 1];
+                numExtraCEMBits = _extraCemBitsForPartition[partitionCount - 1];
 
                 int extraCemStartPos = 128 - numExtraCEMBits - weightBitCount;
                 var extraCem = BitOperations.GetBits(bits, extraCemStartPos, numExtraCEMBits);
@@ -305,7 +299,7 @@ internal struct BlockInfo
 
         // Find max color range that fits (only check valid BISE ranges: 17 vs up to 255)
         int colorValuesRange = 0, colorBitCount = 0;
-        foreach (int rv in s_validEndpointRanges)
+        foreach (int rv in _validEndpointRanges)
         {
             int bitCount = BoundedIntegerSequenceCodec.GetBitCountForRange(colorValuesCount, rv);
             if (bitCount <= maxColorBits)

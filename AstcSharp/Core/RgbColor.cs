@@ -32,6 +32,8 @@ internal readonly record struct RgbColor(byte R, byte G, byte B)
             _ => throw new ArgumentOutOfRangeException(nameof(i), $"Index must be between 0 and {BytesPerPixel - 1}. Actual value: {i}.")
         };
 
+    public static RgbColor Empty => default;
+
     public static int SquaredError(RgbColor a, RgbColor b)
     {
         int result = 0;
@@ -53,6 +55,4 @@ internal readonly record struct RgbColor(byte R, byte G, byte B)
         int db = a.B - b.B;
         return dr * dr + dg * dg + db * db;
     }
-
-    public static RgbColor Empty => default;
 }

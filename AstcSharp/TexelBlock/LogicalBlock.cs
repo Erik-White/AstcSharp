@@ -7,7 +7,7 @@ namespace AstcSharp.TexelBlock;
 
 internal class LogicalBlock
 {
-    private static readonly ArrayPool<int> _intPool = ArrayPool<int>.Shared;
+    private static readonly ArrayPool<int> _weightsPool = ArrayPool<int>.Shared;
 
     private ColorEndpointPair[] _endpoints;
     private int _endpointCount;
@@ -39,7 +39,7 @@ internal class LogicalBlock
         _endpoints = new ColorEndpointPair[block.endpointCount];
         _endpointCount = DecodeEndpoints(in block, _endpoints);
         _partition = ComputePartition(footprint, in block);
-        _weights = _intPool.Rent(footprint.PixelCount);
+        _weights = _weightsPool.Rent(footprint.PixelCount);
         _weightsPooled = true;
         CalculateWeights(footprint, in block);
     }
@@ -49,12 +49,12 @@ internal class LogicalBlock
         _endpoints = new ColorEndpointPair[1];
         _endpointCount = DecodeEndpoints(block, _endpoints);
         _partition = ComputePartition(footprint, block);
-        _weights = _intPool.Rent(footprint.PixelCount);
+        _weights = _weightsPool.Rent(footprint.PixelCount);
         _weightsPooled = true;
         Array.Clear(_weights, 0, footprint.PixelCount);
     }
 
-    private static int DecodeEndpoints(in IntermediateBlock.IntermediateBlockData block, ColorEndpointPair[] eps)
+    private static int DecodeEndpoints(in IntermediateBlock.IntermediateBlockData block, ColorEndpointPair[] endpointPair)
     {
         int endpointRange = block.endpointRange ?? IntermediateBlock.EndpointRangeForBlock(block);
         if (endpointRange <= 0) throw new InvalidOperationException("Invalid endpoint range");
@@ -62,18 +62,18 @@ internal class LogicalBlock
         {
             var ed = block.endpoints[i];
             ReadOnlySpan<int> colorSpan = ((ReadOnlySpan<int>)ed.colors)[..ed.colorCount];
-            eps[i] = EndpointCodec.DecodeColorsForModePolymorphic(colorSpan, endpointRange, ed.mode);
+            endpointPair[i] = EndpointCodec.DecodeColorsForModePolymorphic(colorSpan, endpointRange, ed.mode);
         }
         return block.endpointCount;
     }
 
-    private static int DecodeEndpoints(IntermediateBlock.VoidExtentData block, ColorEndpointPair[] eps)
+    private static int DecodeEndpoints(IntermediateBlock.VoidExtentData block, ColorEndpointPair[] endpointPair)
     {
         if (block.isHdr)
         {
             // HDR void extent: ushort values are FP16 bit patterns (not LNS)
             var hdrColor = new RgbaHdrColor(block.r, block.g, block.b, block.a);
-            eps[0] = ColorEndpointPair.Hdr(hdrColor, hdrColor, valuesAreLns: false);
+            endpointPair[0] = ColorEndpointPair.Hdr(hdrColor, hdrColor, valuesAreLns: false);
         }
         else
         {
@@ -83,7 +83,7 @@ internal class LogicalBlock
                 (byte)(block.g >> 8),
                 (byte)(block.b >> 8),
                 (byte)(block.a >> 8));
-            eps[0] = ColorEndpointPair.Ldr(ldrColor, ldrColor);
+            endpointPair[0] = ColorEndpointPair.Ldr(ldrColor, ldrColor);
         }
         return 1;
     }
@@ -125,7 +125,7 @@ internal class LogicalBlock
         {
             var dp = new DualPlaneData();
             dp.Channel = block.dualPlaneChannel.Value;
-            dp.Weights = _intPool.Rent(footprint.PixelCount);
+            dp.Weights = _weightsPool.Rent(footprint.PixelCount);
             dp.WeightsPooled = true;
             _dualPlane = dp;
             for (int i = 0; i < gridSize; ++i)
@@ -135,11 +135,6 @@ internal class LogicalBlock
             }
             DecimationTable.InfillWeights(unquantized, di, _dualPlane.Weights);
         }
-    }
-
-    private void CalculateWeights(Footprint footprint, IntermediateBlock.VoidExtentData block)
-    {
-        // _weights already allocated and cleared in constructor
     }
 
     public Footprint GetFootprint() => _partition.footprint;
@@ -194,22 +189,22 @@ internal class LogicalBlock
         int w = _weights[index];
         if (!ep.IsHdr)
         {
-            if (_dualPlane != null)
+            if (_dualPlane is not null)
                 return SimdHelpers.InterpolateColorLdrDualPlane(
                     ep.LdrLow, ep.LdrHigh, w, _dualPlane.Channel, _dualPlane.Weights[index]);
             return SimdHelpers.InterpolateColorLdr(ep.LdrLow, ep.LdrHigh, w);
         }
         else
         {
-            if (_dualPlane != null)
+            if (_dualPlane is not null)
             {
-                int dpCh = _dualPlane.Channel;
-                int dpW = _dualPlane.Weights[index];
+                int dualPlaneChannel = _dualPlane.Channel;
+                int dualPlaneWeight = _dualPlane.Weights[index];
                 return new RgbaColor(
-                    r: InterpolateChannelHdr(ep.HdrLow[0], ep.HdrHigh[0], dpCh == 0 ? dpW : w) >> 8,
-                    g: InterpolateChannelHdr(ep.HdrLow[1], ep.HdrHigh[1], dpCh == 1 ? dpW : w) >> 8,
-                    b: InterpolateChannelHdr(ep.HdrLow[2], ep.HdrHigh[2], dpCh == 2 ? dpW : w) >> 8,
-                    a: InterpolateChannelHdr(ep.HdrLow[3], ep.HdrHigh[3], dpCh == 3 ? dpW : w) >> 8);
+                    r: InterpolateChannelHdr(ep.HdrLow[0], ep.HdrHigh[0], dualPlaneChannel == 0 ? dualPlaneWeight : w) >> 8,
+                    g: InterpolateChannelHdr(ep.HdrLow[1], ep.HdrHigh[1], dualPlaneChannel == 1 ? dualPlaneWeight : w) >> 8,
+                    b: InterpolateChannelHdr(ep.HdrLow[2], ep.HdrHigh[2], dualPlaneChannel == 2 ? dualPlaneWeight : w) >> 8,
+                    a: InterpolateChannelHdr(ep.HdrLow[3], ep.HdrHigh[3], dualPlaneChannel == 3 ? dualPlaneWeight : w) >> 8);
             }
             return new RgbaColor(
                 r: InterpolateChannelHdr(ep.HdrLow[0], ep.HdrHigh[0], w) >> 8,
@@ -403,16 +398,6 @@ internal class LogicalBlock
     }
 
     /// <summary>
-    /// Helper method to get the weight for a specific pixel and channel.
-    /// </summary>
-    private int GetWeightForPixel(int index, int channel)
-    {
-        return (_dualPlane != null && _dualPlane.Channel == channel)
-            ? _dualPlane.Weights[index]
-            : _weights[index];
-    }
-
-    /// <summary>
     /// Writes all pixels in the block directly to the output buffer in RGBA byte format.
     /// Avoids per-pixel method call overhead, type dispatch, and RgbaColor allocation.
     /// </summary>
@@ -437,7 +422,7 @@ internal class LogicalBlock
                 int pixelCount = footprint.PixelCount;
                 for (int i = 0; i < pixelCount; i++)
                 {
-                    SimdHelpers.WritePixel1LdrDualPlane(
+                    SimdHelpers.WriteSinglePixelLdrDualPlane(
                         buffer, i * 4,
                         lowR, lowG, lowB, lowA, highR, highG, highB, highA,
                         _weights[i], dpCh, dpWeights[i]);
@@ -466,7 +451,7 @@ internal class LogicalBlock
         int pixelCount = footprint.PixelCount;
         for (int i = 0; i < pixelCount; i++)
         {
-            SimdHelpers.WritePixel1Ldr(
+            SimdHelpers.WriteSinglePixelLdr(
                 buffer, i * 4,
                 lowR, lowG, lowB, lowA, highR, highG, highB, highA,
                 _weights[i]);
@@ -484,9 +469,9 @@ internal class LogicalBlock
             int w = _weights[i];
             if (!ep.IsHdr)
             {
-                if (_dualPlane != null)
+                if (_dualPlane is not null)
                 {
-                    SimdHelpers.WritePixel1LdrDualPlane(
+                    SimdHelpers.WriteSinglePixelLdrDualPlane(
                         buffer, i * 4,
                         ep.LdrLow.R, ep.LdrLow.G, ep.LdrLow.B, ep.LdrLow.A,
                         ep.LdrHigh.R, ep.LdrHigh.G, ep.LdrHigh.B, ep.LdrHigh.A,
@@ -494,7 +479,7 @@ internal class LogicalBlock
                 }
                 else
                 {
-                    SimdHelpers.WritePixel1Ldr(
+                    SimdHelpers.WriteSinglePixelLdr(
                         buffer, i * 4,
                         ep.LdrLow.R, ep.LdrLow.G, ep.LdrLow.B, ep.LdrLow.A,
                         ep.LdrHigh.R, ep.LdrHigh.G, ep.LdrHigh.B, ep.LdrHigh.A,
@@ -529,16 +514,13 @@ internal class LogicalBlock
         _endpointCount = p.numParts;
     }
 
-    public void SetEndpoints((RgbaColor first, RgbaColor second) eps, int subset)
+    public void SetEndpoints(RgbaColor firstEndpoint, RgbaColor secondEndpoint, int subset)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(subset);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(subset, _partition.numParts);
 
-        _endpoints[subset] = ColorEndpointPair.Ldr(eps.first, eps.second);
+        _endpoints[subset] = ColorEndpointPair.Ldr(firstEndpoint, secondEndpoint);
     }
-
-    public void SetEndpoints(RgbaColor ep1, RgbaColor ep2, int subset)
-        => SetEndpoints((ep1, ep2), subset);
 
     public void SetDualPlaneChannel(int channel)
     {
@@ -557,13 +539,13 @@ internal class LogicalBlock
     {
         if (_weightsPooled)
         {
-            _intPool.Return(_weights);
+            _weightsPool.Return(_weights);
             _weights = [];
             _weightsPooled = false;
         }
         if (_dualPlane is { WeightsPooled: true })
         {
-            _intPool.Return(_dualPlane.Weights);
+            _weightsPool.Return(_dualPlane.Weights);
             _dualPlane.Weights = [];
             _dualPlane.WeightsPooled = false;
         }
@@ -575,9 +557,10 @@ internal class LogicalBlock
         if (physicalBlock.IsVoidExtent)
         {
             var voidExtantIntermediateBlock = IntermediateBlock.UnpackVoidExtent(physicalBlock);
-            if (voidExtantIntermediateBlock is null) return null;
 
-            return new LogicalBlock(footprint, voidExtantIntermediateBlock.Value);
+            return voidExtantIntermediateBlock is not null
+                ? new LogicalBlock(footprint, voidExtantIntermediateBlock.Value)
+                : null;
         }
         else
         {
@@ -588,17 +571,6 @@ internal class LogicalBlock
             ib.ReturnPooledArrays();
             return result;
         }
-    }
-
-    /// <summary>
-    /// Fast path: unpacks a logical block directly from raw bits using fused BlockInfo decode.
-    /// Bypasses PhysicalBlock.Create entirely for standard blocks, eliminating ~25 redundant
-    /// DecodeBlockMode calls per block.
-    /// </summary>
-    public static LogicalBlock? UnpackLogicalBlock(Footprint footprint, UInt128 bits)
-    {
-        var info = BlockInfo.Decode(bits);
-        return UnpackLogicalBlock(footprint, bits, in info);
     }
 
     /// <summary>

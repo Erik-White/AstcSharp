@@ -41,7 +41,7 @@ internal partial class BoundedIntegerSequenceCodec
     /// <para>
     /// For simplicity, we have stored a look-up table here so that we don't need
     /// to implement the decoding logic. Similarly, seven bits are used to decode
-    /// three quints (since 5^3 = 125 < 128).
+    /// three quints.
     /// </para>
     /// </remarks>
     protected static readonly int[][] TritEncodings =
@@ -107,9 +107,7 @@ internal partial class BoundedIntegerSequenceCodec
     /// </remarks>
     internal static readonly int[] MaxRanges = [1, 2, 3, 4, 5, 7, 9, 11, 15, 19, 23, 31, 39, 47, 63, 79, 95, 127, 159, 191, 255];
 
-    // Flat encoding tables: eliminates jagged array indirection (two pointer dereferences → one).
-    // FlatTritEncodings[encodedBits * 5 + i] == TritEncodings[encodedBits][i]
-    // FlatQuintEncodings[encodedBits * 3 + i] == QuintEncodings[encodedBits][i]
+    // Flat encoding tables: eliminates jagged array indirection
     protected static readonly int[] FlatTritEncodings = FlattenEncodings(TritEncodings, 5);
     protected static readonly int[] FlatQuintEncodings = FlattenEncodings(QuintEncodings, 3);
 

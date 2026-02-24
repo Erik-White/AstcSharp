@@ -5,7 +5,6 @@ namespace AstcSharp.ColorEncoding;
 
 /// <summary>
 /// A value-type discriminated union representing either an LDR or HDR color endpoint pair.
-/// Eliminates heap allocations compared to the previous interface + record approach.
 /// </summary>
 [StructLayout(LayoutKind.Auto)]
 internal struct ColorEndpointPair

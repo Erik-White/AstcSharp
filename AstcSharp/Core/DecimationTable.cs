@@ -41,7 +41,7 @@ internal static class DecimationTable
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static DecimationInfo Get(Footprint footprint, int gridX, int gridY)
     {
-        int index = (int)footprint.Type * (GridRange * GridRange) + (gridX - GridMin) * GridRange + (gridY - GridMin);
+        int index = (int)footprint.Type * GridRange * GridRange + (gridX - GridMin) * GridRange + (gridY - GridMin);
         var decimationInfo = _table[index];
         if (decimationInfo is null)
         {

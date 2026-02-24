@@ -13,10 +13,10 @@ internal static class SimdHelpers
     /// <summary>
     /// Interpolates one channel for 4 pixels simultaneously.
     /// All 4 pixels share the same endpoint values but have different weights.
-    /// Returns 4 byte results packed into the lower bytes of a Vector128&lt;int&gt;.
+    /// Returns 4 byte results packed into the lower bytes of a <see cref="Vector128{T}"/>.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static Vector128<int> InterpolateChannel4Pixels(int p0, int p1, Vector128<int> weights)
+    public static Vector128<int> Interpolate4ChannelPixels(int p0, int p1, Vector128<int> weights)
     {
         // Bit-replicate endpoint bytes to 16-bit
         var c0 = Vector128.Create((p0 << 8) | p0);
@@ -38,16 +38,23 @@ internal static class SimdHelpers
     /// Processes each channel across 4 pixels in parallel, then interleaves to RGBA output.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void WritePixels4Ldr(
-        Span<byte> output, int offset,
-        int lowR, int lowG, int lowB, int lowA,
-        int highR, int highG, int highB, int highA,
+    public static void Write4PixelLdr(
+        Span<byte> output,
+        int offset,
+        int lowR,
+        int lowG,
+        int lowB,
+        int lowA,
+        int highR,
+        int highG,
+        int highB,
+        int highA,
         Vector128<int> weights)
     {
-        var r = InterpolateChannel4Pixels(lowR, highR, weights);
-        var g = InterpolateChannel4Pixels(lowG, highG, weights);
-        var b = InterpolateChannel4Pixels(lowB, highB, weights);
-        var a = InterpolateChannel4Pixels(lowA, highA, weights);
+        var r = Interpolate4ChannelPixels(lowR, highR, weights);
+        var g = Interpolate4ChannelPixels(lowG, highG, weights);
+        var b = Interpolate4ChannelPixels(lowB, highB, weights);
+        var a = Interpolate4ChannelPixels(lowA, highA, weights);
 
         // Pack 4 RGBA pixels into 16 bytes via vector OR+shift.
         // Each int element has its channel value in bits [0:7].
@@ -62,10 +69,17 @@ internal static class SimdHelpers
     /// No RgbaColor allocation.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void WritePixel1Ldr(
-        Span<byte> output, int offset,
-        int lowR, int lowG, int lowB, int lowA,
-        int highR, int highG, int highB, int highA,
+    public static void WriteSinglePixelLdr(
+        Span<byte> output,
+        int offset,
+        int lowR,
+        int lowG,
+        int lowB,
+        int lowA,
+        int highR,
+        int highG,
+        int highB,
+        int highA,
         int weight)
     {
         output[offset + 0] = (byte)InterpolateChannelScalar(lowR, highR, weight);
@@ -78,11 +92,20 @@ internal static class SimdHelpers
     /// Scalar single-pixel dual-plane LDR interpolation, writing directly to buffer.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void WritePixel1LdrDualPlane(
-        Span<byte> output, int offset,
-        int lowR, int lowG, int lowB, int lowA,
-        int highR, int highG, int highB, int highA,
-        int weight, int dpChannel, int dpWeight)
+    public static void WriteSinglePixelLdrDualPlane(
+        Span<byte> output,
+        int offset,
+        int lowR,
+        int lowG,
+        int lowB,
+        int lowA,
+        int highR,
+        int highG,
+        int highB,
+        int highA,
+        int weight,
+        int dpChannel,
+        int dpWeight)
     {
         output[offset + 0] = (byte)InterpolateChannelScalar(lowR, highR, dpChannel == 0 ? dpWeight : weight);
         output[offset + 1] = (byte)InterpolateChannelScalar(lowG, highG, dpChannel == 1 ? dpWeight : weight);
@@ -93,25 +116,21 @@ internal static class SimdHelpers
     // Keep the old API for ColorAt() (used by tests and non-hot paths)
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static RgbaColor InterpolateColorLdr(RgbaColor low, RgbaColor high, int weight)
-    {
-        return new RgbaColor(
+        => new(
             r: InterpolateChannelScalar(low.R, high.R, weight),
             g: InterpolateChannelScalar(low.G, high.G, weight),
             b: InterpolateChannelScalar(low.B, high.B, weight),
             a: InterpolateChannelScalar(low.A, high.A, weight));
-    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static RgbaColor InterpolateColorLdrDualPlane(
         RgbaColor low, RgbaColor high,
         int weight, int dualPlaneChannel, int dualPlaneWeight)
-    {
-        return new RgbaColor(
+        => new(
             r: InterpolateChannelScalar(low.R, high.R, dualPlaneChannel == 0 ? dualPlaneWeight : weight),
             g: InterpolateChannelScalar(low.G, high.G, dualPlaneChannel == 1 ? dualPlaneWeight : weight),
             b: InterpolateChannelScalar(low.B, high.B, dualPlaneChannel == 2 ? dualPlaneWeight : weight),
             a: InterpolateChannelScalar(low.A, high.A, dualPlaneChannel == 3 ? dualPlaneWeight : weight));
-    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static int InterpolateChannelScalar(int p0, int p1, int weight)
@@ -120,6 +139,7 @@ internal static class SimdHelpers
         int c1 = (p1 << 8) | p1;
         int c = (c0 * (64 - weight) + c1 * weight + 32) / 64;
         int quantized = ((c * 255) + 32767) / 65536;
+
         return Math.Clamp(quantized, 0, 255);
     }
 }

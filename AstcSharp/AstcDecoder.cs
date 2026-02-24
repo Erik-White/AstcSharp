@@ -44,9 +44,10 @@ public static class AstcDecoder
     public static Span<byte> DecompressImage(ReadOnlySpan<byte> astcData, int width, int height, Footprint footprint)
     {
         var imageBuffer = new byte[width * height * BytesPerPixelUnorm8];
-        if (!DecompressImage(astcData, width, height, footprint, imageBuffer))
-            return [];
-        return imageBuffer;
+
+        return DecompressImage(astcData, width, height, footprint, imageBuffer)
+            ? imageBuffer
+            : [];
     }
 
     /// <summary>
@@ -214,8 +215,7 @@ public static class AstcDecoder
     /// Only handles single-partition, non-dual-plane, LDR blocks.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    private static void DecompressBlockFusedLdr(
-        UInt128 bits, in BlockInfo info, Footprint footprint, Span<byte> buffer)
+    private static void DecompressBlockFusedLdr(UInt128 bits, in BlockInfo info, Footprint footprint, Span<byte> buffer)
     {
         // 1. BISE decode color endpoint values
         int colorCount = info.EndpointMode0.GetColorValuesCount();
@@ -256,8 +256,13 @@ public static class AstcDecoder
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static void DecompressBlockFusedLdrToImage(
-        UInt128 bits, in BlockInfo info, Footprint footprint,
-        int dstBaseX, int dstBaseY, int imageWidth, Span<byte> imageBuffer)
+        UInt128 bits,
+        in BlockInfo info,
+        Footprint footprint,
+        int dstBaseX,
+        int dstBaseY,
+        int imageWidth,
+        Span<byte> imageBuffer)
     {
         // 1. BISE decode color endpoint values
         int colorCount = info.EndpointMode0.GetColorValuesCount();
@@ -297,8 +302,7 @@ public static class AstcDecoder
     /// without creating a BitStream (avoids per-value ShiftBuffer overhead).
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void DecodeBiseValues(
-        UInt128 bits, int startBit, int bitCount, int range, int valuesCount, Span<int> result)
+    private static void DecodeBiseValues(UInt128 bits, int startBit, int bitCount, int range, int valuesCount, Span<int> result)
     {
         var (encMode, bitsPerValue) = BoundedIntegerSequenceCodec.GetPackingModeBitCount(range);
 
@@ -357,8 +361,7 @@ public static class AstcDecoder
     /// For bit-only encoding, extracts directly from the reversed bits without BitStream.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void DecodeBiseWeights(
-        UInt128 bits, int weightBitCount, int weightRange, int gridSize, Span<int> result)
+    private static void DecodeBiseWeights(UInt128 bits, int weightBitCount, int weightRange, int gridSize, Span<int> result)
     {
         var (encMode, bitsPerValue) = BoundedIntegerSequenceCodec.GetPackingModeBitCount(weightRange);
         var weightBits = UInt128Extensions.ReverseBits(bits) & UInt128Extensions.OnesMask(weightBitCount);
@@ -412,8 +415,7 @@ public static class AstcDecoder
     /// Writes all pixels for a single-partition LDR block using SIMD where possible.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void WriteLdrPixels(
-        Span<byte> buffer, int pixelCount, in ColorEndpointPair ep, Span<int> texelWeights)
+    private static void WriteLdrPixels(Span<byte> buffer, int pixelCount, in ColorEndpointPair ep, Span<int> texelWeights)
     {
         int lowR = ep.LdrLow.R, lowG = ep.LdrLow.G, lowB = ep.LdrLow.B, lowA = ep.LdrLow.A;
         int highR = ep.LdrHigh.R, highG = ep.LdrHigh.G, highB = ep.LdrHigh.B, highA = ep.LdrHigh.A;
@@ -427,18 +429,34 @@ public static class AstcDecoder
                 var weights = Vector128.Create(
                     texelWeights[i], texelWeights[i + 1],
                     texelWeights[i + 2], texelWeights[i + 3]);
-                SimdHelpers.WritePixels4Ldr(
-                    buffer, i * 4,
-                    lowR, lowG, lowB, lowA, highR, highG, highB, highA,
+                SimdHelpers.Write4PixelLdr(
+                    buffer,
+                    i * 4,
+                    lowR,
+                    lowG,
+                    lowB,
+                    lowA,
+                    highR,
+                    highG,
+                    highB,
+                    highA,
                     weights);
             }
         }
 
         for (; i < pixelCount; i++)
         {
-            SimdHelpers.WritePixel1Ldr(
-                buffer, i * 4,
-                lowR, lowG, lowB, lowA, highR, highG, highB, highA,
+            SimdHelpers.WriteSinglePixelLdr(
+                buffer,
+                i * 4,
+                lowR,
+                lowG,
+                lowB,
+                lowA,
+                highR,
+                highG,
+                highB,
+                highA,
                 texelWeights[i]);
         }
     }
@@ -448,9 +466,13 @@ public static class AstcDecoder
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void WriteLdrPixelsToImage(
-        Span<byte> imageBuffer, Footprint footprint,
-        int dstBaseX, int dstBaseY, int imageWidth,
-        in ColorEndpointPair ep, Span<int> texelWeights)
+        Span<byte> imageBuffer,
+        Footprint footprint,
+        int dstBaseX,
+        int dstBaseY,
+        int imageWidth,
+        in ColorEndpointPair ep,
+        Span<int> texelWeights)
     {
         int lowR = ep.LdrLow.R, lowG = ep.LdrLow.G, lowB = ep.LdrLow.B, lowA = ep.LdrLow.A;
         int highR = ep.LdrHigh.R, highG = ep.LdrHigh.G, highB = ep.LdrHigh.B, highA = ep.LdrHigh.A;
@@ -474,7 +496,7 @@ public static class AstcDecoder
                     var weights = Vector128.Create(
                         texelWeights[ti], texelWeights[ti + 1],
                         texelWeights[ti + 2], texelWeights[ti + 3]);
-                    SimdHelpers.WritePixels4Ldr(
+                    SimdHelpers.Write4PixelLdr(
                         imageBuffer, dstRowOffset + px * BytesPerPixelUnorm8,
                         lowR, lowG, lowB, lowA, highR, highG, highB, highA,
                         weights);
@@ -483,7 +505,7 @@ public static class AstcDecoder
 
             for (; px < fW; px++)
             {
-                SimdHelpers.WritePixel1Ldr(
+                SimdHelpers.WriteSinglePixelLdr(
                     imageBuffer, dstRowOffset + px * BytesPerPixelUnorm8,
                     lowR, lowG, lowB, lowA, highR, highG, highB, highA,
                     texelWeights[srcRowBase + px]);
@@ -497,8 +519,7 @@ public static class AstcDecoder
     /// Handles single-partition, non-dual-plane blocks with both LDR and HDR endpoints.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    private static void DecompressBlockFusedHdr(
-        UInt128 bits, in BlockInfo info, Footprint footprint, Span<float> buffer)
+    private static void DecompressBlockFusedHdr(UInt128 bits, in BlockInfo info, Footprint footprint, Span<float> buffer)
     {
         // 1. BISE decode color endpoint values
         int colorCount = info.EndpointMode0.GetColorValuesCount();
@@ -538,8 +559,13 @@ public static class AstcDecoder
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static void DecompressBlockFusedHdrToImage(
-        UInt128 bits, in BlockInfo info, Footprint footprint,
-        int dstBaseX, int dstBaseY, int imageWidth, Span<float> imageBuffer)
+        UInt128 bits,
+        in BlockInfo info,
+        Footprint footprint,
+        int dstBaseX,
+        int dstBaseY,
+        int imageWidth,
+        Span<float> imageBuffer)
     {
         // 1. BISE decode color endpoint values
         int colorCount = info.EndpointMode0.GetColorValuesCount();
@@ -590,9 +616,13 @@ public static class AstcDecoder
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void WriteHdrOutputPixelsToImage(
-        Span<float> imageBuffer, Footprint footprint,
-        int dstBaseX, int dstBaseY, int imageWidth,
-        in ColorEndpointPair ep, Span<int> texelWeights)
+        Span<float> imageBuffer,
+        Footprint footprint,
+        int dstBaseX,
+        int dstBaseY,
+        int imageWidth,
+        in ColorEndpointPair ep,
+        Span<int> texelWeights)
     {
         if (ep.IsHdr)
             WriteHdrPixelsToImage(imageBuffer, footprint, dstBaseX, dstBaseY, imageWidth, in ep, texelWeights);
@@ -601,12 +631,11 @@ public static class AstcDecoder
     }
 
     /// <summary>
-    /// Writes LDR endpoints as normalized float output (common case in HDR API).
+    /// Writes LDR endpoints as normalized float output.
     /// Interpolates to UNORM16, then normalizes to [0, 1].
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void WriteLdrAsHdrPixels(
-        Span<float> buffer, int pixelCount, in ColorEndpointPair ep, Span<int> texelWeights)
+    private static void WriteLdrAsHdrPixels(Span<float> buffer, int pixelCount, in ColorEndpointPair ep, Span<int> texelWeights)
     {
         int lowR = ep.LdrLow.R, lowG = ep.LdrLow.G, lowB = ep.LdrLow.B, lowA = ep.LdrLow.A;
         int highR = ep.LdrHigh.R, highG = ep.LdrHigh.G, highB = ep.LdrHigh.B, highA = ep.LdrHigh.A;
@@ -627,9 +656,13 @@ public static class AstcDecoder
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void WriteLdrAsHdrPixelsToImage(
-        Span<float> imageBuffer, Footprint footprint,
-        int dstBaseX, int dstBaseY, int imageWidth,
-        in ColorEndpointPair ep, Span<int> texelWeights)
+        Span<float> imageBuffer,
+        Footprint footprint,
+        int dstBaseX,
+        int dstBaseY,
+        int imageWidth,
+        in ColorEndpointPair ep,
+        Span<int> texelWeights)
     {
         int lowR = ep.LdrLow.R, lowG = ep.LdrLow.G, lowB = ep.LdrLow.B, lowA = ep.LdrLow.A;
         int highR = ep.LdrHigh.R, highG = ep.LdrHigh.G, highB = ep.LdrHigh.B, highA = ep.LdrHigh.A;
@@ -660,8 +693,7 @@ public static class AstcDecoder
     /// Writes HDR endpoints as float output with LNS-to-FP16 conversion.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void WriteHdrPixels(
-        Span<float> buffer, int pixelCount, in ColorEndpointPair ep, Span<int> texelWeights)
+    private static void WriteHdrPixels(Span<float> buffer, int pixelCount, in ColorEndpointPair ep, Span<int> texelWeights)
     {
         bool alphaIsLdr = ep.AlphaIsLdr;
         int lowR = ep.HdrLow.R, lowG = ep.HdrLow.G, lowB = ep.HdrLow.B, lowA = ep.HdrLow.A;
@@ -692,9 +724,13 @@ public static class AstcDecoder
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void WriteHdrPixelsToImage(
-        Span<float> imageBuffer, Footprint footprint,
-        int dstBaseX, int dstBaseY, int imageWidth,
-        in ColorEndpointPair ep, Span<int> texelWeights)
+        Span<float> imageBuffer,
+        Footprint footprint,
+        int dstBaseX,
+        int dstBaseY,
+        int imageWidth,
+        in ColorEndpointPair ep,
+        Span<int> texelWeights)
     {
         bool alphaIsLdr = ep.AlphaIsLdr;
         int lowR = ep.HdrLow.R, lowG = ep.HdrLow.G, lowB = ep.HdrLow.B, lowA = ep.HdrLow.A;

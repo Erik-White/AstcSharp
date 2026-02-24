@@ -31,16 +31,16 @@ internal static class HdrEndpointDecoder
     /// Called from the fused decode path where BISE decode + batch unquantize
     /// have already been performed.
     /// </summary>
-    public static (RgbaHdrColor low, RgbaHdrColor high) DecodeHdrModeUnquantized(ReadOnlySpan<int> uv, ColorEndpointMode mode)
+    public static (RgbaHdrColor low, RgbaHdrColor high) DecodeHdrModeUnquantized(ReadOnlySpan<int> value, ColorEndpointMode mode)
     {
         return mode switch
         {
-            ColorEndpointMode.HdrLumaLargeRange => UnpackHdrLuminanceLargeRangeCore(uv[0], uv[1]),
-            ColorEndpointMode.HdrLumaSmallRange => UnpackHdrLuminanceSmallRangeCore(uv[0], uv[1]),
-            ColorEndpointMode.HdrRgbBaseScale => UnpackHdrRgbBaseScaleCore(uv[0], uv[1], uv[2], uv[3]),
-            ColorEndpointMode.HdrRgbDirect => UnpackHdrRgbDirectCore(uv[0], uv[1], uv[2], uv[3], uv[4], uv[5]),
-            ColorEndpointMode.HdrRgbDirectLdrAlpha => UnpackHdrRgbDirectLdrAlphaCore(uv),
-            ColorEndpointMode.HdrRgbDirectHdrAlpha => UnpackHdrRgbDirectHdrAlphaCore(uv),
+            ColorEndpointMode.HdrLumaLargeRange => UnpackHdrLuminanceLargeRangeCore(value[0], value[1]),
+            ColorEndpointMode.HdrLumaSmallRange => UnpackHdrLuminanceSmallRangeCore(value[0], value[1]),
+            ColorEndpointMode.HdrRgbBaseScale => UnpackHdrRgbBaseScaleCore(value[0], value[1], value[2], value[3]),
+            ColorEndpointMode.HdrRgbDirect => UnpackHdrRgbDirectCore(value[0], value[1], value[2], value[3], value[4], value[5]),
+            ColorEndpointMode.HdrRgbDirectLdrAlpha => UnpackHdrRgbDirectLdrAlphaCore(value),
+            ColorEndpointMode.HdrRgbDirectHdrAlpha => UnpackHdrRgbDirectHdrAlphaCore(value),
             _ => throw new InvalidOperationException($"Mode {mode} is not an HDR mode")
         };
     }

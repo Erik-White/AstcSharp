@@ -417,9 +417,9 @@ internal static class Quantization
     // Pre-computed flat tables for weight unquantization: entry[quantizedValue] = final unquantized weight.
     // Includes the dq > 32 → dq + 1 adjustment. Indexed by weight range.
     // Valid ranges: 1, 2, 3, 4, 5, 7, 9, 11, 15, 19, 23, 31
-    private static readonly int[]?[] s_weightUnquantFlat = InitWeightUnquantFlat();
+    private static readonly int[]?[] unquantizeWeightsFlat = InitializeUnquantizeWeightsFlat();
 
-    private static int[]?[] InitWeightUnquantFlat()
+    private static int[]?[] InitializeUnquantizeWeightsFlat()
     {
         var tables = new int[]?[kWeightRangeMaxValue + 1];
         foreach (var kvp in weightMaps)
@@ -443,7 +443,7 @@ internal static class Quantization
     /// </summary>
     internal static void UnquantizeWeightsBatch(Span<int> weights, int count, int range)
     {
-        var table = s_weightUnquantFlat[range];
+        var table = unquantizeWeightsFlat[range];
         if (table == null) return;
         for (int i = 0; i < count; i++)
         {
@@ -453,9 +453,9 @@ internal static class Quantization
 
     // Pre-computed flat tables for endpoint unquantization.
     // Indexed by range value. Valid ranges: 5, 7, 9, 11, 15, 19, 23, 31, 39, 47, 63, 79, 95, 127, 159, 191, 255
-    private static readonly int[]?[] s_endpointUnquantFlat = InitEndpointUnquantFlat();
+    private static readonly int[]?[] unquantizeEndpointsFlat = InitialzeUnquantizeEndpointsFlat();
 
-    private static int[]?[] InitEndpointUnquantFlat()
+    private static int[]?[] InitialzeUnquantizeEndpointsFlat()
     {
         var tables = new int[]?[256];
         foreach (var kvp in endpointMaps)
@@ -476,7 +476,7 @@ internal static class Quantization
     /// </summary>
     internal static void UnquantizeCEValuesBatch(Span<int> values, int count, int rangeMaxValue)
     {
-        var table = s_endpointUnquantFlat[rangeMaxValue];
+        var table = unquantizeEndpointsFlat[rangeMaxValue];
         if (table == null) return;
         for (int i = 0; i < count; i++)
         {

@@ -86,64 +86,47 @@ internal class BoundedIntegerSequenceDecoder : BoundedIntegerSequenceCodec
     /// </summary>
     public static int DecodeISEBlock(BiseEncodingMode mode, ulong encodedBlock, int encodedBitCount, Span<int> result)
     {
-        ulong mMask = (1UL << encodedBitCount) - 1;
+        ulong mantissaMask = (1UL << encodedBitCount) - 1;
 
         if (mode == BiseEncodingMode.TritEncoding)
         {
             // 5 values, interleaved bits = [2, 2, 1, 2, 1] = 8 bits total
-            int bitPos = 0;
-            int m0 = (int)((encodedBlock >> bitPos) & mMask); bitPos += encodedBitCount;
-            ulong enc = (encodedBlock >> bitPos) & 0x3; bitPos += 2;
-            int m1 = (int)((encodedBlock >> bitPos) & mMask); bitPos += encodedBitCount;
-            enc |= ((encodedBlock >> bitPos) & 0x3) << 2; bitPos += 2;
-            int m2 = (int)((encodedBlock >> bitPos) & mMask); bitPos += encodedBitCount;
-            enc |= ((encodedBlock >> bitPos) & 0x1) << 4; bitPos += 1;
-            int m3 = (int)((encodedBlock >> bitPos) & mMask); bitPos += encodedBitCount;
-            enc |= ((encodedBlock >> bitPos) & 0x3) << 5; bitPos += 2;
-            int m4 = (int)((encodedBlock >> bitPos) & mMask);
-            enc |= ((encodedBlock >> (bitPos + encodedBitCount)) & 0x1) << 7;
+            int bitPosition = 0;
+            int mantissa0 = (int)((encodedBlock >> bitPosition) & mantissaMask); bitPosition += encodedBitCount;
+            ulong encodedTrits = (encodedBlock >> bitPosition) & 0x3; bitPosition += 2;
+            int mantissa1 = (int)((encodedBlock >> bitPosition) & mantissaMask); bitPosition += encodedBitCount;
+            encodedTrits |= ((encodedBlock >> bitPosition) & 0x3) << 2; bitPosition += 2;
+            int mantissa2 = (int)((encodedBlock >> bitPosition) & mantissaMask); bitPosition += encodedBitCount;
+            encodedTrits |= ((encodedBlock >> bitPosition) & 0x1) << 4; bitPosition += 1;
+            int mantissa3 = (int)((encodedBlock >> bitPosition) & mantissaMask); bitPosition += encodedBitCount;
+            encodedTrits |= ((encodedBlock >> bitPosition) & 0x3) << 5; bitPosition += 2;
+            int mantissa4 = (int)((encodedBlock >> bitPosition) & mantissaMask);
+            encodedTrits |= ((encodedBlock >> (bitPosition + encodedBitCount)) & 0x1) << 7;
 
-            int base5 = (int)enc * 5;
-            result[0] = (FlatTritEncodings[base5] << encodedBitCount) | m0;
-            result[1] = (FlatTritEncodings[base5 + 1] << encodedBitCount) | m1;
-            result[2] = (FlatTritEncodings[base5 + 2] << encodedBitCount) | m2;
-            result[3] = (FlatTritEncodings[base5 + 3] << encodedBitCount) | m3;
-            result[4] = (FlatTritEncodings[base5 + 4] << encodedBitCount) | m4;
+            int tritTableBase = (int)encodedTrits * 5;
+            result[0] = (FlatTritEncodings[tritTableBase] << encodedBitCount) | mantissa0;
+            result[1] = (FlatTritEncodings[tritTableBase + 1] << encodedBitCount) | mantissa1;
+            result[2] = (FlatTritEncodings[tritTableBase + 2] << encodedBitCount) | mantissa2;
+            result[3] = (FlatTritEncodings[tritTableBase + 3] << encodedBitCount) | mantissa3;
+            result[4] = (FlatTritEncodings[tritTableBase + 4] << encodedBitCount) | mantissa4;
             return 5;
         }
         else
         {
             // 3 values, interleaved bits = [3, 2, 2] = 7 bits total
-            int bitPos = 0;
-            int m0 = (int)((encodedBlock >> bitPos) & mMask); bitPos += encodedBitCount;
-            ulong enc = (encodedBlock >> bitPos) & 0x7; bitPos += 3;
-            int m1 = (int)((encodedBlock >> bitPos) & mMask); bitPos += encodedBitCount;
-            enc |= ((encodedBlock >> bitPos) & 0x3) << 3; bitPos += 2;
-            int m2 = (int)((encodedBlock >> bitPos) & mMask);
-            enc |= ((encodedBlock >> (bitPos + encodedBitCount)) & 0x3) << 5;
+            int bitPosition = 0;
+            int mantissa0 = (int)((encodedBlock >> bitPosition) & mantissaMask); bitPosition += encodedBitCount;
+            ulong encodedQuints = (encodedBlock >> bitPosition) & 0x7; bitPosition += 3;
+            int mantissa1 = (int)((encodedBlock >> bitPosition) & mantissaMask); bitPosition += encodedBitCount;
+            encodedQuints |= ((encodedBlock >> bitPosition) & 0x3) << 3; bitPosition += 2;
+            int mantissa2 = (int)((encodedBlock >> bitPosition) & mantissaMask);
+            encodedQuints |= ((encodedBlock >> (bitPosition + encodedBitCount)) & 0x3) << 5;
 
-            int base3 = (int)enc * 3;
-            result[0] = (FlatQuintEncodings[base3] << encodedBitCount) | m0;
-            result[1] = (FlatQuintEncodings[base3 + 1] << encodedBitCount) | m1;
-            result[2] = (FlatQuintEncodings[base3 + 2] << encodedBitCount) | m2;
+            int quintTableBase = (int)encodedQuints * 3;
+            result[0] = (FlatQuintEncodings[quintTableBase] << encodedBitCount) | mantissa0;
+            result[1] = (FlatQuintEncodings[quintTableBase + 1] << encodedBitCount) | mantissa1;
+            result[2] = (FlatQuintEncodings[quintTableBase + 2] << encodedBitCount) | mantissa2;
             return 3;
         }
-    }
-
-    /// <summary>
-    /// Decode a trit/quint block, returning the result as an array.
-    /// </summary>
-    /// <param name="mode">The encoding mode (trit or quint).</param>
-    /// <param name="encodedBlock">The bits representing the encoded block.</param>
-    /// <param name="encodedBitCount">The number of bits used for each value.</param>
-    /// <returns>An array of decoded integer values.</returns>
-    /// <exception cref="ArgumentException"></exception>
-    /// <exception cref="InvalidOperationException"></exception>
-    public static int[] DecodeISEBlock(BiseEncodingMode mode, ulong encodedBlock, int encodedBitCount)
-    {
-        int valuesCount = mode == BiseEncodingMode.TritEncoding ? 5 : 3;
-        var result = new int[valuesCount];
-        DecodeISEBlock(mode, encodedBlock, encodedBitCount, result);
-        return result;
     }
 }

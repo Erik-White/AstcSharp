@@ -224,7 +224,9 @@ internal static class IntermediateBlock
         var weightSink = new BitStream(0UL, 0);
         var weightsEncoder = new BoundedIntegerSequenceEncoder(data.weightRange);
         int wc = data.weightsCount > 0 ? data.weightsCount : (data.weights?.Length ?? 0);
-        for (int i = 0; i < wc; i++) weightsEncoder.AddValue(data.weights[i]);
+        if (data.weights is null)
+            throw new InvalidOperationException($"{nameof(data.weights)} is null in {nameof(EncodeWeights)}");
+        for (var i = 0; i < wc; i++) weightsEncoder.AddValue(data.weights[i]);
         weightsEncoder.Encode(ref weightSink);
 
         int weightBitsCount = (int)weightSink.Bits;
@@ -383,7 +385,6 @@ internal static class IntermediateBlock
 
     /// <summary>
     /// Fast overload that uses pre-computed BlockInfo instead of calling PhysicalBlock getters.
-    /// Eliminates ~18 redundant DecodeBlockMode calls per block.
     /// </summary>
     public static IntermediateBlockData? UnpackIntermediateBlock(UInt128 bits, in BlockInfo info)
     {

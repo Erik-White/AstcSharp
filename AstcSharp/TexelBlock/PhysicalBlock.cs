@@ -11,8 +11,8 @@ internal readonly struct PhysicalBlock
 {
     public const int SizeInBytes = 16;
 
-    private static readonly int[] s_weightRanges = [-1, -1, 1, 2, 3, 4, 5, 7, -1, -1, 9, 11, 15, 19, 23, 31];
-    private static readonly int[] s_extraCemBitsForPartition = [0, 2, 5, 8];
+    private static readonly int[] _weightRanges = [-1, -1, 1, 2, 3, 4, 5, 7, -1, -1, 9, 11, 15, 19, 23, 31];
+    private static readonly int[] _extraCemBitsForPartition = [0, 2, 5, 8];
 
     public UInt128 BlockBits { get; }
     private readonly bool _isVoidExtent;
@@ -90,11 +90,9 @@ internal readonly struct PhysicalBlock
     }
 
     internal string? IdentifyInvalidEncodingIssues()
-    {
-        return _isVoidExtent
+        => _isVoidExtent
             ? IdentifyVoidExtentIssues(BlockBits)
             : IdentifyStandardIssues(BlockBits);
-    }
 
     internal int? GetWeightBitCount()
     {
@@ -160,8 +158,6 @@ internal readonly struct PhysicalBlock
         var (_, colorRange) = GetColorValuesInfo();
         return colorRange;
     }
-
-    // --- Private helpers ---
 
     private (int colorBits, int colorRange) GetColorValuesInfo()
     {
@@ -253,8 +249,6 @@ internal readonly struct PhysicalBlock
 
         return null;
     }
-
-    // --- Static decode methods ---
 
     internal static PhysicalBlockMode? DecodeBlockMode(UInt128 astcBits)
     {
@@ -404,7 +398,7 @@ internal readonly struct PhysicalBlock
         uint h = (uint)BitOperations.GetBits(low32, 9, 1);
         if (blockMode.Value == PhysicalBlockMode.WidthA6HeightB6) h = 0;
 
-        int[] kWeightRanges = s_weightRanges;
+        int[] kWeightRanges = _weightRanges;
         int idx = (int)((h << 3) | r);
         if (idx < 0 || idx >= kWeightRanges.Length)
         {
@@ -509,7 +503,7 @@ internal readonly struct PhysicalBlock
         const int kSharedCEMBitLength = 2;
         var shared_cem = BitOperations.GetBits(astcBits, kSharedCEMBitPosition, kSharedCEMBitLength);
             if (shared_cem.Low() == 0UL) return 0;
-        return s_extraCemBitsForPartition[num_partitions - 1];
+        return _extraCemBitsForPartition[num_partitions - 1];
     }
 
     internal static int DecodeDualPlaneBitStartPosition(UInt128 astcBits)
