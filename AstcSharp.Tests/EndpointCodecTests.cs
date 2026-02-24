@@ -23,7 +23,7 @@ public class EndpointCodecTests
         for (int quantRange = 5; quantRange < 256; quantRange++)
         {
             var values = new List<int>();
-            EndpointCodec.EncodeColorsForMode(low, high, quantRange, mode, out var _, values);
+            EndpointEncoder.EncodeColorsForMode(low, high, quantRange, mode, out var _, values);
 
             // Assert value count matches expected
             values.Should().HaveCount(mode.GetValuesCount());
@@ -59,8 +59,8 @@ public class EndpointCodecTests
     {
         var values = new List<int> { 132, 127, 116, 112, 183, 180, 31, 22 };
 
-        EndpointCodec.UsesBlueContract(255, ColorEndpointMode.LdrRgbDirect, values).Should().BeTrue();
-        EndpointCodec.UsesBlueContract(255, ColorEndpointMode.LdrRgbaDirect, values).Should().BeTrue();
+        EndpointEncoder.UsesBlueContract(255, ColorEndpointMode.LdrRgbDirect, values).Should().BeTrue();
+        EndpointEncoder.UsesBlueContract(255, ColorEndpointMode.LdrRgbaDirect, values).Should().BeTrue();
     }
 
     [Fact]
@@ -74,8 +74,8 @@ public class EndpointCodecTests
         valuesClearedBit6[5] &= 0xBF;
         valuesClearedBit6[7] &= 0xBF;
 
-        EndpointCodec.UsesBlueContract(255, ColorEndpointMode.LdrRgbBaseOffset, valuesClearedBit6).Should().BeFalse();
-        EndpointCodec.UsesBlueContract(255, ColorEndpointMode.LdrRgbaBaseOffset, valuesClearedBit6).Should().BeFalse();
+        EndpointEncoder.UsesBlueContract(255, ColorEndpointMode.LdrRgbBaseOffset, valuesClearedBit6).Should().BeFalse();
+        EndpointEncoder.UsesBlueContract(255, ColorEndpointMode.LdrRgbaBaseOffset, valuesClearedBit6).Should().BeFalse();
 
         var valuesSetBit6 = new List<int>(baseValues);
         valuesSetBit6[1] |= 0x40;
@@ -83,8 +83,8 @@ public class EndpointCodecTests
         valuesSetBit6[5] |= 0x40;
         valuesSetBit6[7] |= 0x40;
 
-        EndpointCodec.UsesBlueContract(255, ColorEndpointMode.LdrRgbBaseOffset, valuesSetBit6).Should().BeTrue();
-        EndpointCodec.UsesBlueContract(255, ColorEndpointMode.LdrRgbaBaseOffset, valuesSetBit6).Should().BeTrue();
+        EndpointEncoder.UsesBlueContract(255, ColorEndpointMode.LdrRgbBaseOffset, valuesSetBit6).Should().BeTrue();
+        EndpointEncoder.UsesBlueContract(255, ColorEndpointMode.LdrRgbaBaseOffset, valuesSetBit6).Should().BeTrue();
     }
 
     [Fact]
@@ -102,9 +102,9 @@ public class EndpointCodecTests
         foreach (var (low, high) in pairs)
         {
             var values = new List<int>();
-            EndpointCodec.EncodeColorsForMode(low, high, endpointRange, EndpointEncodingMode.DirectRbg, out var astcMode, values);
+            EndpointEncoder.EncodeColorsForMode(low, high, endpointRange, EndpointEncodingMode.DirectRbg, out var astcMode, values);
 
-            EndpointCodec.UsesBlueContract(endpointRange, astcMode, values).Should().BeTrue();
+            EndpointEncoder.UsesBlueContract(endpointRange, astcMode, values).Should().BeTrue();
         }
     }
 
@@ -355,7 +355,7 @@ public class EndpointCodecTests
         EndpointEncodingMode mode)
     {
         var values = new List<int>();
-        var needsSwap = EndpointCodec.EncodeColorsForMode(low, high, quantRange, mode, out var astcMode, values);
+        var needsSwap = EndpointEncoder.EncodeColorsForMode(low, high, quantRange, mode, out var astcMode, values);
         var (decLow, decHigh) = EndpointCodec.DecodeColorsForMode(values.ToArray(), quantRange, astcMode);
 
         return needsSwap ? (decHigh, decLow) : (decLow, decHigh);
