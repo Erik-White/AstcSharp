@@ -46,18 +46,7 @@ public static class AstcDecoder
     /// <exception cref="InvalidOperationException">If decompression fails for any block</exception>
     public static bool DecompressImage(ReadOnlySpan<byte> astcData, int width, int height, Footprint footprint, Span<byte> imageBuffer)
     {
-        int blockWidth = footprint.Width;
-        int blockHeight = footprint.Height;
-
-        if (blockWidth == 0 || blockHeight == 0 || width == 0 || height == 0)
-            return false;
-
-        int blocksWide = (width + blockWidth - 1) / blockWidth;
-        if (blocksWide == 0)
-            return false;
-
-        int expectedBlockCount = (width + blockWidth - 1) / blockWidth * ((height + blockHeight - 1) / blockHeight);
-        if (astcData.Length % PhysicalBlock.SizeInBytes != 0 || astcData.Length / PhysicalBlock.SizeInBytes != expectedBlockCount)
+        if (!TryGetBlockLayout(astcData, width, height, footprint, out int blocksWide, out int blocksHigh))
             return false;
 
         var decodedBlock = Array.Empty<byte>();
@@ -67,7 +56,6 @@ public static class AstcDecoder
             // Create a buffer once for fallback blocks; fast path writes directly to image
             decodedBlock = _arrayPool.Rent(footprint.Width * footprint.Height * BytesPerPixelUnorm8);
             var decodedPixels = decodedBlock.AsSpan();
-            int blocksHigh = (height + footprint.Height - 1) / footprint.Height;
             int blockIndex = 0;
             int footprintWidth = footprint.Width;
             int footprintHeight = footprint.Height;
@@ -222,18 +210,7 @@ public static class AstcDecoder
     /// <exception cref="InvalidOperationException">If decompression fails for any block</exception>
     public static bool DecompressHdrImage(ReadOnlySpan<byte> astcData, int width, int height, Footprint footprint, Span<float> imageBuffer)
     {
-        int blockWidth = footprint.Width;
-        int blockHeight = footprint.Height;
-
-        if (blockWidth == 0 || blockHeight == 0 || width == 0 || height == 0)
-            return false;
-
-        int blocksWide = (width + blockWidth - 1) / blockWidth;
-        if (blocksWide == 0)
-            return false;
-
-        int expectedBlockCount = (width + blockWidth - 1) / blockWidth * ((height + blockHeight - 1) / blockHeight);
-        if (astcData.Length % PhysicalBlock.SizeInBytes != 0 || astcData.Length / PhysicalBlock.SizeInBytes != expectedBlockCount)
+        if (!TryGetBlockLayout(astcData, width, height, footprint, out int blocksWide, out int blocksHigh))
             return false;
 
         const int channelsPerPixel = 4;
@@ -244,7 +221,6 @@ public static class AstcDecoder
             // Create a buffer once for fallback blocks; fast path writes directly to image
             decodedBlock = ArrayPool<float>.Shared.Rent(footprint.Width * footprint.Height * channelsPerPixel);
             var decodedPixels = decodedBlock.AsSpan();
-            int blocksHigh = (height + footprint.Height - 1) / footprint.Height;
             int blockIndex = 0;
             int footprintWidth = footprint.Width;
             int footprintHeight = footprint.Height;
@@ -384,5 +360,33 @@ public static class AstcDecoder
         var footPrint = Footprint.FromFootprintType(footprint);
 
         return DecompressImage(astcData, width, height, footPrint);
+    }
+
+    private static bool TryGetBlockLayout(
+        ReadOnlySpan<byte> astcData,
+        int width,
+        int height,
+        Footprint footprint,
+        out int blocksWide,
+        out int blocksHigh)
+    {
+        int blockWidth = footprint.Width;
+        int blockHeight = footprint.Height;
+        blocksWide = 0;
+        blocksHigh = 0;
+
+        if (blockWidth == 0 || blockHeight == 0 || width == 0 || height == 0)
+            return false;
+
+        blocksWide = (width + blockWidth - 1) / blockWidth;
+        if (blocksWide == 0)
+            return false;
+
+        blocksHigh = (height + blockHeight - 1) / blockHeight;
+        int expectedBlockCount = blocksWide * blocksHigh;
+        if (astcData.Length % PhysicalBlock.SizeInBytes != 0 || astcData.Length / PhysicalBlock.SizeInBytes != expectedBlockCount)
+            return false;
+
+        return true;
     }
 }
