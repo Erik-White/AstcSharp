@@ -96,21 +96,12 @@ internal static class HdrEndpointDecoder
         int majorComponent;
         int mode;
 
-        if ((modeValue & 0xC) != 0xC)
+        (majorComponent, mode) = modeValue switch
         {
-            majorComponent = modeValue >> 2;
-            mode = modeValue & 3;
-        }
-        else if (modeValue != 0xF)
-        {
-            majorComponent = modeValue & 3;
-            mode = 4;
-        }
-        else
-        {
-            majorComponent = 0;
-            mode = 5;
-        }
+            _ when (modeValue & 0xC) != 0xC => (modeValue >> 2, modeValue & 3),
+            not 0xF => (modeValue & 3, 4),
+            _ => (0, 5)
+        };
 
         int red = v0 & 0x3F;
         int green = v1 & 0x1F;
@@ -167,14 +158,12 @@ internal static class HdrEndpointDecoder
         }
 
         // Swap components based on major component
-        if (majorComponent == 1)
+        (red, green, blue) = majorComponent switch
         {
-            (red, green) = (green, red);
-        }
-        else if (majorComponent == 2)
-        {
-            (red, blue) = (blue, red);
-        }
+            1 => (green, red, blue),
+            2 => (blue, green, red),
+            _ => (red, green, blue)
+        };
 
         // Low endpoint is base minus scale offset
         int red0 = red - scale;
@@ -287,16 +276,12 @@ internal static class HdrEndpointDecoder
         blue1 = Math.Clamp(blue1, 0, 0xFFF);
 
         // Swap components based on major component
-        if (majorComponent == 1)
+        (red0, green0, blue0, red1, green1, blue1) = majorComponent switch
         {
-            (red0, green0) = (green0, red0);
-            (red1, green1) = (green1, red1);
-        }
-        else if (majorComponent == 2)
-        {
-            (red0, blue0) = (blue0, red0);
-            (red1, blue1) = (blue1, red1);
-        }
+            1 => (green0, red0, blue0, green1, red1, blue1),
+            2 => (blue0, green0, red0, blue1, green1, red1),
+            _ => (red0, green0, blue0, red1, green1, blue1)
+        };
 
         var lowResult = new RgbaHdrColor((ushort)(red0 << 4), (ushort)(green0 << 4), (ushort)(blue0 << 4), 0x7800);
         var highResult = new RgbaHdrColor((ushort)(red1 << 4), (ushort)(green1 << 4), (ushort)(blue1 << 4), 0x7800);

@@ -89,47 +89,15 @@ internal struct BlockInfo
             ulong modeBits = (lowBits >> 2) & 0x3; // bits[2:4]
             int a = (int)((lowBits >> 5) & 0x3); // bits[5:7]
 
-            switch (modeBits)
+            (gridWidth, gridHeight) = modeBits switch
             {
-                case 0: // WidthB4HeightA2
-                    {
-                        int b = (int)((lowBits >> 7) & 0x3); // bits[7:9]
-                        gridWidth = b + 4;
-                        gridHeight = a + 2;
-                        break;
-                    }
-                case 1: // WidthB8HeightA2
-                    {
-                        int b = (int)((lowBits >> 7) & 0x3);
-                        gridWidth = b + 8;
-                        gridHeight = a + 2;
-                        break;
-                    }
-                case 2: // WidthA2HeightB8
-                    {
-                        int b = (int)((lowBits >> 7) & 0x3);
-                        gridWidth = a + 2;
-                        gridHeight = b + 8;
-                        break;
-                    }
-                case 3: // WidthB2HeightA2 or WidthA2HeightB6
-                    {
-                        int b = (int)((lowBits >> 7) & 0x1); // 1 bit only!
-                        if (((lowBits >> 8) & 1) != 0)
-                        {
-                            gridWidth = b + 2;
-                            gridHeight = a + 2;
-                        }
-                        else
-                        {
-                            gridWidth = a + 2;
-                            gridHeight = b + 6;
-                        }
-                        break;
-                    }
-                default:
-                    return default; // unreachable
-            }
+                0 => ((int)((lowBits >> 7) & 0x3) + 4, a + 2),
+                1 => ((int)((lowBits >> 7) & 0x3) + 8, a + 2),
+                2 => (a + 2, (int)((lowBits >> 7) & 0x3) + 8),
+                3 when ((lowBits >> 8) & 1) != 0 => ((int)((lowBits >> 7) & 0x1) + 2, a + 2),
+                3 => (a + 2, (int)((lowBits >> 7) & 0x1) + 6),
+                _ => default // unreachable
+            };
 
             // Range r[2:0] = {bit4, bit1, bit0} for these modes
             rBits = (uint)(((lowBits >> 4) & 1) | (((lowBits >> 0) & 0x3) << 1));
@@ -139,44 +107,33 @@ internal struct BlockInfo
             ulong modeBits = (lowBits >> 5) & 0xF; // bits[5:9]
             int a = (int)((lowBits >> 5) & 0x3); // bits[5:7]
 
-            if ((modeBits & 0xC) == 0x0)
+            switch (modeBits)
             {
-                if ((lowBits & 0xF) == 0)
-                    return default; // reserved block mode
-
-                // Width12HeightA2
-                gridWidth = 12;
-                gridHeight = a + 2;
-            }
-            else if ((modeBits & 0xC) == 0x4)
-            {
-                // WidthA2Height12
-                gridWidth = a + 2;
-                gridHeight = 12;
-            }
-            else if (modeBits == 0xC)
-            {
-                // Width6Height10
-                gridWidth = 6;
-                gridHeight = 10;
-            }
-            else if (modeBits == 0xD)
-            {
-                // Width10Height6
-                gridWidth = 10;
-                gridHeight = 6;
-            }
-            else if ((modeBits & 0xC) == 0x8)
-            {
-                // WidthA6HeightB6
-                int b = (int)((lowBits >> 9) & 0x3); // bits[9:11]
-                gridWidth = a + 6;
-                gridHeight = b + 6;
-                isWidthA6HeightB6 = true;
-            }
-            else
-            {
-                return default; // reserved
+                case var _ when (modeBits & 0xC) == 0x0:
+                    if ((lowBits & 0xF) == 0)
+                        return default; // reserved block mode
+                    gridWidth = 12;
+                    gridHeight = a + 2;
+                    break;
+                case var _ when (modeBits & 0xC) == 0x4:
+                    gridWidth = a + 2;
+                    gridHeight = 12;
+                    break;
+                case 0xC:
+                    gridWidth = 6;
+                    gridHeight = 10;
+                    break;
+                case 0xD:
+                    gridWidth = 10;
+                    gridHeight = 6;
+                    break;
+                case var _ when (modeBits & 0xC) == 0x8:
+                    gridWidth = a + 6;
+                    gridHeight = (int)((lowBits >> 9) & 0x3) + 6;
+                    isWidthA6HeightB6 = true;
+                    break;
+                default:
+                    return default; // reserved
             }
 
             // Range r[2:0] = {bit4, bit3, bit2} for these modes

@@ -20,41 +20,15 @@ internal sealed class QuintQuantizationMap : QuantizationMap
     internal static int GetUnquantizedValue(int quint, int bits, int range)
     {
         int a = (bits & 1) != 0 ? 0x1FF : 0;
-        int b = 0, c = 0;
-        switch (range)
+        var (b, c) = range switch
         {
-            case 9: b = 0; c = 113; break;
-            case 19:
-                {
-                    int x = (bits >> 1) & 0x1;
-                    b = (x << 2) | (x << 3) | (x << 8);
-                    c = 54;
-                }
-                break;
-            case 39:
-                {
-                    int x = (bits >> 1) & 0x3;
-                    b = (x >> 1) | (x << 1) | (x << 7);
-                    c = 26;
-                }
-                break;
-            case 79:
-                {
-                    int x = (bits >> 1) & 0x7;
-                    b = (x >> 1) | (x << 6);
-                    c = 13;
-                }
-                break;
-            case 159:
-                {
-                    int x = (bits >> 1) & 0xF;
-                    b = (x >> 3) | (x << 5);
-                    c = 6;
-                }
-                break;
-            default:
-                throw new ArgumentException("Illegal quint encoding");
-        }
+            9 => (0, 113),
+            19 => ((bits >> 1) & 0x1) is var x ? ((x << 2) | (x << 3) | (x << 8), 54) : default,
+            39 => ((bits >> 1) & 0x3) is var x ? ((x >> 1) | (x << 1) | (x << 7), 26) : default,
+            79 => ((bits >> 1) & 0x7) is var x ? ((x >> 1) | (x << 6), 13) : default,
+            159 => ((bits >> 1) & 0xF) is var x ? ((x >> 3) | (x << 5), 6) : default,
+            _ => throw new ArgumentException("Illegal quint encoding")
+        };
         int t = quint * c + b;
         t ^= a;
         t = (a & 0x80) | (t >> 2);
@@ -63,19 +37,16 @@ internal sealed class QuintQuantizationMap : QuantizationMap
 
     internal static int GetUnquantizedWeight(int quint, int bits, int range)
     {
+        if (range == 4)
+            return new[] { 0, 16, 32, 47, 63 }[quint];
+
         int a = (bits & 1) != 0 ? 0x7F : 0;
-        int b = 0, c = 0;
-        switch (range)
+        var (b, c) = range switch
         {
-            case 4:
-                return new[] { 0, 16, 32, 47, 63 }[quint];
-            case 9:
-                c = 28; b = 0; break;
-            case 19:
-                c = 13; b = (bits >> 1) & 0x1; b = (b << 1) | (b << 6); break;
-            default:
-                throw new ArgumentException("Illegal quint encoding");
-        }
+            9 => (0, 28),
+            19 => ((bits >> 1) & 0x1) is var x ? ((x << 1) | (x << 6), 13) : default,
+            _ => throw new ArgumentException("Illegal quint encoding")
+        };
         int t = quint * c + b;
         t ^= a;
         t = (a & 0x20) | (t >> 2);
