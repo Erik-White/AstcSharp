@@ -1,4 +1,4 @@
-using AstcSharp.BiseEncoding;
+using AstcSharp.BiseEncoding.Quantize;
 using AstcSharp.Core;
 
 namespace AstcSharp.ColorEncoding;

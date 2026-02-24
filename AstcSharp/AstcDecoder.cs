@@ -3,6 +3,7 @@ using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using AstcSharp.BiseEncoding;
+using AstcSharp.BiseEncoding.Quantize;
 using AstcSharp.ColorEncoding;
 using AstcSharp.Core;
 using AstcSharp.IO;

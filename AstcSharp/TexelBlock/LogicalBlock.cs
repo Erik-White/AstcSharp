@@ -1,6 +1,6 @@
-using AstcSharp.BiseEncoding;
 using AstcSharp.ColorEncoding;
 using AstcSharp.Core;
+using AstcSharp.BiseEncoding.Quantize;
 
 namespace AstcSharp.TexelBlock;
 
