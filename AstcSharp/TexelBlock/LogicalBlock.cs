@@ -1,6 +1,8 @@
+using AstcSharp.BiseEncoding;
+using AstcSharp.BiseEncoding.Quantize;
 using AstcSharp.ColorEncoding;
 using AstcSharp.Core;
-using AstcSharp.BiseEncoding.Quantize;
+using AstcSharp.IO;
 
 namespace AstcSharp.TexelBlock;
 
@@ -44,6 +46,88 @@ internal class LogicalBlock
         _endpointCount = DecodeEndpoints(block, _endpoints);
         _partition = ComputePartition(footprint, block);
         _weights = new int[footprint.PixelCount];
+    }
+
+    /// <summary>
+    /// Direct-decode constructor: decodes directly from raw bits + BlockInfo,
+    /// bypassing IntermediateBlock and using batch unquantize operations.
+    /// </summary>
+    private LogicalBlock(Footprint footprint, UInt128 bits, in BlockInfo info)
+    {
+        // --- BISE decode + batch unquantize color endpoint values ---
+        var colorBitMask = UInt128Extensions.OnesMask(info.ColorBitCount);
+        var colorBits = (bits >> info.ColorStartBit) & colorBitMask;
+        var colorBitStream = new BitStream(colorBits, 128);
+
+        var colorDecoder = BoundedIntegerSequenceDecoder.GetCached(info.ColorValuesRange);
+        Span<int> colors = stackalloc int[info.ColorValuesCount];
+        colorDecoder.Decode(info.ColorValuesCount, ref colorBitStream, colors);
+
+        Quantization.UnquantizeCEValuesBatch(colors, info.ColorValuesCount, info.ColorValuesRange);
+
+        // --- Decode endpoints per partition ---
+        _endpointCount = info.PartitionCount;
+        _endpoints = new ColorEndpointPair[_endpointCount];
+        int colorIndex = 0;
+        for (int i = 0; i < _endpointCount; i++)
+        {
+            var mode = info.GetEndpointMode(i);
+            int colorCount = mode.GetColorValuesCount();
+            ReadOnlySpan<int> slice = colors.Slice(colorIndex, colorCount);
+            _endpoints[i] = EndpointCodec.DecodeColorsForModePolymorphicUnquantized(slice, mode);
+            colorIndex += colorCount;
+        }
+
+        // --- Set up partition ---
+        _partition = info.PartitionCount > 1
+            ? Partition.GetASTCPartition(footprint, info.PartitionCount,
+                (int)BitOperations.GetBits(bits.Low(), 13, 10))
+            : GenerateSinglePartition(footprint);
+
+        // --- BISE decode weights ---
+        int gridSize = info.GridWidth * info.GridHeight;
+        bool isDualPlane = info.IsDualPlane;
+        int totalWeights = isDualPlane ? gridSize * 2 : gridSize;
+
+        var weightBits = UInt128Extensions.ReverseBits(bits) & UInt128Extensions.OnesMask(info.WeightBitCount);
+        var weightBitStream = new BitStream(weightBits, 128);
+
+        var weightDecoder = BoundedIntegerSequenceDecoder.GetCached(info.WeightRange);
+        Span<int> rawWeights = stackalloc int[totalWeights];
+        weightDecoder.Decode(totalWeights, ref weightBitStream, rawWeights);
+
+        // --- Unquantize + infill weights ---
+        var di = DecimationTable.Get(footprint, info.GridWidth, info.GridHeight);
+        _weights = new int[footprint.PixelCount];
+
+        if (!isDualPlane)
+        {
+            Quantization.UnquantizeWeightsBatch(rawWeights, gridSize, info.WeightRange);
+            DecimationTable.InfillWeights(rawWeights[..gridSize], di, _weights);
+        }
+        else
+        {
+            // De-interleave: even indices -> plane0, odd indices -> plane1
+            Span<int> plane0 = stackalloc int[gridSize];
+            Span<int> plane1 = stackalloc int[gridSize];
+            for (int i = 0; i < gridSize; i++)
+            {
+                plane0[i] = rawWeights[i * 2];
+                plane1[i] = rawWeights[i * 2 + 1];
+            }
+
+            Quantization.UnquantizeWeightsBatch(plane0, gridSize, info.WeightRange);
+            Quantization.UnquantizeWeightsBatch(plane1, gridSize, info.WeightRange);
+
+            DecimationTable.InfillWeights(plane0, di, _weights);
+
+            _dualPlane = new DualPlaneData
+            {
+                Channel = info.DualPlaneChannel,
+                Weights = new int[footprint.PixelCount]
+            };
+            DecimationTable.InfillWeights(plane1, di, _dualPlane.Weights);
+        }
     }
 
     private static int DecodeEndpoints(in IntermediateBlock.IntermediateBlockData block, ColorEndpointPair[] endpointPair)
@@ -534,12 +618,10 @@ internal class LogicalBlock
         }
         else
         {
-            var intermediateBlock = IntermediateBlock.UnpackIntermediateBlock(physicalBlock);
-            if (intermediateBlock is not { } ib) return null;
+            var info = BlockInfo.Decode(physicalBlock.BlockBits);
+            if (!info.IsValid) return null;
 
-            var result = new LogicalBlock(footprint, in ib);
-            ib.ReturnPooledArrays();
-            return result;
+            return new LogicalBlock(footprint, physicalBlock.BlockBits, in info);
         }
     }
 
@@ -561,12 +643,7 @@ internal class LogicalBlock
         }
         else
         {
-            var intermediateBlock = IntermediateBlock.UnpackIntermediateBlock(bits, in info);
-            if (intermediateBlock is not { } ib) return null;
-
-            var result = new LogicalBlock(footprint, in ib);
-            ib.ReturnPooledArrays();
-            return result;
+            return new LogicalBlock(footprint, bits, in info);
         }
     }
 }
