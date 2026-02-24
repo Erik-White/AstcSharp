@@ -67,7 +67,9 @@ internal static class IntermediateBlock
             ? (int)BitOperations.GetBits(bits.Low(), 13, 10)
             : null;
 
-        data.DualPlaneChannel = info.IsDualPlane ? info.DualPlaneChannel : null;
+        data.DualPlaneChannel = info.IsDualPlane
+            ? info.DualPlaneChannel
+            : null;
 
         int colorIndex = 0;
         data.EndpointCount = info.PartitionCount;
@@ -100,11 +102,16 @@ internal static class IntermediateBlock
 
     public static int EndpointRangeForBlock(in IntermediateBlockData data)
     {
-        if (BoundedIntegerSequenceCodec.GetBitCountForRange(data.WeightGridX * data.WeightGridY * (data.DualPlaneChannel.HasValue ? 2 : 1), data.WeightRange) > 96)
+        int dualPlaneMultiplier = data.DualPlaneChannel.HasValue
+            ? 2
+            : 1;
+        if (BoundedIntegerSequenceCodec.GetBitCountForRange(data.WeightGridX * data.WeightGridY * dualPlaneMultiplier, data.WeightRange) > 96)
             return EndpointRangeInvalidWeightDimensions;
 
         int partitionCount = data.EndpointCount;
-        int bitsWrittenCount = 11 + 2 + ((partitionCount > 1) ? 10 : 0) + ((partitionCount == 1) ? 4 : 6);
+        int bitsWrittenCount = 11 + 2
+            + ((partitionCount > 1) ? 10 : 0)
+            + ((partitionCount == 1) ? 4 : 6);
         int availableColorBitsCount = ExtraConfigBitPosition(data) - bitsWrittenCount;
 
         int colorValuesCount = 0;
@@ -162,8 +169,11 @@ internal static class IntermediateBlock
     public static (string? error, UInt128 physicalBlockBits) Pack(in IntermediateBlockData data)
     {
         UInt128 physicalBlockBits = 0;
-        int expectedWeightsCount = data.WeightGridX * data.WeightGridY * (data.DualPlaneChannel.HasValue ? 2 : 1);
-        int actualWeightsCount = data.WeightsCount > 0 ? data.WeightsCount : (data.Weights?.Length ?? 0);
+        int expectedWeightsCount = data.WeightGridX * data.WeightGridY
+            * (data.DualPlaneChannel.HasValue ? 2 : 1);
+        int actualWeightsCount = data.WeightsCount > 0
+            ? data.WeightsCount
+            : (data.Weights?.Length ?? 0);
         if (actualWeightsCount != expectedWeightsCount)
         {
             return ("Incorrect number of weights!", 0);
@@ -191,7 +201,9 @@ internal static class IntermediateBlock
         var (error, extraConfig) = EncodeColorEndpointModes(data, partitionCount, ref bitSink);
         if (error != null) return (error, 0);
 
-        int colorValueRange = data.EndpointRange.HasValue ? data.EndpointRange.Value : EndpointRangeForBlock(data);
+        int colorValueRange = data.EndpointRange.HasValue
+            ? data.EndpointRange.Value
+            : EndpointRangeForBlock(data);
         if (colorValueRange == EndpointRangeInvalidWeightDimensions)
             throw new InvalidOperationException($"{nameof(colorValueRange)} must not be {nameof(EndpointRangeInvalidWeightDimensions)}");
         if (colorValueRange == EndpointRangeNotEnoughColorBits)
@@ -394,7 +406,9 @@ internal static class IntermediateBlock
     {
         var weightSink = new BitStream(0UL, 0);
         var weightsEncoder = new BoundedIntegerSequenceEncoder(data.WeightRange);
-        int weightCount = data.WeightsCount > 0 ? data.WeightsCount : (data.Weights?.Length ?? 0);
+        int weightCount = data.WeightsCount > 0
+            ? data.WeightsCount
+            : (data.Weights?.Length ?? 0);
         if (data.Weights is null)
             throw new InvalidOperationException($"{nameof(data.Weights)} is null in {nameof(EncodeWeights)}");
         for (var i = 0; i < weightCount; i++) weightsEncoder.AddValue(data.Weights[i]);

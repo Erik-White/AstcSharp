@@ -178,10 +178,14 @@ internal sealed class LogicalBlock
                 int dualPlaneChannel = _dualPlane.Channel;
                 int dualPlaneWeight = _dualPlane.Weights[index];
                 return new RgbaColor(
-                    r: InterpolateChannelHdr(endpoint.HdrLow[0], endpoint.HdrHigh[0], dualPlaneChannel == 0 ? dualPlaneWeight : weight) >> 8,
-                    g: InterpolateChannelHdr(endpoint.HdrLow[1], endpoint.HdrHigh[1], dualPlaneChannel == 1 ? dualPlaneWeight : weight) >> 8,
-                    b: InterpolateChannelHdr(endpoint.HdrLow[2], endpoint.HdrHigh[2], dualPlaneChannel == 2 ? dualPlaneWeight : weight) >> 8,
-                    a: InterpolateChannelHdr(endpoint.HdrLow[3], endpoint.HdrHigh[3], dualPlaneChannel == 3 ? dualPlaneWeight : weight) >> 8);
+                    r: InterpolateChannelHdr(endpoint.HdrLow[0], endpoint.HdrHigh[0],
+                        dualPlaneChannel == 0 ? dualPlaneWeight : weight) >> 8,
+                    g: InterpolateChannelHdr(endpoint.HdrLow[1], endpoint.HdrHigh[1],
+                        dualPlaneChannel == 1 ? dualPlaneWeight : weight) >> 8,
+                    b: InterpolateChannelHdr(endpoint.HdrLow[2], endpoint.HdrHigh[2],
+                        dualPlaneChannel == 2 ? dualPlaneWeight : weight) >> 8,
+                    a: InterpolateChannelHdr(endpoint.HdrLow[3], endpoint.HdrHigh[3],
+                        dualPlaneChannel == 3 ? dualPlaneWeight : weight) >> 8);
             }
             return new RgbaColor(
                 r: InterpolateChannelHdr(endpoint.HdrLow[0], endpoint.HdrHigh[0], weight) >> 8,
@@ -219,10 +223,14 @@ internal sealed class LogicalBlock
                 int dualPlaneChannel = _dualPlane.Channel;
                 int dualPlaneWeight = _dualPlane.Weights[index];
                 return new RgbaHdrColor(
-                    InterpolateChannelHdr(endpoint.HdrLow[0], endpoint.HdrHigh[0], dualPlaneChannel == 0 ? dualPlaneWeight : weight),
-                    InterpolateChannelHdr(endpoint.HdrLow[1], endpoint.HdrHigh[1], dualPlaneChannel == 1 ? dualPlaneWeight : weight),
-                    InterpolateChannelHdr(endpoint.HdrLow[2], endpoint.HdrHigh[2], dualPlaneChannel == 2 ? dualPlaneWeight : weight),
-                    InterpolateChannelHdr(endpoint.HdrLow[3], endpoint.HdrHigh[3], dualPlaneChannel == 3 ? dualPlaneWeight : weight));
+                    InterpolateChannelHdr(endpoint.HdrLow[0], endpoint.HdrHigh[0],
+                        dualPlaneChannel == 0 ? dualPlaneWeight : weight),
+                    InterpolateChannelHdr(endpoint.HdrLow[1], endpoint.HdrHigh[1],
+                        dualPlaneChannel == 1 ? dualPlaneWeight : weight),
+                    InterpolateChannelHdr(endpoint.HdrLow[2], endpoint.HdrHigh[2],
+                        dualPlaneChannel == 2 ? dualPlaneWeight : weight),
+                    InterpolateChannelHdr(endpoint.HdrLow[3], endpoint.HdrHigh[3],
+                        dualPlaneChannel == 3 ? dualPlaneWeight : weight));
             }
             return new RgbaHdrColor(
                 InterpolateChannelHdr(endpoint.HdrLow[0], endpoint.HdrHigh[0], weight),
@@ -237,10 +245,14 @@ internal sealed class LogicalBlock
                 int dualPlaneChannel = _dualPlane.Channel;
                 int dualPlaneWeight = _dualPlane.Weights[index];
                 return new RgbaHdrColor(
-                    (ushort)(InterpolateChannel(endpoint.LdrLow.R, endpoint.LdrHigh.R, dualPlaneChannel == 0 ? dualPlaneWeight : weight) * 257),
-                    (ushort)(InterpolateChannel(endpoint.LdrLow.G, endpoint.LdrHigh.G, dualPlaneChannel == 1 ? dualPlaneWeight : weight) * 257),
-                    (ushort)(InterpolateChannel(endpoint.LdrLow.B, endpoint.LdrHigh.B, dualPlaneChannel == 2 ? dualPlaneWeight : weight) * 257),
-                    (ushort)(InterpolateChannel(endpoint.LdrLow.A, endpoint.LdrHigh.A, dualPlaneChannel == 3 ? dualPlaneWeight : weight) * 257));
+                    (ushort)(InterpolateChannel(endpoint.LdrLow.R, endpoint.LdrHigh.R,
+                        dualPlaneChannel == 0 ? dualPlaneWeight : weight) * 257),
+                    (ushort)(InterpolateChannel(endpoint.LdrLow.G, endpoint.LdrHigh.G,
+                        dualPlaneChannel == 1 ? dualPlaneWeight : weight) * 257),
+                    (ushort)(InterpolateChannel(endpoint.LdrLow.B, endpoint.LdrHigh.B,
+                        dualPlaneChannel == 2 ? dualPlaneWeight : weight) * 257),
+                    (ushort)(InterpolateChannel(endpoint.LdrLow.A, endpoint.LdrHigh.A,
+                        dualPlaneChannel == 3 ? dualPlaneWeight : weight) * 257));
             }
             return new RgbaHdrColor(
                 (ushort)(InterpolateChannel(endpoint.LdrLow.R, endpoint.LdrHigh.R, weight) * 257),
@@ -280,7 +292,9 @@ internal sealed class LogicalBlock
         {
             for (int channel = 0; channel < RgbaColor.BytesPerPixel; ++channel)
             {
-                int channelWeight = (channel == dualPlaneChannel) ? dualPlaneWeight : weight;
+                int channelWeight = (channel == dualPlaneChannel)
+                    ? dualPlaneWeight
+                    : weight;
                 ushort interpolated = InterpolateChannelHdr(endpoint.HdrLow[channel], endpoint.HdrHigh[channel], channelWeight);
 
                 if (channel == 3 && endpoint.AlphaIsLdr)
@@ -305,7 +319,9 @@ internal sealed class LogicalBlock
         {
             for (int channel = 0; channel < RgbaColor.BytesPerPixel; ++channel)
             {
-                int channelWeight = (channel == dualPlaneChannel) ? dualPlaneWeight : weight;
+                int channelWeight = (channel == dualPlaneChannel)
+                    ? dualPlaneWeight
+                    : weight;
                 int p0 = channel switch { 0 => endpoint.LdrLow.R, 1 => endpoint.LdrLow.G, 2 => endpoint.LdrLow.B, _ => endpoint.LdrLow.A };
                 int p1 = channel switch { 0 => endpoint.LdrHigh.R, 1 => endpoint.LdrHigh.G, 2 => endpoint.LdrHigh.B, _ => endpoint.LdrHigh.A };
                 ushort unorm16 = InterpolateLdrAsUnorm16(p0, p1, channelWeight);
@@ -601,10 +617,18 @@ internal sealed class LogicalBlock
             {
                 int dualPlaneChannel = _dualPlane?.Channel ?? -1;
                 int dualPlaneWeight = _dualPlane?.Weights[i] ?? weight;
-                buffer[i * 4 + 0] = (byte)(InterpolateChannelHdr(endpoint.HdrLow[0], endpoint.HdrHigh[0], dualPlaneChannel == 0 ? dualPlaneWeight : weight) >> 8);
-                buffer[i * 4 + 1] = (byte)(InterpolateChannelHdr(endpoint.HdrLow[1], endpoint.HdrHigh[1], dualPlaneChannel == 1 ? dualPlaneWeight : weight) >> 8);
-                buffer[i * 4 + 2] = (byte)(InterpolateChannelHdr(endpoint.HdrLow[2], endpoint.HdrHigh[2], dualPlaneChannel == 2 ? dualPlaneWeight : weight) >> 8);
-                buffer[i * 4 + 3] = (byte)(InterpolateChannelHdr(endpoint.HdrLow[3], endpoint.HdrHigh[3], dualPlaneChannel == 3 ? dualPlaneWeight : weight) >> 8);
+                buffer[i * 4 + 0] = (byte)(InterpolateChannelHdr(
+                    endpoint.HdrLow[0], endpoint.HdrHigh[0],
+                    dualPlaneChannel == 0 ? dualPlaneWeight : weight) >> 8);
+                buffer[i * 4 + 1] = (byte)(InterpolateChannelHdr(
+                    endpoint.HdrLow[1], endpoint.HdrHigh[1],
+                    dualPlaneChannel == 1 ? dualPlaneWeight : weight) >> 8);
+                buffer[i * 4 + 2] = (byte)(InterpolateChannelHdr(
+                    endpoint.HdrLow[2], endpoint.HdrHigh[2],
+                    dualPlaneChannel == 2 ? dualPlaneWeight : weight) >> 8);
+                buffer[i * 4 + 3] = (byte)(InterpolateChannelHdr(
+                    endpoint.HdrLow[3], endpoint.HdrHigh[3],
+                    dualPlaneChannel == 3 ? dualPlaneWeight : weight) >> 8);
             }
         }
     }

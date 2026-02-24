@@ -141,7 +141,9 @@ internal struct BlockInfo
         }
 
         // ---- Step 3: Compute weight range from r and h bits ----
-        uint hBit = isWidthA6HeightB6 ? 0u : (uint)((lowBits >> 9) & 1);
+        uint hBit = isWidthA6HeightB6
+            ? 0u
+            : (uint)((lowBits >> 9) & 1);
         int rangeIdx = (int)((hBit << 3) | rBits);
         if ((uint)rangeIdx >= (uint)_weightRanges.Length)
             return default;

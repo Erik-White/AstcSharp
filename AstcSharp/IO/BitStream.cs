@@ -122,7 +122,9 @@ internal struct BitStream
     }
 
     private static ulong MaskFor(int bits)
-        => bits == 64 ? ~0UL : ((1UL << bits) - 1UL);
+        => bits == 64
+            ? ~0UL
+            : ((1UL << bits) - 1UL);
 
     private UInt128? GetBitsUInt128(int count)
     {

@@ -39,7 +39,9 @@ internal sealed class BoundedIntegerSequenceEncoder : BoundedIntegerSequenceCode
                     var quints = new List<int>();
                     for (int i = 0; i < 3; ++i)
                     {
-                        var value = index < _values.Count ? _values[index++] : 0;
+                        var value = index < _values.Count
+                            ? _values[index++]
+                            : 0;
                         quints.Add(value);
                     }
                     EncodeISEBlock<int>(quints, _bitCount, ref bitSink, ref bitsWrittenCount, totalBitCount);
@@ -61,7 +63,9 @@ internal sealed class BoundedIntegerSequenceEncoder : BoundedIntegerSequenceCode
         int valueCount = values.Count;
         int valueRange = (valueCount == 3) ? 5 : 3;
         int bitsPerBlock = (valueRange == 5) ? 7 : 8;
-        int[] interleavedBits = (valueRange == 5) ? InterleavedQuintBits : InterleavedTritBits;
+        int[] interleavedBits = (valueRange == 5)
+            ? InterleavedQuintBits
+            : InterleavedTritBits;
 
         var nonBitComponents = new int[valueCount];
         var bitComponents = new int[valueCount];

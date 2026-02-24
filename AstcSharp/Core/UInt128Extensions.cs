@@ -23,7 +23,9 @@ internal static class UInt128Extensions
         if (n >= 128) return new UInt128(~0UL, ~0UL);
         if (n <= 64)
         {
-            ulong low = (n == 64) ? ~0UL : ((1UL << n) - 1UL);
+            ulong low = (n == 64)
+                ? ~0UL
+                : ((1UL << n) - 1UL);
 
             return new UInt128(0UL, low);
         }
@@ -31,7 +33,9 @@ internal static class UInt128Extensions
         {
             int highBits = n - 64;
             ulong low = ~0UL;
-            ulong high = (highBits == 64) ? ~0UL : ((1UL << highBits) - 1UL);
+            ulong high = (highBits == 64)
+                ? ~0UL
+                : ((1UL << highBits) - 1UL);
 
             return new UInt128(high, low);
         }

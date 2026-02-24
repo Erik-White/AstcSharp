@@ -18,13 +18,17 @@ internal static class BitOperations
         {
             ulong lowMask = ~0UL;
             int highBits = length - 64;
-            ulong highMask = (highBits == 64) ? ~0UL : ((1UL << highBits) - 1UL);
+            ulong highMask = (highBits == 64)
+                ? ~0UL
+                : ((1UL << highBits) - 1UL);
 
             return new UInt128(shifted.High() & highMask, shifted.Low() & lowMask);
         }
         else
         {
-            ulong mask = (length == 64) ? ~0UL : ((1UL << length) - 1UL);
+            ulong mask = (length == 64)
+                ? ~0UL
+                : ((1UL << length) - 1UL);
 
             return new UInt128(0, shifted.Low() & mask);
         }

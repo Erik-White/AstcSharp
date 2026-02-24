@@ -43,7 +43,9 @@ internal readonly struct PhysicalBlock
             : null;
 
     internal int? GetWeightRange()
-        => _info.IsValid && !_info.IsVoidExtent ? _info.WeightRange : null;
+        => _info.IsValid && !_info.IsVoidExtent
+            ? _info.WeightRange
+            : null;
 
     internal int[]? GetVoidExtentCoordinates()
     {
@@ -63,7 +65,9 @@ internal readonly struct PhysicalBlock
     /// </summary>
     /// <returns>The dual plane channel if enabled, otherwise null.</returns>
     internal int? GetDualPlaneChannel()
-        => _info.IsValid && _info.IsDualPlane ? _info.DualPlaneChannel : null;
+        => _info.IsValid && _info.IsDualPlane
+            ? _info.DualPlaneChannel
+            : null;
 
     internal string? IdentifyInvalidEncodingIssues()
     {
@@ -74,13 +78,19 @@ internal readonly struct PhysicalBlock
     }
 
     internal int? GetWeightBitCount()
-        => _info.IsValid && !_info.IsVoidExtent ? _info.WeightBitCount : null;
+        => _info.IsValid && !_info.IsVoidExtent
+            ? _info.WeightBitCount
+            : null;
 
     internal int? GetWeightStartBit()
-        => _info.IsValid && !_info.IsVoidExtent ? 128 - _info.WeightBitCount : null;
+        => _info.IsValid && !_info.IsVoidExtent
+            ? 128 - _info.WeightBitCount
+            : null;
 
     internal int? GetPartitionsCount()
-        => _info.IsValid && !_info.IsVoidExtent ? _info.PartitionCount : null;
+        => _info.IsValid && !_info.IsVoidExtent
+            ? _info.PartitionCount
+            : null;
 
     internal int? GetPartitionId()
     {
@@ -98,25 +108,33 @@ internal readonly struct PhysicalBlock
     internal int? GetColorStartBit()
     {
         if (_info.IsVoidExtent) return 64;
-        return _info.IsValid ? _info.ColorStartBit : null;
+        return _info.IsValid
+            ? _info.ColorStartBit
+            : null;
     }
 
     internal int? GetColorValuesCount()
     {
         if (_info.IsVoidExtent) return 4;
-        return _info.IsValid ? _info.ColorValuesCount : null;
+        return _info.IsValid
+            ? _info.ColorValuesCount
+            : null;
     }
 
     internal int? GetColorBitCount()
     {
         if (_info.IsVoidExtent) return 64;
-        return _info.IsValid ? _info.ColorBitCount : null;
+        return _info.IsValid
+            ? _info.ColorBitCount
+            : null;
     }
 
     internal int? GetColorValuesRange()
     {
         if (_info.IsVoidExtent) return (1 << 16) - 1;
-        return _info.IsValid ? _info.ColorValuesRange : null;
+        return _info.IsValid
+            ? _info.ColorValuesRange
+            : null;
     }
 
     internal static int[] DecodeVoidExtentCoordinates(UInt128 astcBits)

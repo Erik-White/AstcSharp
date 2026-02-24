@@ -10,10 +10,14 @@ internal class QuantizationMap
     private int[] _unquantizationMap = [];
 
     public int Quantize(int x)
-        => (uint)x < (uint)_quantizationMap.Length ? _quantizationMap[x] : 0;
+        => (uint)x < (uint)_quantizationMap.Length
+            ? _quantizationMap[x]
+            : 0;
 
     public int Unquantize(int x)
-        => (uint)x < (uint)_unquantizationMap.Length ? _unquantizationMap[x] : 0;
+        => (uint)x < (uint)_unquantizationMap.Length
+            ? _unquantizationMap[x]
+            : 0;
 
     internal static int Log2Floor(int value)
     {
