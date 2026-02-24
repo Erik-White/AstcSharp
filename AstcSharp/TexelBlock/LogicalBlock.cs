@@ -221,7 +221,7 @@ internal class LogicalBlock
 
         if (!IsDualPlane())
             throw new InvalidOperationException("Not a dual plane block");
-        
+
         if (_dualPlane is not null && _dualPlane.Channel == channel)
             _dualPlane.Weights[y * GetFootprint().Width + x] = weight;
         else

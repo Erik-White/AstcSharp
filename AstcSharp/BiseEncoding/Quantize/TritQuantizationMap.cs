@@ -26,40 +26,40 @@ internal class TritQuantizationMap : QuantizationMap
             case 5:
                 b = 0; c = 204; break;
             case 11:
-            {
-                int x = (bits >> 1) & 0x1;
-                b = (x << 1) | (x << 2) | (x << 4) | (x << 8);
-                c = 93;
-            }
-            break;
+                {
+                    int x = (bits >> 1) & 0x1;
+                    b = (x << 1) | (x << 2) | (x << 4) | (x << 8);
+                    c = 93;
+                }
+                break;
             case 23:
-            {
-                int x = (bits >> 1) & 0x3;
-                b = x | (x << 2) | (x << 7);
-                c = 44;
-            }
-            break;
+                {
+                    int x = (bits >> 1) & 0x3;
+                    b = x | (x << 2) | (x << 7);
+                    c = 44;
+                }
+                break;
             case 47:
-            {
-                int x = (bits >> 1) & 0x7;
-                b = x | (x << 6);
-                c = 22;
-            }
-            break;
+                {
+                    int x = (bits >> 1) & 0x7;
+                    b = x | (x << 6);
+                    c = 22;
+                }
+                break;
             case 95:
-            {
-                int x = (bits >> 1) & 0xF;
-                b = (x >> 2) | (x << 5);
-                c = 11;
-            }
-            break;
+                {
+                    int x = (bits >> 1) & 0xF;
+                    b = (x >> 2) | (x << 5);
+                    c = 11;
+                }
+                break;
             case 191:
-            {
-                int x = (bits >> 1) & 0x1F;
-                b = (x >> 4) | (x << 4);
-                c = 5;
-            }
-            break;
+                {
+                    int x = (bits >> 1) & 0x1F;
+                    b = (x >> 4) | (x << 4);
+                    c = 5;
+                }
+                break;
             default:
                 throw new ArgumentException("Illegal trit encoding");
         }

@@ -92,41 +92,41 @@ internal struct BlockInfo
             switch (mode_bits)
             {
                 case 0: // WidthB4HeightA2
-                {
-                    int b = (int)((low_bits >> 7) & 0x3); // bits[7:9]
-                    gridWidth = b + 4;
-                    gridHeight = a + 2;
-                    break;
-                }
-                case 1: // WidthB8HeightA2
-                {
-                    int b = (int)((low_bits >> 7) & 0x3);
-                    gridWidth = b + 8;
-                    gridHeight = a + 2;
-                    break;
-                }
-                case 2: // WidthA2HeightB8
-                {
-                    int b = (int)((low_bits >> 7) & 0x3);
-                    gridWidth = a + 2;
-                    gridHeight = b + 8;
-                    break;
-                }
-                case 3: // WidthB2HeightA2 or WidthA2HeightB6
-                {
-                    int b = (int)((low_bits >> 7) & 0x1); // 1 bit only!
-                    if (((low_bits >> 8) & 1) != 0)
                     {
-                        gridWidth = b + 2;
+                        int b = (int)((low_bits >> 7) & 0x3); // bits[7:9]
+                        gridWidth = b + 4;
                         gridHeight = a + 2;
+                        break;
                     }
-                    else
+                case 1: // WidthB8HeightA2
                     {
-                        gridWidth = a + 2;
-                        gridHeight = b + 6;
+                        int b = (int)((low_bits >> 7) & 0x3);
+                        gridWidth = b + 8;
+                        gridHeight = a + 2;
+                        break;
                     }
-                    break;
-                }
+                case 2: // WidthA2HeightB8
+                    {
+                        int b = (int)((low_bits >> 7) & 0x3);
+                        gridWidth = a + 2;
+                        gridHeight = b + 8;
+                        break;
+                    }
+                case 3: // WidthB2HeightA2 or WidthA2HeightB6
+                    {
+                        int b = (int)((low_bits >> 7) & 0x1); // 1 bit only!
+                        if (((low_bits >> 8) & 1) != 0)
+                        {
+                            gridWidth = b + 2;
+                            gridHeight = a + 2;
+                        }
+                        else
+                        {
+                            gridWidth = a + 2;
+                            gridHeight = b + 6;
+                        }
+                        break;
+                    }
                 default:
                     return default; // unreachable
             }

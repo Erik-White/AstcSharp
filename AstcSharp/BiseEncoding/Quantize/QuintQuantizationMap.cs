@@ -25,33 +25,33 @@ internal class QuintQuantizationMap : QuantizationMap
         {
             case 9: b = 0; c = 113; break;
             case 19:
-            {
-                int x = (bits >> 1) & 0x1;
-                b = (x << 2) | (x << 3) | (x << 8);
-                c = 54;
-            }
-            break;
+                {
+                    int x = (bits >> 1) & 0x1;
+                    b = (x << 2) | (x << 3) | (x << 8);
+                    c = 54;
+                }
+                break;
             case 39:
-            {
-                int x = (bits >> 1) & 0x3;
-                b = (x >> 1) | (x << 1) | (x << 7);
-                c = 26;
-            }
-            break;
+                {
+                    int x = (bits >> 1) & 0x3;
+                    b = (x >> 1) | (x << 1) | (x << 7);
+                    c = 26;
+                }
+                break;
             case 79:
-            {
-                int x = (bits >> 1) & 0x7;
-                b = (x >> 1) | (x << 6);
-                c = 13;
-            }
-            break;
+                {
+                    int x = (bits >> 1) & 0x7;
+                    b = (x >> 1) | (x << 6);
+                    c = 13;
+                }
+                break;
             case 159:
-            {
-                int x = (bits >> 1) & 0xF;
-                b = (x >> 3) | (x << 5);
-                c = 6;
-            }
-            break;
+                {
+                    int x = (bits >> 1) & 0xF;
+                    b = (x >> 3) | (x << 5);
+                    c = 6;
+                }
+                break;
             default:
                 throw new ArgumentException("Illegal quint encoding");
         }

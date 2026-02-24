@@ -19,14 +19,14 @@ public static class AstcDecoder
     internal static Span<byte> DecompressImage(AstcFile file)
     {
         ArgumentNullException.ThrowIfNull(file);
-        
+
         return DecompressImage(file.Blocks, file.Width, file.Height, file.Footprint);
     }
 
     internal static Span<byte> DecompressImage(ReadOnlySpan<byte> astcData, int width, int height, FootprintType footprint)
     {
         var footPrint = Footprint.FromFootprintType(footprint);
-        
+
         return DecompressImage(astcData, width, height, footPrint);
     }
 
@@ -165,7 +165,7 @@ public static class AstcDecoder
 
             DecompressBlock(blockData, footprint, decodedPixelBuffer);
         }
-        
+
         finally
         {
             _arrayPool.Return(decodedPixels);

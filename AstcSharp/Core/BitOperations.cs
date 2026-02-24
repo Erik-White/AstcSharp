@@ -45,7 +45,7 @@ internal static class BitOperations
 
         return (value >> start) & mask;
     }
-    
+
     /// <summary>
     /// Transfers a few bits of precision from one value to another.
     /// </summary>

@@ -30,7 +30,7 @@ namespace AstcSharp.ColorEncoding
         public static int PartitionMetric(Partition a, Partition b)
         {
             ArgumentOutOfRangeException.ThrowIfNotEqual(a.footprint, b.footprint);
-            
+
             const int kMaxNumSubsets = 4;
             int w = a.footprint.Width;
             int h = a.footprint.Height;
@@ -137,7 +137,7 @@ namespace AstcSharp.ColorEncoding
 
             int a = (int)(seed1 * x + seed2 * y + seed11 * z + (rnum >> 14));
             int b = (int)(seed3 * x + seed4 * y + seed12 * z + (rnum >> 10));
-            int c = (int)(seed5 * x + seed6 * y + seed9  * z + (rnum >> 6));
+            int c = (int)(seed5 * x + seed6 * y + seed9 * z + (rnum >> 6));
             int d = (int)(seed7 * x + seed8 * y + seed10 * z + (rnum >> 2));
 
             a &= 0x3F; b &= 0x3F; c &= 0x3F; d &= 0x3F;

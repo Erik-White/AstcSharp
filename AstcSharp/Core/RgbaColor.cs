@@ -32,7 +32,7 @@ internal readonly record struct RgbaColor(byte R, byte G, byte B, byte A)
             2 => B,
             3 => A,
             _ => throw new ArgumentOutOfRangeException(nameof(i), $"Index must be between 0 and {BytesPerPixel - 1}. Actual value: {i}.")
-    };
+        };
 
     public static RgbaColor Empty => default;
 

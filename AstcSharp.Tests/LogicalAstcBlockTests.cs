@@ -379,7 +379,7 @@ public class LogicalAstcBlockTests
     {
         var footprint = Footprint.FromFootprintType(footprintType);
         var astcData = FileBasedHelpers.LoadASTCFile(imageName);
-        
+
         var decodedImage = ImageBuffer.FromAstcBuffer(footprint, astcData, width, height, hasAlpha);
 
         var expectedPath = Path.Combine("TestData", "Expected", imageName + ".bmp");

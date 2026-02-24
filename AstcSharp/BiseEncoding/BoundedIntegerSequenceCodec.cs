@@ -166,7 +166,7 @@ internal partial class BoundedIntegerSequenceCodec
             BiseEncodingMode.BitEncoding => (1, 0),
             _ => (0, 0),
         };
-        
+
         return extraBlockSize + blockSize * _bitCount;
     }
 
