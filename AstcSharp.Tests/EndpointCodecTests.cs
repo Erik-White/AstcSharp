@@ -39,6 +39,7 @@ public class EndpointCodecTests
     public void DecodeColorsForMode_WithRgbBaseOffset_AndIdenticalColors_ShouldDecodeCorrectly()
     {
         Random random = new(unchecked((int)0xdeadbeef));
+        Span<int> values = stackalloc int[6];
 
         for (int i = 0; i < 100; ++i)
         {
@@ -53,7 +54,6 @@ public class EndpointCodecTests
             }
 
             RgbaColor color = new((byte)r, (byte)g, (byte)b, 255);
-            Span<int> values = stackalloc int[6];
             EncodeRgbBaseOffset(color, color, values);
             Quantization.UnquantizeCEValuesBatch(values, 255);
             ColorEndpointPair decoded = EndpointCodec.Decode(values, ColorEndpointMode.LdrRgbBaseOffset);
@@ -71,6 +71,9 @@ public class EndpointCodecTests
 
         int blocksDecoded = 0;
 
+        // 18 ints is the spec cap (§C.2.14); BlockModeDecoder rejects anything larger.
+        Span<int> colorsBuffer = stackalloc int[18];
+
         for (int i = 0; i < astcData.Length; i += BlockInfo.SizeInBytes)
         {
             UInt128 blockBits = BinaryPrimitives.ReadUInt128LittleEndian(astcData.AsSpan(i, BlockInfo.SizeInBytes));
@@ -79,7 +82,7 @@ public class EndpointCodecTests
             Assert.False(info.IsVoidExtent);
             Assert.True(info.PartitionCount > 0, "block should have endpoints");
 
-            Span<int> colors = stackalloc int[info.Colors.Count];
+            Span<int> colors = colorsBuffer[..info.Colors.Count];
             FusedBlockDecoder.DecodeBiseValues(
                 blockBits,
                 info.Colors.StartBit,
