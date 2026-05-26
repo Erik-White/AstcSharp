@@ -1,14 +1,27 @@
 namespace AstcSharp.BiseEncoding.Quantize;
 
-internal sealed class BitQuantizationMap : QuantizationMap
+/// <summary>
+/// Builds <see cref="QuantizationMap"/> instances for the pure-bit BISE encoding mode
+/// (no trits/quints). Bit-replicates each quantized value up to <c>totalUnquantizedBits</c>
+/// width to derive its unquantized form. Used for both endpoint colour unquantization
+/// (ASTC spec §C.2.13) and weight unquantization (§C.2.17).
+/// </summary>
+internal static class BitQuantizationMap
 {
-    // TotalUnquantizedBits is 8 for endpoint values and 6 for weights
-    public BitQuantizationMap(int range, int totalUnquantizedBits)
+    /// <param name="range">Inclusive upper bound of the quantized slot index. <c>range + 1</c>
+    /// must be a power of two.</param>
+    /// <param name="totalUnquantizedBits">Bit width of the unquantized output: 8 for endpoint
+    /// values, 6 for weights.</param>
+    public static QuantizationMap Create(int range, int totalUnquantizedBits)
     {
-        // ensure range+1 is power of two
-        ArgumentOutOfRangeException.ThrowIfNotEqual(CountOnes(range + 1), 1);
+        if (CountOnes(range + 1) != 1)
+        {
+            throw new ArgumentException("range + 1 must be a power of two.", nameof(range));
+        }
 
-        int bitCount = Log2Floor(range + 1);
+        int bitCount = QuantizationMap.Log2Floor(range + 1);
+        List<int> unquantization = [];
+        List<int> quantization = [];
 
         for (int bits = 0; bits <= range; bits++)
         {
@@ -22,25 +35,41 @@ internal sealed class BitQuantizationMap : QuantizationMap
                 unquantized |= bits >> sourceShiftDown;
                 unquantizedBitCount += destinationShiftUp;
             }
-            if (unquantizedBitCount != totalUnquantizedBits) throw new InvalidOperationException();
-            _unquantizationMapBuilder.Add(unquantized);
+
+            if (unquantizedBitCount != totalUnquantizedBits)
+            {
+                throw new InvalidOperationException();
+            }
+
+            unquantization.Add(unquantized);
 
             if (bits > 0)
             {
-                int previousUnquantized = _unquantizationMapBuilder[bits - 1];
-                while (_quantizationMapBuilder.Count <= (previousUnquantized + unquantized) / 2)
-                    _quantizationMapBuilder.Add(bits - 1);
+                int previousUnquantized = unquantization[bits - 1];
+                while (quantization.Count <= (previousUnquantized + unquantized) / 2)
+                {
+                    quantization.Add(bits - 1);
+                }
             }
-            while (_quantizationMapBuilder.Count <= unquantized) _quantizationMapBuilder.Add(bits);
+
+            while (quantization.Count <= unquantized)
+            {
+                quantization.Add(bits);
+            }
         }
 
-        Freeze();
+        return new QuantizationMap([.. quantization], [.. unquantization]);
     }
 
     private static int CountOnes(int value)
     {
         int count = 0;
-        while (value != 0) { count += value & 1; value >>= 1; }
+        while (value != 0)
+        {
+            count += value & 1;
+            value >>= 1;
+        }
+
         return count;
     }
 }

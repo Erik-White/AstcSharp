@@ -1,26 +1,44 @@
 namespace AstcSharp.BiseEncoding.Quantize;
 
-internal sealed class TritQuantizationMap : QuantizationMap
+/// <summary>
+/// Builds <see cref="QuantizationMap"/> instances for the trit BISE encoding mode plus the
+/// per-trit unquantization tables for endpoint colour values (ASTC spec §C.2.13) and
+/// weights (§C.2.17).
+/// </summary>
+internal static class TritQuantizationMap
 {
-    public TritQuantizationMap(int range, Func<int, int, int, int> unquantFunc)
+    /// <param name="range">Inclusive upper bound of the quantized slot index. <c>range + 1</c>
+    /// must be divisible by 3.</param>
+    /// <param name="unquantFunc">Per-trit unquantization function — typically
+    /// <see cref="GetUnquantizedValue"/> or <see cref="GetUnquantizedWeight"/>.</param>
+    public static QuantizationMap Create(int range, Func<int, int, int, int> unquantFunc)
     {
-        ArgumentOutOfRangeException.ThrowIfNotEqual((range + 1) % 3, 0);
+        if ((range + 1) % 3 != 0)
+        {
+            throw new ArgumentException("range + 1 must be a multiple of 3.", nameof(range));
+        }
 
         int bitsPowerOfTwo = (range + 1) / 3;
-        int bitCount = bitsPowerOfTwo == 0 ? 0 : Log2Floor(bitsPowerOfTwo);
+        int bitCount = bitsPowerOfTwo == 0 ? 0 : QuantizationMap.Log2Floor(bitsPowerOfTwo);
 
+        int[] unquantization = new int[3 * (1 << bitCount)];
+        int idx = 0;
         for (int trit = 0; trit < 3; ++trit)
+        {
             for (int bits = 0; bits < (1 << bitCount); ++bits)
-                _unquantizationMapBuilder.Add(unquantFunc(trit, bits, range));
+            {
+                unquantization[idx++] = unquantFunc(trit, bits, range);
+            }
+        }
 
-        GenerateQuantizationMap();
-        Freeze();
+        int[] quantization = QuantizationMap.BuildQuantizationMapFromUnquantized(unquantization);
+        return new QuantizationMap(quantization, unquantization);
     }
 
     internal static int GetUnquantizedValue(int trit, int bits, int range)
     {
         int a = (bits & 1) != 0 ? 0x1FF : 0;
-        var (b, c) = range switch
+        (int b, int c) = range switch
         {
             5 => (0, 204),
             11 => ((bits >> 1) & 0x1) is var x ? ((x << 1) | (x << 2) | (x << 4) | (x << 8), 93) : default,
@@ -30,7 +48,7 @@ internal sealed class TritQuantizationMap : QuantizationMap
             191 => ((bits >> 1) & 0x1F) is var x ? ((x >> 4) | (x << 4), 5) : default,
             _ => throw new ArgumentException("Illegal trit encoding")
         };
-        int t = trit * c + b;
+        int t = (trit * c) + b;
         t ^= a;
         t = (a & 0x80) | (t >> 2);
         return t;
@@ -39,15 +57,17 @@ internal sealed class TritQuantizationMap : QuantizationMap
     internal static int GetUnquantizedWeight(int trit, int bits, int range)
     {
         if (range == 2)
+        {
             return trit switch
             {
                 0 => 0,
                 1 => 32,
                 _ => 63
             };
+        }
 
         int a = (bits & 1) != 0 ? 0x7F : 0;
-        var (b, c) = range switch
+        (int b, int c) = range switch
         {
             5 => (0, 50),
             11 => ((bits >> 1) & 1) is var x
@@ -58,7 +78,7 @@ internal sealed class TritQuantizationMap : QuantizationMap
                 : default,
             _ => throw new ArgumentException("Illegal trit encoding")
         };
-        int t = trit * c + b;
+        int t = (trit * c) + b;
         t ^= a;
         return (a & 0x20) | (t >> 2);
     }

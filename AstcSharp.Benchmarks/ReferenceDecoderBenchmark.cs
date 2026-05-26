@@ -26,13 +26,13 @@ public class ReferenceDecoderBenchmark
     private byte[]? _astcSharpLdrOutput;
     private float[]? _astcSharpHdrOutput;
 
-    [Params("atlas_small_4x4", "atlas_small_8x8", "footprint_4x4", "footprint_12x12")]
+    [Params("rgba-4x4", "rgba-8x8", "footprint-4x4", "footprint-12x12")]
     public string FileName { get; set; } = string.Empty;
 
     [GlobalSetup]
     public void Setup()
     {
-        var path = BenchmarkTestDataLocator.FindTestData(Path.Combine("Input", FileName + ".astc"));
+        var path = BenchmarkTestDataLocator.FindTestData(Path.Combine("Astc", FileName + ".astc"));
         var rawFile = File.ReadAllBytes(path);
         _astcFile = AstcFile.FromMemory(rawFile);
 

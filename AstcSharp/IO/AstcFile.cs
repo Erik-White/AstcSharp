@@ -11,28 +11,51 @@ namespace AstcSharp.IO;
 /// </remarks>
 internal record AstcFile
 {
-    private readonly AstcFileHeader _header;
-    private readonly byte[] _blocks;
-
-    public ReadOnlySpan<byte> Blocks => _blocks;
-    public Footprint Footprint { get; }
-    public int Width => _header.ImageWidth;
-    public int Height => _header.ImageHeight;
-    public int Depth => _header.ImageDepth;
+    private readonly AstcFileHeader header;
+    private readonly byte[] blocks;
 
     internal AstcFile(AstcFileHeader header, byte[] blocks)
     {
-        _header = header;
-        _blocks = blocks;
-        Footprint = GetFootprint();
+        this.header = header;
+        this.blocks = blocks;
+        this.Footprint = this.GetFootprint();
     }
+
+    public ReadOnlySpan<byte> Blocks => this.blocks;
+
+    public Footprint Footprint { get; }
+
+    public int Width => this.header.ImageWidth;
+
+    public int Height => this.header.ImageHeight;
+
+    public int Depth => this.header.ImageDepth;
 
     public static AstcFile FromMemory(byte[] data)
     {
-        var header = AstcFileHeader.FromMemory(data.AsSpan(0, AstcFileHeader.SizeInBytes));
+        ArgumentNullException.ThrowIfNull(data);
+        ArgumentOutOfRangeException.ThrowIfLessThan(data.Length, AstcFileHeader.SizeInBytes);
 
-        // Remaining bytes are blocks; C++ reference keeps them as string; here we keep as byte[]
-        var blocks = new byte[data.Length - AstcFileHeader.SizeInBytes];
+        AstcFileHeader header = AstcFileHeader.FromMemory(data.AsSpan(0, AstcFileHeader.SizeInBytes));
+
+        int blockDataLength = data.Length - AstcFileHeader.SizeInBytes;
+        if (blockDataLength % BlockInfo.SizeInBytes != 0)
+        {
+            throw new ArgumentException("ASTC block data length must be a multiple of the block size.", nameof(data));
+        }
+
+        int blocksWide = (header.ImageWidth + header.BlockWidth - 1) / header.BlockWidth;
+        int blocksHigh = (header.ImageHeight + header.BlockHeight - 1) / header.BlockHeight;
+        long expectedBlockCount = (long)blocksWide * blocksHigh;
+        long actualBlockCount = blockDataLength / BlockInfo.SizeInBytes;
+        if (actualBlockCount != expectedBlockCount)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(data),
+                $"ASTC payload contains {actualBlockCount} blocks but the header describes {expectedBlockCount}");
+        }
+
+        byte[] blocks = new byte[blockDataLength];
         Array.Copy(data, AstcFileHeader.SizeInBytes, blocks, 0, blocks.Length);
 
         return new AstcFile(header, blocks);
@@ -41,7 +64,7 @@ internal record AstcFile
     /// <summary>
     /// Map the block dimensions in the header to a Footprint, if possible.
     /// </summary>
-    private Footprint GetFootprint() => (_header.BlockWidth, _header.BlockHeight) switch
+    private Footprint GetFootprint() => (this.header.BlockWidth, this.header.BlockHeight) switch
     {
         (4, 4) => Footprint.FromFootprintType(FootprintType.Footprint4x4),
         (5, 4) => Footprint.FromFootprintType(FootprintType.Footprint5x4),
@@ -57,6 +80,6 @@ internal record AstcFile
         (10, 10) => Footprint.FromFootprintType(FootprintType.Footprint10x10),
         (12, 10) => Footprint.FromFootprintType(FootprintType.Footprint12x10),
         (12, 12) => Footprint.FromFootprintType(FootprintType.Footprint12x12),
-        _ => throw new ArgumentOutOfRangeException($"Unsupported block dimensions: {_header.BlockWidth}x{_header.BlockHeight}"),
+        _ => throw new NotSupportedException($"Unsupported block dimensions: {this.header.BlockWidth}x{this.header.BlockHeight}"),
     };
 }
