@@ -31,13 +31,13 @@ public class ReferenceDecoderHdrTests
     ];
 
     [Theory]
-    [InlineData("HDR-A-1x1")]
+    [InlineData("hdr-a-1x1")]
     [InlineData("hdr-tile")]
-    [InlineData("LDR-A-1x1")]
+    [InlineData("ldr-a-1x1")]
     [InlineData("ldr-tile")]
     public void DecompressHdr_WithHdrImage_ShouldMatch(string basename)
     {
-        var filePath = Path.Combine("TestData", "HDR", basename + ".astc");
+        var filePath = Path.Combine("TestData", "Input", "Astc", "HdrPipeline", basename + ".astc");
 
         var bytes = File.ReadAllBytes(filePath);
         var astcFile = AstcFile.FromMemory(bytes);
@@ -52,13 +52,13 @@ public class ReferenceDecoderHdrTests
     }
 
     [Theory]
-    [InlineData("atlas_small_4x4")]
-    [InlineData("atlas_small_5x5")]
-    [InlineData("atlas_small_6x6")]
-    [InlineData("atlas_small_8x8")]
+    [InlineData("rgba-4x4")]
+    [InlineData("rgba-5x5")]
+    [InlineData("rgba-6x6")]
+    [InlineData("rgba-8x8")]
     public void DecompressHdr_WithLdrImage_ShouldMatch(string basename)
     {
-        var filePath = Path.Combine("TestData", "Input", basename + ".astc");
+        var filePath = Path.Combine("TestData", "Input", "Astc", basename + ".astc");
         var bytes = File.ReadAllBytes(filePath);
         var astcFile = AstcFile.FromMemory(bytes);
         var (blockX, blockY) = ReferenceDecoder.ToBlockDimensions(astcFile.Footprint.Type);

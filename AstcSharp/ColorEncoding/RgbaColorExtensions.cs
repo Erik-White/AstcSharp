@@ -1,51 +1,80 @@
+using System.Runtime.CompilerServices;
 using AstcSharp.Core;
 
 namespace AstcSharp.ColorEncoding;
 
+/// <summary>
+/// ASTC-specific extension methods and helpers for <see cref="RgbaColor"/>.
+/// </summary>
 internal static class RgbaColorExtensions
 {
     /// <summary>
-    /// Uses the value in the blue channel to tint the red and green
+    /// Creates an <see cref="RgbaColor"/> from integer values, clamping each channel to [0, 255].
     /// </summary>
-    /// <remarks>
-    /// Applies the 'blue_contract' function defined in Section C.2.14 of the ASTC specification.
-    /// </remarks>
-    public static RgbaColor WithBlueContract(int red, int green, int blue, int alpha)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static RgbaColor ClampedRgba(int r, int g, int b, int a = byte.MaxValue)
         => new(
-            r: (red + blue) >> 1,
-            g: (green + blue) >> 1,
-            b: blue,
-            a: alpha);
+            (byte)Math.Clamp(r, byte.MinValue, byte.MaxValue),
+            (byte)Math.Clamp(g, byte.MinValue, byte.MaxValue),
+            (byte)Math.Clamp(b, byte.MinValue, byte.MaxValue),
+            (byte)Math.Clamp(a, byte.MinValue, byte.MaxValue));
 
     /// <summary>
-    /// Uses the value in the blue channel to tint the red and green
+    /// Gets the rounded arithmetic mean of the R, G, and B channels.
     /// </summary>
-    /// <remarks>
-    /// Applies the 'blue_contract' function defined in Section C.2.14 of the ASTC specification.
-    /// </remarks>
-    public static RgbaColor WithBlueContract(this RgbaColor color)
-        => WithBlueContract(color.R, color.G, color.B, color.A);
-
-    /// <summary>
-    /// The inverse of <see cref="WithBlueContract(RgbaColor)"/>
-    /// </summary>
-    public static RgbaColor WithInvertedBlueContract(this RgbaColor color)
-        => new(
-            r: 2 * color.R - color.B,
-            g: 2 * color.G - color.B,
-            b: color.B,
-            a: color.A);
-
-    public static RgbaColor AsOffsetFrom(this RgbaColor color, RgbaColor baseColor)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static byte GetAverage(this RgbaColor color)
     {
-        int[] offset = [color.R, color.G, color.B, color.A];
+        int sum = color.R + color.G + color.B;
+        return (byte)(((sum * 256) + 384) / 768);
+    }
 
-        for (int i = 0; i < RgbaColor.BytesPerPixel; ++i)
+    /// <summary>
+    /// Gets the channel value at the specified index: 0=R, 1=G, 2=B, 3=A.
+    /// </summary>
+    /// <remarks>
+    /// Reads the sequential [R, G, B, A] byte layout of <see cref="RgbaColor"/> directly.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int GetChannel(this in RgbaColor color, int i)
+    {
+        if ((uint)i >= 4)
         {
-            var (a, b) = BitOperations.TransferPrecision(offset[i], baseColor[i]);
-            offset[i] = Math.Clamp(baseColor[i] + a, byte.MinValue, byte.MaxValue);
+            throw new ArgumentOutOfRangeException(nameof(i), $"Index must be between 0 and 3. Actual value: {i}.");
         }
 
-        return new RgbaColor(offset[0], offset[1], offset[2], offset[3]);
+        return Unsafe.Add(ref Unsafe.As<RgbaColor, byte>(ref Unsafe.AsRef(in color)), i);
     }
+
+    /// <summary>
+    /// Computes the sum of squared per-channel differences across all four RGBA channels.
+    /// </summary>
+    public static int SquaredError(RgbaColor a, RgbaColor b)
+    {
+        int dr = a.R - b.R;
+        int dg = a.G - b.G;
+        int db = a.B - b.B;
+        int da = a.A - b.A;
+        return (dr * dr) + (dg * dg) + (db * db) + (da * da);
+    }
+
+    /// <summary>
+    /// Computes the sum of squared per-channel differences for the RGB channels only, ignoring alpha.
+    /// </summary>
+    public static int SquaredErrorRgb(RgbaColor a, RgbaColor b)
+    {
+        int dr = a.R - b.R;
+        int dg = a.G - b.G;
+        int db = a.B - b.B;
+        return (dr * dr) + (dg * dg) + (db * db);
+    }
+
+    /// <summary>
+    /// Returns true if all four channels are within the specified tolerance of the other color.
+    /// </summary>
+    public static bool IsCloseTo(this RgbaColor color, RgbaColor other, int tolerance)
+        => Math.Abs(color.R - other.R) <= tolerance &&
+           Math.Abs(color.G - other.G) <= tolerance &&
+           Math.Abs(color.B - other.B) <= tolerance &&
+           Math.Abs(color.A - other.A) <= tolerance;
 }

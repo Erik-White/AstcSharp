@@ -1,36 +1,51 @@
-
+using AstcSharp.Core;
 using AstcSharp.IO;
-using AstcSharp.TexelBlock;
 using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Configs;
 
 namespace AstcSharp.Benchmarks;
 
 [MemoryDiagnoser]
+[Config(typeof(InProcessConfig))]
 public class AstcFullImageDecodeBenchmark
 {
-    private AstcFile? _astcFile;
+    private byte[] ldrBlocks = [];
+    private int ldrWidth;
+    private int ldrHeight;
+    private Footprint ldrFootprint;
+    private byte[] ldrOutput = [];
+
+    private byte[] hdrBlocks = [];
+    private int hdrWidth;
+    private int hdrHeight;
+    private Footprint hdrFootprint;
+    private float[] hdrOutput = [];
 
     [GlobalSetup]
     public void Setup()
     {
-        var path = BenchmarkTestDataLocator.FindTestData(Path.Combine("Input", "atlas_small_4x4.astc"));
-        var astcData = File.ReadAllBytes(path);
-        _astcFile = AstcFile.FromMemory(astcData);
+        string ldrPath = BenchmarkTestDataLocator.FindTestData(Path.Combine("Astc", "rgba-4x4.astc"));
+        AstcFile ldr = AstcFile.FromMemory(File.ReadAllBytes(ldrPath));
+        this.ldrBlocks = ldr.Blocks.ToArray();
+        this.ldrWidth = ldr.Width;
+        this.ldrHeight = ldr.Height;
+        this.ldrFootprint = ldr.Footprint;
+        this.ldrOutput = new byte[ldr.Width * ldr.Height * 4];
+
+        string hdrPath = BenchmarkTestDataLocator.FindTestData(Path.Combine("Astc", "HdrPipeline", "hdr-tile.astc"));
+        AstcFile hdr = AstcFile.FromMemory(File.ReadAllBytes(hdrPath));
+        this.hdrBlocks = hdr.Blocks.ToArray();
+        this.hdrWidth = hdr.Width;
+        this.hdrHeight = hdr.Height;
+        this.hdrFootprint = hdr.Footprint;
+        this.hdrOutput = new float[hdr.Width * hdr.Height * 4];
     }
 
     [Benchmark]
-    public void FullImageDecode()
-    {
-        var blocks = _astcFile!.Blocks;
-        int numBlocks = blocks.Length / 16;
-        Span<byte> blockBytes = stackalloc byte[16];
-        for (int i = 0; i < numBlocks; ++i)
-        {
-            blocks.Slice(i * 16, 16).CopyTo(blockBytes);
-            var low = BitConverter.ToUInt64(blockBytes);
-            var high = BitConverter.ToUInt64(blockBytes.Slice(8));
-            var block = PhysicalBlock.Create((UInt128)low | ((UInt128)high << 64));
-            var _ = IntermediateBlock.UnpackIntermediateBlock(block);
-        }
-    }
+    public bool DecompressLdrImage()
+        => AstcDecoder.DecompressImage(this.ldrBlocks, this.ldrWidth, this.ldrHeight, this.ldrFootprint, this.ldrOutput);
+
+    [Benchmark]
+    public bool DecompressHdrImage()
+        => AstcDecoder.DecompressHdrImage(this.hdrBlocks, this.hdrWidth, this.hdrHeight, this.hdrFootprint, this.hdrOutput);
 }

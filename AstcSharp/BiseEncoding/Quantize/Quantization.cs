@@ -5,67 +5,65 @@ internal static class Quantization
     public const int EndpointRangeMinValue = 5;
     public const int WeightRangeMaxValue = 31;
 
-    private static readonly SortedDictionary<int, QuantizationMap> _endpointMaps = InitEndpointMaps();
-    private static readonly SortedDictionary<int, QuantizationMap> _weightMaps = InitWeightMaps();
+    private static readonly SortedDictionary<int, QuantizationMap> EndpointMaps = InitEndpointMaps();
+    private static readonly SortedDictionary<int, QuantizationMap> WeightMaps = InitWeightMaps();
 
     // Flat lookup tables indexed by range value for O(1) access.
     // Each slot maps to the QuantizationMap for the greatest supported range <= that index.
-    private static readonly QuantizationMap?[] _endpointMapByRange = InitEndpointMapFlat();
-    private static readonly QuantizationMap?[] _weightMapByRange = InitWeightMapFlat();
+    private static readonly QuantizationMap?[] EndpointMapByRange = BuildFlatLookup(EndpointMaps, 256);
+    private static readonly QuantizationMap?[] WeightMapByRange = BuildFlatLookup(WeightMaps, 32);
 
     // Pre-computed flat tables for weight unquantization: entry[quantizedValue] = final unquantized weight.
     // Includes the dq > 32 -> dq + 1 adjustment. Indexed by weight range.
     // Valid ranges: 1, 2, 3, 4, 5, 7, 9, 11, 15, 19, 23, 31
-    private static readonly int[]?[] _unquantizeWeightsFlat = InitializeUnquantizeWeightsFlat();
+    private static readonly int[]?[] UnquantizeWeightsFlat = InitializeUnquantizeWeightsFlat();
 
     // Pre-computed flat tables for endpoint unquantization.
     // Indexed by range value. Valid ranges: 5, 7, 9, 11, 15, 19, 23, 31, 39, 47, 63, 79, 95, 127, 159, 191, 255
-    private static readonly int[]?[] _unquantizeEndpointsFlat = InitializeUnquantizeEndpointsFlat();
+    private static readonly int[]?[] UnquantizeEndpointsFlat = InitializeUnquantizeEndpointsFlat();
 
     public static int QuantizeCEValueToRange(int value, int rangeMaxValue)
     {
-        ArgumentOutOfRangeException.ThrowIfLessThan(rangeMaxValue, EndpointRangeMinValue);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(rangeMaxValue, byte.MaxValue);
-        ArgumentOutOfRangeException.ThrowIfLessThan(value, 0);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(value, byte.MaxValue);
+        ArgumentOutOfRangeException.ThrowIfLessThan(rangeMaxValue, EndpointRangeMinValue); ArgumentOutOfRangeException.ThrowIfGreaterThan(rangeMaxValue, byte.MaxValue);
+        ArgumentOutOfRangeException.ThrowIfLessThan(value, 0); ArgumentOutOfRangeException.ThrowIfGreaterThan(value, byte.MaxValue);
 
-        var map = GetQuantMapForValueRange(rangeMaxValue);
-        return map != null ? map.Quantize(value) : 0;
+        return GetQuantMapForValueRange(rangeMaxValue).Quantize(value);
     }
 
     public static int UnquantizeCEValueFromRange(int value, int rangeMaxValue)
     {
-        ArgumentOutOfRangeException.ThrowIfLessThan(rangeMaxValue, EndpointRangeMinValue);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(rangeMaxValue, byte.MaxValue);
-        ArgumentOutOfRangeException.ThrowIfLessThan(value, 0);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(value, rangeMaxValue);
+        ArgumentOutOfRangeException.ThrowIfLessThan(rangeMaxValue, EndpointRangeMinValue); ArgumentOutOfRangeException.ThrowIfGreaterThan(rangeMaxValue, byte.MaxValue);
+        ArgumentOutOfRangeException.ThrowIfLessThan(value, 0); ArgumentOutOfRangeException.ThrowIfGreaterThan(value, rangeMaxValue);
 
-        var map = GetQuantMapForValueRange(rangeMaxValue);
-        return map != null ? map.Unquantize(value) : 0;
+        return GetQuantMapForValueRange(rangeMaxValue).Unquantize(value);
     }
 
     public static int QuantizeWeightToRange(int weight, int rangeMaxValue)
     {
-        ArgumentOutOfRangeException.ThrowIfLessThan(rangeMaxValue, 1);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(rangeMaxValue, WeightRangeMaxValue);
-        ArgumentOutOfRangeException.ThrowIfLessThan(weight, 0);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(weight, 64);
+        ArgumentOutOfRangeException.ThrowIfLessThan(rangeMaxValue, 1); ArgumentOutOfRangeException.ThrowIfGreaterThan(rangeMaxValue, WeightRangeMaxValue);
+        ArgumentOutOfRangeException.ThrowIfLessThan(weight, 0); ArgumentOutOfRangeException.ThrowIfGreaterThan(weight, 64);
 
-        if (weight > 33) weight -= 1;
-        var map = GetQuantMapForWeightRange(rangeMaxValue);
-        return map != null ? map.Quantize(weight) : 0;
+        // ASTC spec §C.2.17: weight slot 33 is unused; collapse 34..64 to 33..63 before
+        // table lookup. The inverse (dequantized > 32 = +1) lives in UnquantizeWeightsFlat.
+        if (weight > 33)
+        {
+            weight -= 1;
+        }
+
+        return GetQuantMapForWeightRange(rangeMaxValue).Quantize(weight);
     }
 
     public static int UnquantizeWeightFromRange(int weight, int rangeMaxValue)
     {
-        ArgumentOutOfRangeException.ThrowIfLessThan(rangeMaxValue, 1);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(rangeMaxValue, WeightRangeMaxValue);
-        ArgumentOutOfRangeException.ThrowIfLessThan(weight, 0);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(weight, rangeMaxValue);
+        ArgumentOutOfRangeException.ThrowIfLessThan(rangeMaxValue, 1); ArgumentOutOfRangeException.ThrowIfGreaterThan(rangeMaxValue, WeightRangeMaxValue);
+        ArgumentOutOfRangeException.ThrowIfLessThan(weight, 0); ArgumentOutOfRangeException.ThrowIfGreaterThan(weight, rangeMaxValue);
 
-        var map = GetQuantMapForWeightRange(rangeMaxValue);
-        int dequantized = map != null ? map.Unquantize(weight) : 0;
-        if (dequantized > 32) dequantized += 1;
+        int dequantized = GetQuantMapForWeightRange(rangeMaxValue).Unquantize(weight);
+        if (dequantized > 32)
+        {
+            dequantized += 1;
+        }
+
         return dequantized;
     }
 
@@ -73,11 +71,17 @@ internal static class Quantization
     /// Batch unquantize: uses pre-computed flat table for O(1) lookup per value.
     /// No per-call validation, no conditional branch per weight.
     /// </summary>
-    internal static void UnquantizeWeightsBatch(Span<int> weights, int count, int range)
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// Thrown when <paramref name="range"/> has no associated unquantization table — would
+    /// only happen on a malformed block that escaped <see cref="BlockDecoding.BlockModeDecoder"/>'s
+    /// spec-bound checks.
+    /// </exception>
+    internal static void UnquantizeWeightsBatch(Span<int> weights, int range)
     {
-        var table = _unquantizeWeightsFlat[range];
-        if (table == null) return;
-        for (int i = 0; i < count; i++)
+        int[]? table = UnquantizeWeightsFlat[range];
+        ArgumentNullException.ThrowIfNull(table);
+
+        for (int i = 0; i < weights.Length; i++)
         {
             weights[i] = table[weights[i]];
         }
@@ -87,122 +91,142 @@ internal static class Quantization
     /// Batch unquantize color endpoint values: uses pre-computed flat table.
     /// No per-call validation, single array lookup per value.
     /// </summary>
-    internal static void UnquantizeCEValuesBatch(Span<int> values, int count, int rangeMaxValue)
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// Thrown when <paramref name="rangeMaxValue"/> has no associated unquantization table —
+    /// would only happen on a malformed block that escaped <see cref="BlockDecoding.BlockModeDecoder"/>'s
+    /// spec-bound checks.
+    /// </exception>
+    internal static void UnquantizeCEValuesBatch(Span<int> values, int rangeMaxValue)
     {
-        var table = _unquantizeEndpointsFlat[rangeMaxValue];
-        if (table == null) return;
-        for (int i = 0; i < count; i++)
+        int[]? table = UnquantizeEndpointsFlat[rangeMaxValue];
+        ArgumentNullException.ThrowIfNull(table);
+
+        for (int i = 0; i < values.Length; i++)
         {
             values[i] = table[values[i]];
         }
     }
 
     private static SortedDictionary<int, QuantizationMap> InitEndpointMaps()
-    {
-        var d = new SortedDictionary<int, QuantizationMap>
+        => new()
         {
-            { 5, new TritQuantizationMap(5, TritQuantizationMap.GetUnquantizedValue) },
-            { 7, new BitQuantizationMap(7, 8) },
-            { 9, new QuintQuantizationMap(9, QuintQuantizationMap.GetUnquantizedValue) },
-            { 11, new TritQuantizationMap(11, TritQuantizationMap.GetUnquantizedValue) },
-            { 15, new BitQuantizationMap(15, 8) },
-            { 19, new QuintQuantizationMap(19, QuintQuantizationMap.GetUnquantizedValue) },
-            { 23, new TritQuantizationMap(23, TritQuantizationMap.GetUnquantizedValue) },
-            { 31, new BitQuantizationMap(31, 8) },
-            { 39, new QuintQuantizationMap(39, QuintQuantizationMap.GetUnquantizedValue) },
-            { 47, new TritQuantizationMap(47, TritQuantizationMap.GetUnquantizedValue) },
-            { 63, new BitQuantizationMap(63, 8) },
-            { 79, new QuintQuantizationMap(79, QuintQuantizationMap.GetUnquantizedValue) },
-            { 95, new TritQuantizationMap(95, TritQuantizationMap.GetUnquantizedValue) },
-            { 127, new BitQuantizationMap(127, 8) },
-            { 159, new QuintQuantizationMap(159, QuintQuantizationMap.GetUnquantizedValue) },
-            { 191, new TritQuantizationMap(191, TritQuantizationMap.GetUnquantizedValue) },
-            { 255, new BitQuantizationMap(255, 8) }
+            { 5, TritQuantizationMap.Create(5, TritQuantizationMap.GetUnquantizedValue) },
+            { 7, BitQuantizationMap.Create(7, 8) },
+            { 9, QuintQuantizationMap.Create(9, QuintQuantizationMap.GetUnquantizedValue) },
+            { 11, TritQuantizationMap.Create(11, TritQuantizationMap.GetUnquantizedValue) },
+            { 15, BitQuantizationMap.Create(15, 8) },
+            { 19, QuintQuantizationMap.Create(19, QuintQuantizationMap.GetUnquantizedValue) },
+            { 23, TritQuantizationMap.Create(23, TritQuantizationMap.GetUnquantizedValue) },
+            { 31, BitQuantizationMap.Create(31, 8) },
+            { 39, QuintQuantizationMap.Create(39, QuintQuantizationMap.GetUnquantizedValue) },
+            { 47, TritQuantizationMap.Create(47, TritQuantizationMap.GetUnquantizedValue) },
+            { 63, BitQuantizationMap.Create(63, 8) },
+            { 79, QuintQuantizationMap.Create(79, QuintQuantizationMap.GetUnquantizedValue) },
+            { 95, TritQuantizationMap.Create(95, TritQuantizationMap.GetUnquantizedValue) },
+            { 127, BitQuantizationMap.Create(127, 8) },
+            { 159, QuintQuantizationMap.Create(159, QuintQuantizationMap.GetUnquantizedValue) },
+            { 191, TritQuantizationMap.Create(191, TritQuantizationMap.GetUnquantizedValue) },
+            { 255, BitQuantizationMap.Create(255, 8) },
         };
-        return d;
-    }
 
     private static SortedDictionary<int, QuantizationMap> InitWeightMaps()
-    {
-        var d = new SortedDictionary<int, QuantizationMap>
+        => new()
         {
-            { 1, new BitQuantizationMap(1, 6) },
-            { 2, new TritQuantizationMap(2, TritQuantizationMap.GetUnquantizedWeight) },
-            { 3, new BitQuantizationMap(3, 6) },
-            { 4, new QuintQuantizationMap(4, QuintQuantizationMap.GetUnquantizedWeight) },
-            { 5, new TritQuantizationMap(5, TritQuantizationMap.GetUnquantizedWeight) },
-            { 7, new BitQuantizationMap(7, 6) },
-            { 9, new QuintQuantizationMap(9, QuintQuantizationMap.GetUnquantizedWeight) },
-            { 11, new TritQuantizationMap(11, TritQuantizationMap.GetUnquantizedWeight) },
-            { 15, new BitQuantizationMap(15, 6) },
-            { 19, new QuintQuantizationMap(19, QuintQuantizationMap.GetUnquantizedWeight) },
-            { 23, new TritQuantizationMap(23, TritQuantizationMap.GetUnquantizedWeight) },
-            { 31, new BitQuantizationMap(31, 6) }
+            { 1, BitQuantizationMap.Create(1, 6) },
+            { 2, TritQuantizationMap.Create(2, TritQuantizationMap.GetUnquantizedWeight) },
+            { 3, BitQuantizationMap.Create(3, 6) },
+            { 4, QuintQuantizationMap.Create(4, QuintQuantizationMap.GetUnquantizedWeight) },
+            { 5, TritQuantizationMap.Create(5, TritQuantizationMap.GetUnquantizedWeight) },
+            { 7, BitQuantizationMap.Create(7, 6) },
+            { 9, QuintQuantizationMap.Create(9, QuintQuantizationMap.GetUnquantizedWeight) },
+            { 11, TritQuantizationMap.Create(11, TritQuantizationMap.GetUnquantizedWeight) },
+            { 15, BitQuantizationMap.Create(15, 6) },
+            { 19, QuintQuantizationMap.Create(19, QuintQuantizationMap.GetUnquantizedWeight) },
+            { 23, TritQuantizationMap.Create(23, TritQuantizationMap.GetUnquantizedWeight) },
+            { 31, BitQuantizationMap.Create(31, 6) },
         };
-        return d;
-    }
 
     private static QuantizationMap?[] BuildFlatLookup(SortedDictionary<int, QuantizationMap> maps, int size)
     {
-        var flat = new QuantizationMap?[size];
+        QuantizationMap?[] flat = new QuantizationMap?[size];
         QuantizationMap? current = null;
         for (int i = 0; i < size; i++)
         {
-            if (maps.TryGetValue(i, out var map))
+            if (maps.TryGetValue(i, out QuantizationMap? map))
+            {
                 current = map;
+            }
+
             flat[i] = current;
         }
+
         return flat;
     }
 
-    private static QuantizationMap?[] InitEndpointMapFlat()
-        => BuildFlatLookup(InitEndpointMaps(), 256);
+    /// <summary>
+    /// Returns the endpoint <see cref="QuantizationMap"/> for the given range. Callers must
+    /// have already validated that <paramref name="r"/> is within
+    /// <c>[<see cref="EndpointRangeMinValue"/>, byte.MaxValue]</c>; the public methods on
+    /// <see cref="Quantization"/> do this. Throws if the slot has no associated map.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// Thrown when <paramref name="r"/> is outside the valid endpoint range.
+    /// </exception>
+    private static QuantizationMap GetQuantMapForValueRange(int r)
+        => (uint)r < (uint)EndpointMapByRange.Length && EndpointMapByRange[r] is { } map
+            ? map
+            : throw new ArgumentOutOfRangeException(nameof(r), r, "No endpoint quantization map for this range");
 
-    private static QuantizationMap?[] InitWeightMapFlat()
-        => BuildFlatLookup(InitWeightMaps(), 32);
-
-    private static QuantizationMap? GetQuantMapForValueRange(int r)
-    {
-        if ((uint)r >= (uint)_endpointMapByRange.Length) return null;
-        return _endpointMapByRange[r];
-    }
-
-    private static QuantizationMap? GetQuantMapForWeightRange(int r)
-    {
-        if ((uint)r >= (uint)_weightMapByRange.Length) return null;
-        return _weightMapByRange[r];
-    }
+    /// <summary>
+    /// Returns the weight <see cref="QuantizationMap"/> for the given range. Callers must
+    /// have already validated that <paramref name="r"/> is within
+    /// <c>[1, <see cref="WeightRangeMaxValue"/>]</c>; the public methods on
+    /// <see cref="Quantization"/> do this. Throws if the slot has no associated map.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// Thrown when <paramref name="r"/> is outside the valid weight range.
+    /// </exception>
+    private static QuantizationMap GetQuantMapForWeightRange(int r)
+        => (uint)r < (uint)WeightMapByRange.Length && WeightMapByRange[r] is { } map
+            ? map
+            : throw new ArgumentOutOfRangeException(nameof(r), r, "No weight quantization map for this range");
 
     private static int[]?[] InitializeUnquantizeWeightsFlat()
     {
-        var tables = new int[]?[WeightRangeMaxValue + 1];
-        foreach (var kvp in _weightMaps)
+        int[]?[] tables = new int[]?[WeightRangeMaxValue + 1];
+        foreach (KeyValuePair<int, QuantizationMap> kvp in WeightMaps)
         {
             int range = kvp.Key;
-            var map = kvp.Value;
-            var table = new int[range + 1];
+            QuantizationMap map = kvp.Value;
+            int[] table = new int[range + 1];
             for (int i = 0; i <= range; i++)
             {
                 int dequantized = map.Unquantize(i);
                 table[i] = dequantized > 32 ? dequantized + 1 : dequantized;
             }
+
             tables[range] = table;
         }
+
         return tables;
     }
 
     private static int[]?[] InitializeUnquantizeEndpointsFlat()
     {
-        var tables = new int[]?[256];
-        foreach (var kvp in _endpointMaps)
+        int[]?[] tables = new int[]?[256];
+        foreach (KeyValuePair<int, QuantizationMap> kvp in EndpointMaps)
         {
             int range = kvp.Key;
-            var map = kvp.Value;
-            var table = new int[range + 1];
+            QuantizationMap map = kvp.Value;
+            int[] table = new int[range + 1];
             for (int i = 0; i <= range; i++)
+            {
                 table[i] = map.Unquantize(i);
+            }
+
             tables[range] = table;
         }
+
         return tables;
     }
 }

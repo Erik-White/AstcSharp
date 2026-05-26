@@ -1,5 +1,5 @@
+
 using AstcSharp.Core;
-using AwesomeAssertions;
 
 namespace AstcSharp.Tests;
 
@@ -8,21 +8,21 @@ public class BitOperationsTests
     [Fact]
     public void GetBits_UInt128WithLowBits_ShouldExtractCorrectly()
     {
-        UInt128 value = new UInt128(0x1234567890ABCDEF, 0xFEDCBA0987654321);
+        UInt128 value = new(0x1234567890ABCDEF, 0xFEDCBA0987654321);
 
-        var result = BitOperations.GetBits(value, 0, 8);
+        UInt128 result = BitOperations.GetBits(value, 0, 8);
 
-        result.Low().Should().Be(0x21UL);
+        Assert.Equal(0x21UL, result.Low());
     }
 
     [Fact]
     public void GetBits_UInt128WithZeroLength_ShouldReturnZero()
     {
-        UInt128 value = new UInt128(0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF);
+        UInt128 value = new(0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF);
 
-        var result = BitOperations.GetBits(value, 0, 0);
+        UInt128 result = BitOperations.GetBits(value, 0, 0);
 
-        result.Should().Be(UInt128.Zero);
+        Assert.Equal(UInt128.Zero, result);
     }
 
     [Fact]
@@ -30,9 +30,9 @@ public class BitOperationsTests
     {
         ulong value = 0xFEDCBA0987654321;
 
-        var result = BitOperations.GetBits(value, 0, 8);
+        ulong result = BitOperations.GetBits(value, 0, 8);
 
-        result.Should().Be(0x21UL);
+        Assert.Equal(0x21UL, result);
     }
 
     [Fact]
@@ -40,9 +40,9 @@ public class BitOperationsTests
     {
         ulong value = 0xFFFFFFFFFFFFFFFF;
 
-        var result = BitOperations.GetBits(value, 0, 0);
+        ulong result = BitOperations.GetBits(value, 0, 0);
 
-        result.Should().Be(0UL);
+        Assert.Equal(0UL, result);
     }
 
     [Theory]
@@ -53,11 +53,11 @@ public class BitOperationsTests
     [InlineData(64, 64)]
     public void TransferPrecision_WithSameInput_ShouldBeDeterministic(int inputA, int inputB)
     {
-        var (a1, b1) = BitOperations.TransferPrecision(inputA, inputB);
-        var (a2, b2) = BitOperations.TransferPrecision(inputA, inputB);
+        (int a1, int b1) = BitOperations.TransferPrecision(inputA, inputB);
+        (int a2, int b2) = BitOperations.TransferPrecision(inputA, inputB);
 
-        a1.Should().Be(a2);
-        b1.Should().Be(b2);
+        Assert.Equal(a2, a1);
+        Assert.Equal(b2, b1);
     }
 
     [Fact]
@@ -67,54 +67,9 @@ public class BitOperationsTests
         {
             for (int b = byte.MinValue; b <= byte.MaxValue; b++)
             {
-                var action = () => BitOperations.TransferPrecision(a, b);
-                action.Should().NotThrow();
+                BitOperations.TransferPrecision(a, b);
             }
         }
     }
 
-    [Theory]
-    [InlineData(0, 0)]
-    [InlineData(5, 10)]
-    [InlineData(10, 255)]
-    [InlineData(31, 128)]
-    [InlineData(-32, 200)]
-    [InlineData(-1, 100)]
-    public void TransferPrecisionInverse_WithSameInput_ShouldBeDeterministic(int inputA, int inputB)
-    {
-        var (a1, b1) = BitOperations.TransferPrecisionInverse(inputA, inputB);
-        var (a2, b2) = BitOperations.TransferPrecisionInverse(inputA, inputB);
-
-        a1.Should().Be(a2);
-        b1.Should().Be(b2);
-    }
-
-    [Theory]
-    [InlineData(-33, 128)] // a too small
-    [InlineData(32, 128)] // a too large
-    [InlineData(0, -1)] // b too small
-    [InlineData(0, 256)] // b too large
-    public void TransferPrecisionInverse_WithInvalidInput_ShouldThrowArgumentOutOfRangeException(int a, int b)
-    {
-        var action = () => BitOperations.TransferPrecisionInverse(a, b);
-
-        action.Should().Throw<ArgumentOutOfRangeException>();
-    }
-
-    [Theory]
-    [InlineData(0, 0)]
-    [InlineData(10, 20)]
-    [InlineData(31, 255)]
-    [InlineData(-32, 128)]
-    [InlineData(-1, 200)]
-    public void TransferPrecision_AfterInverse_ShouldReturnOriginalValues(int originalA, int originalB)
-    {
-        var (encodedA, encodedB) = BitOperations.TransferPrecisionInverse(originalA, originalB);
-
-        // Apply regular to decode
-        var (decodedA, decodedB) = BitOperations.TransferPrecision(encodedA, encodedB);
-
-        decodedA.Should().Be(originalA);
-        decodedB.Should().Be(originalB);
-    }
 }

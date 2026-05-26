@@ -1,6 +1,6 @@
+
 using AstcSharp.BiseEncoding;
 using AstcSharp.Core;
-using AwesomeAssertions;
 
 namespace AstcSharp.Tests;
 
@@ -23,9 +23,9 @@ public class WeightInfillTests
     public void CountBitsForWeights_WithVariousParameters_ShouldReturnCorrectBitCount(
         int width, int height, int range, int expectedBitCount)
     {
-        var bitCount = BoundedIntegerSequenceCodec.GetBitCountForRange(width * height, range);
+        int bitCount = BoundedIntegerSequenceCodec.GetBitCountForRange(width * height, range);
 
-        bitCount.Should().Be(expectedBitCount);
+        Assert.Equal(expectedBitCount, bitCount);
     }
 
     [Fact]
@@ -34,12 +34,53 @@ public class WeightInfillTests
         int[] weights = [1, 3, 5, 3, 5, 7, 5, 7, 9];
         int[] expected = [1, 2, 3, 4, 5, 2, 3, 4, 5, 6, 3, 4, 5, 6, 7, 4, 5, 6, 7, 8, 5, 6, 7, 8, 9];
 
-        var footprint = Footprint.Get5x5();
-        var di = DecimationTable.Get(footprint, 3, 3);
-        var result = new int[footprint.PixelCount];
+        Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint5x5);
+        DecimationInfo di = DecimationTable.Get(footprint, 3, 3);
+        int[] result = new int[footprint.PixelCount];
         DecimationTable.InfillWeights(weights, di, result);
 
-        result.Should().HaveCount(expected.Length);
-        result.Should().Equal(expected);
+        Assert.Equal(expected.Length, result.Length);
+        Assert.Equal(expected, result);
+    }
+
+    [Fact]
+    public void DecimationTable_Get_ReturnsSameInstanceForSameInputs()
+    {
+        Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint6x6);
+        DecimationInfo first = DecimationTable.Get(footprint, 4, 4);
+        DecimationInfo second = DecimationTable.Get(footprint, 4, 4);
+
+        Assert.Same(first, second);
+    }
+
+    [Fact]
+    public async Task DecimationTable_Get_UnderConcurrentAccess_AllThreadsSeeSameInstance()
+    {
+        Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint10x8);
+        const int gridX = 7;
+        const int gridY = 5;
+        const int threadCount = 32;
+
+        using Barrier barrier = new(threadCount);
+        DecimationInfo[] results = new DecimationInfo[threadCount];
+        Task[] tasks = new Task[threadCount];
+        for (int i = 0; i < threadCount; i++)
+        {
+            int idx = i;
+            tasks[i] = Task.Run(() =>
+            {
+                barrier.SignalAndWait();
+                results[idx] = DecimationTable.Get(footprint, gridX, gridY);
+            });
+        }
+
+        await Task.WhenAll(tasks);
+
+        DecimationInfo winner = results[0];
+        Assert.NotNull(winner);
+        for (int i = 1; i < threadCount; i++)
+        {
+            Assert.Same(winner, results[i]);
+        }
     }
 }
