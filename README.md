@@ -4,7 +4,8 @@ A pure C# library for decoding ASTC (Adaptive Scalable Texture Compression) text
 
 ## Features
 
-- Decode ASTC textures to RGBA32 (LDR) or RGBA128 (HDR)
+- Managed C#, no native dependencies
+- Decode ASTC textures to RGBA32 (LDR) or RGBA float (HDR)
 - All standard block footprints (4x4 to 12x12)
 
 ## Installation
@@ -29,67 +30,36 @@ Span<byte> ldrPixels = AstcDecoder.DecompressImage(astcData, width, height, foot
 Span<float> hdrPixels = AstcDecoder.DecompressHdrImage(astcData, width, height, footprint);
 ```
 
-## Decoding paths
-
-There are three block decoding paths, chosen automatically:
-
-- **Direct decode** — the default for normal blocks. Decodes weights and endpoints directly from raw bits using batch unquantization, bypassing intermediate allocations.
-- **Fused decode** — a SIMD-accelerated path for single-partition, single-plane LDR blocks (the most common case). Decodes and interpolates in one pass without constructing a `LogicalBlock`.
-- **Void extent** — handles constant-color blocks via `IntermediateBlock.UnpackVoidExtent`.
-
 ## Performance
 
 AstcSharp's performance is competitive with ARM's C++ implementation, with some overhead due to being a pure C# implementation.
 
 LDR
 ```
-┌──────────────┬─────────────────┬────────────┬──────────┬──────────┬─────────┬───────────┐
-│    Method    │    FileName     │    Mean    │  Error   │  StdDev  │  Gen0   │ Allocated │
-├──────────────┼─────────────────┼────────────┼──────────┼──────────┼─────────┼───────────┤
-│ AstcSharp    │ atlas_small_4x4 │ 1,407.9 μs │ 22.82 μs │ 19.05 μs │ 54.6875 │  674.2 KB │
-├──────────────┼─────────────────┼────────────┼──────────┼──────────┼─────────┼───────────┤
-│ ArmReference │ atlas_small_4x4 │   911.7 μs │  7.96 μs │  7.45 μs │       - │         - │
-├──────────────┼─────────────────┼────────────┼──────────┼──────────┼─────────┼───────────┤
-│ AstcSharp    │ atlas_small_8x8 │   713.0 μs │ 10.31 μs │  8.61 μs │ 13.6719 │  174.5 KB │
-├──────────────┼─────────────────┼────────────┼──────────┼──────────┼─────────┼───────────┤
-│ ArmReference │ atlas_small_8x8 │   595.1 μs │ 11.30 μs │ 12.56 μs │       - │         - │
-├──────────────┼─────────────────┼────────────┼──────────┼──────────┼─────────┼───────────┤
-│ AstcSharp    │ footprint_12x12 │     6.2 μs │  0.08 μs │  0.07 μs │       - │         - │
-├──────────────┼─────────────────┼────────────┼──────────┼──────────┼─────────┼───────────┤
-│ ArmReference │ footprint_12x12 │     9.6 μs │  0.19 μs │  0.20 μs │       - │         - │
-├──────────────┼─────────────────┼────────────┼──────────┼──────────┼─────────┼───────────┤
-│ AstcSharp    │ footprint_4x4   │    23.6 μs │  0.12 μs │  0.10 μs │  1.2512 │   15.6 KB │
-├──────────────┼─────────────────┼────────────┼──────────┼──────────┼─────────┼───────────┤
-│ ArmReference │ footprint_4x4   │    13.4 μs │  0.11 μs │  0.10 μs │       - │         - │
-└──────────────┴─────────────────┴────────────┴──────────┴──────────┴─────────┴───────────┘
-```
-
-HDR
-```
-┌──────────────┬─────────────────┬────────────┬──────────┬──────────┬─────────┬───────────┐
-│    Method    │    FileName     │    Mean    │  Error   │  StdDev  │  Gen0   │ Allocated │
-├──────────────┼─────────────────┼────────────┼──────────┼──────────┼─────────┼───────────┤
-│ AstcSharp    │ atlas_small_4x4 │ 1,700.4 μs │ 17.21 μs │ 14.37 μs │ 54.6875 │  674.2 KB │
-├──────────────┼─────────────────┼────────────┼──────────┼──────────┼─────────┼───────────┤
-│ ArmReference │ atlas_small_4x4 │   914.7 μs │  7.51 μs │  7.02 μs │       - │         - │
-├──────────────┼─────────────────┼────────────┼──────────┼──────────┼─────────┼───────────┤
-│ AstcSharp    │ atlas_small_8x8 │   978.4 μs │  5.41 μs │  4.22 μs │ 13.6719 │  174.5 KB │
-├──────────────┼─────────────────┼────────────┼──────────┼──────────┼─────────┼───────────┤
-│ ArmReference │ atlas_small_8x8 │   619.5 μs │ 12.03 μs │ 11.25 μs │       - │         - │
-├──────────────┼─────────────────┼────────────┼──────────┼──────────┼─────────┼───────────┤
-│ AstcSharp    │ footprint_12x12 │    10.0 μs │  0.17 μs │  0.16 μs │       - │         - │
-├──────────────┼─────────────────┼────────────┼──────────┼──────────┼─────────┼───────────┤
-│ ArmReference │ footprint_12x12 │     9.6 μs │  0.10 μs │  0.09 μs │       - │         - │
-├──────────────┼─────────────────┼────────────┼──────────┼──────────┼─────────┼───────────┤
-│ AstcSharp    │ footprint_4x4   │    28.9 μs │  0.43 μs │  0.38 μs │  1.2512 │   15.6 KB │
-├──────────────┼─────────────────┼────────────┼──────────┼──────────┼─────────┼───────────┤
-│ ArmReference │ footprint_4x4   │    13.2 μs │  0.18 μs │  0.15 μs │       - │         - │
-└──────────────┴─────────────────┴────────────┴──────────┴──────────┴─────────┴───────────┘
+| Method                     | FileName        | Mean         | Error      | StdDev     | Median       | Allocated |
+|--------------------------- |---------------- |-------------:|-----------:|-----------:|-------------:|----------:|
+| AstcSharp_DecompressLdr    | footprint-4x4   |    13.577 us |  0.1627 us |  0.1443 us |    13.564 us |         - |
+| AstcSharp_DecompressHdr    | footprint-4x4   |    16.575 us |  0.3153 us |  0.2633 us |    16.533 us |         - |
+| ArmReference_DecompressLdr | footprint-4x4   |    11.191 us |  0.1550 us |  0.1374 us |    11.141 us |         - |
+| ArmReference_DecompressHdr | footprint-4x4   |    13.932 us |  0.3439 us |  1.0141 us |    14.062 us |         - |
+| AstcSharp_DecompressLdr    | footprint-12x12 |     4.384 us |  0.0670 us |  0.0688 us |     4.357 us |         - |
+| AstcSharp_DecompressHdr    | footprint-12x12 |     7.733 us |  0.1528 us |  0.1819 us |     7.667 us |         - |
+| ArmReference_DecompressLdr | footprint-12x12 |     7.770 us |  0.0729 us |  0.0682 us |     7.767 us |         - |
+| ArmReference_DecompressHdr | footprint-12x12 |     7.920 us |  0.0510 us |  0.0426 us |     7.923 us |         - |
+| AstcSharp_DecompressLdr    | rgba-4x4        |   962.404 us | 19.2086 us | 32.6176 us |   955.002 us |         - |
+| AstcSharp_DecompressHdr    | rgba-4x4        | 1,134.736 us | 22.2962 us | 34.7125 us | 1,144.305 us |         - |
+| ArmReference_DecompressLdr | rgba-4x4        |   734.388 us | 14.5948 us | 35.2481 us |   722.839 us |         - |
+| ArmReference_DecompressHdr | rgba-4x4        |   716.613 us | 14.0726 us | 18.7865 us |   710.109 us |         - |
+| AstcSharp_DecompressLdr    | rgba-8x8        |   422.630 us |  8.2009 us |  8.0543 us |   422.920 us |         - |
+| AstcSharp_DecompressHdr    | rgba-8x8        |   629.957 us | 10.5187 us | 15.0857 us |   624.104 us |         - |
+| ArmReference_DecompressLdr | rgba-8x8        |   480.440 us |  3.3241 us |  3.1094 us |   479.974 us |         - |
+| ArmReference_DecompressHdr | rgba-8x8        |   492.185 us |  4.7352 us |  4.1977 us |   491.723 us |         - |
 ```
 
 ## Future improvements
 
 - 3D block types
+- FP16 HDR output
 - Encoding
 
 ## References
