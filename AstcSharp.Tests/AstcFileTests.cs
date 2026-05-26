@@ -36,7 +36,7 @@ public class AstcFileTests
 
     [Fact]
     public void FromMemory_NullData_Throws()
-        => Assert.Throws<ArgumentNullException>(() => AstcFile.FromMemory(null));
+        => Assert.Throws<ArgumentNullException>(() => AstcFile.FromMemory(null!));
 
     [Theory]
     [InlineData(0)]
