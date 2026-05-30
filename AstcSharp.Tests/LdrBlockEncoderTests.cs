@@ -69,6 +69,36 @@ public class LdrBlockEncoderTests
         Assert.True(info.PartitionCount > 1, $"expected a multi-partition block, got {info.PartitionCount} partition(s)");
     }
 
+    [Theory]
+    [InlineData(FootprintType.Footprint6x6)]
+    [InlineData(FootprintType.Footprint8x8)]
+    [InlineData(FootprintType.Footprint10x10)]
+    [InlineData(FootprintType.Footprint12x12)]
+    public void Compress_ManyRandomMultiRegionBlocks_StayWithinColorValueBudget(FootprintType footprintType)
+    {
+        // A shared RGBA-direct multi-partition block stores 8 colour values per partition, so three
+        // partitions would need 24 — over the 18-value budget (spec §C.2.11) and rejected by the
+        // decoder as an illegal block. Fuzz many multi-region blocks (the kind that could tempt a
+        // 3+ partition fit) and assert every emitted block is legal: at most two partitions, within
+        // the colour-value budget, and decoding without any error-colour (magenta) texels.
+        Footprint footprint = Footprint.FromFootprintType(footprintType);
+        var rng = new Random(1234);
+
+        for (int trial = 0; trial < 64; trial++)
+        {
+            byte[] pixels = RandomRegionImage(footprint.Width, footprint.Height, rng);
+            byte[] encoded = AstcEncoder.CompressImage(pixels, footprint.Width, footprint.Height, footprint);
+
+            UInt128 bits = System.Buffers.Binary.BinaryPrimitives.ReadUInt128LittleEndian(encoded.AsSpan(0, 16));
+            BlockInfo info = BlockModeDecoder.Decode(bits);
+            Assert.True(info.IsValid, $"trial {trial}: encoded block must be legal");
+            Assert.True(info.IsVoidExtent || info.Colors.Count <= 18, $"trial {trial}: colour value count {info.Colors.Count} exceeds the 18-value budget");
+
+            Span<byte> decoded = AstcDecoder.DecompressImage(encoded, footprint.Width, footprint.Height, footprint);
+            AssertNoMagentaBlocks(decoded);
+        }
+    }
+
     [Fact]
     public void Compress_TwoColorRegionBlock_ReconstructsWellViaPartitioning()
     {
@@ -235,6 +265,37 @@ public class LdrBlockEncoderTests
                     pixels[idx + 2] = 220;
                 }
 
+                pixels[idx + 3] = 255;
+            }
+        }
+
+        return pixels;
+    }
+
+    // A block tiled into a 2D grid of distinct random solid colours — multi-region content that no
+    // single endpoint line (and often no 2-way split) fits well, the kind most likely to tempt the
+    // encoder toward a 3+ partition fit.
+    private static byte[] RandomRegionImage(int width, int height, Random rng)
+    {
+        int cols = rng.Next(2, 4);
+        int rows = rng.Next(2, 4);
+        var colors = new (byte R, byte G, byte B)[cols * rows];
+        for (int i = 0; i < colors.Length; i++)
+        {
+            colors[i] = ((byte)rng.Next(256), (byte)rng.Next(256), (byte)rng.Next(256));
+        }
+
+        byte[] pixels = new byte[width * height * 4];
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                int idx = ((y * width) + x) * 4;
+                int cell = (Math.Min(y * rows / height, rows - 1) * cols) + Math.Min(x * cols / width, cols - 1);
+                (byte r, byte g, byte b) = colors[cell];
+                pixels[idx] = r;
+                pixels[idx + 1] = g;
+                pixels[idx + 2] = b;
                 pixels[idx + 3] = 255;
             }
         }
