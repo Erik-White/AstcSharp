@@ -29,7 +29,7 @@ public static class AstcDecoder
     /// <param name="footprint">The ASTC block footprint (e.g., 4x4, 5x5)</param>
     /// <returns>
     /// Array of bytes in RGBA32 format (width * height * 4 bytes total), or an empty span if the
-    /// input is structurally invalid. Individual malformed blocks are skipped and leave zeros in the output.
+    /// input is structurally invalid. Individual malformed blocks produce the error colour (magenta) in the output.
     /// </returns>
     /// <param name="mode">LDR decode mode — linear (default) or sRGB endpoint expansion.</param>
     public static Span<byte> DecompressImage(ReadOnlySpan<byte> astcData, int width, int height, Footprint footprint, LdrDecodeMode mode = LdrDecodeMode.Linear)
@@ -58,7 +58,7 @@ public static class AstcDecoder
     /// <param name="imageBuffer">Output buffer. Must be at least width * height * 4 bytes.</param>
     /// <returns>
     /// True if the input was structurally valid and decoding ran, false if it was rejected
-    /// up front. Individual malformed blocks are skipped and leave zeros in the output.
+    /// up front. Individual malformed blocks produce the error colour (magenta) in the output.
     /// </returns>
     /// <param name="mode">LDR decode mode — linear (default) or sRGB endpoint expansion.</param>
     public static bool DecompressImage(ReadOnlySpan<byte> astcData, int width, int height, Footprint footprint, Span<byte> imageBuffer, LdrDecodeMode mode = LdrDecodeMode.Linear)
@@ -153,7 +153,7 @@ public static class AstcDecoder
         {
             Span<byte> blockSpan = blocks.AsSpan(0, expectedBytes);
             stream.ReadExactly(blockSpan);
-            return DecompressImage((ReadOnlySpan<byte>)blockSpan, width, height, footprint, imageBuffer, mode);
+            return DecompressImage(blockSpan, width, height, footprint, imageBuffer, mode);
         }
         finally
         {
@@ -349,7 +349,7 @@ public static class AstcDecoder
     /// <param name="imageBuffer">Output buffer. Must be at least width * height * 4 floats.</param>
     /// <returns>
     /// True if the input was structurally valid and decoding ran, false if it was rejected
-    /// up front. Individual malformed blocks are skipped and leave zeros in the output.
+    /// up front. Individual malformed blocks produce the error colour (magenta) in the output.
     /// </returns>
     public static bool DecompressHdrImage(ReadOnlySpan<byte> astcData, int width, int height, Footprint footprint, Span<float> imageBuffer)
     {
@@ -430,7 +430,7 @@ public static class AstcDecoder
         {
             Span<byte> blockSpan = blocks.AsSpan(0, expectedBytes);
             stream.ReadExactly(blockSpan);
-            return DecompressHdrImage((ReadOnlySpan<byte>)blockSpan, width, height, footprint, imageBuffer);
+            return DecompressHdrImage(blockSpan, width, height, footprint, imageBuffer);
         }
         finally
         {
@@ -474,6 +474,167 @@ public static class AstcDecoder
         }
 
         DecodeSingleBlock<HdrPipeline, float>(blockData, footprint, buffer);
+    }
+
+    /// <summary>
+    /// Decompresses ASTC-compressed data to FP16 (<see cref="Half"/>) RGBA values.
+    /// </summary>
+    /// <param name="astcData">The ASTC-compressed texture data</param>
+    /// <param name="width">Image width in pixels</param>
+    /// <param name="height">Image height in pixels</param>
+    /// <param name="footprint">The ASTC block footprint (e.g., 4x4, 5x5)</param>
+    /// <returns>
+    /// Values in RGBA order as FP16, or an empty span if the input is structurally invalid. For HDR-endpoint
+    /// channels these are full range, for LDR endpoint channels are the nearest <see cref="Half"/> to the [0,1] value.
+    /// </returns>
+    public static Span<Half> DecompressHdrImageHalf(ReadOnlySpan<byte> astcData, int width, int height, Footprint footprint)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(width, 0);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(height, 0);
+
+        long totalPixels = (long)width * height;
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(totalPixels, (long)int.MaxValue / BlockInfo.ChannelsPerPixel);
+
+        Half[] imageBuffer = new Half[(int)(totalPixels * BlockInfo.ChannelsPerPixel)];
+        return DecompressHdrImageHalf(astcData, width, height, footprint, imageBuffer)
+            ? imageBuffer
+            : [];
+    }
+
+    /// <summary>
+    /// Decompresses ASTC-compressed data to FP16 (<see cref="Half"/>) RGBA values into a
+    /// caller-provided buffer.
+    /// </summary>
+    /// <param name="astcData">The ASTC-compressed texture data</param>
+    /// <param name="width">Image width in pixels</param>
+    /// <param name="height">Image height in pixels</param>
+    /// <param name="footprint">The ASTC block footprint (e.g., 4x4, 5x5)</param>
+    /// <param name="imageBuffer">Output buffer. Must be at least width * height * 4 elements.</param>
+    /// <returns>
+    /// True if the input was structurally valid and decoding ran, false if it was rejected
+    /// up front. Individual malformed blocks produce the error colour (magenta) in the output.
+    /// </returns>
+    public static bool DecompressHdrImageHalf(ReadOnlySpan<byte> astcData, int width, int height, Footprint footprint, Span<Half> imageBuffer)
+    {
+        ValidateImageArgs(width, height, imageBuffer.Length, BlockInfo.ChannelsPerPixel);
+
+        long totalElements = (long)width * height * BlockInfo.ChannelsPerPixel;
+        float[] floatBuffer = ArrayPool<float>.Shared.Rent((int)totalElements);
+        try
+        {
+            Span<float> floatSpan = floatBuffer.AsSpan(0, (int)totalElements);
+            if (!DecompressHdrImage(astcData, width, height, footprint, floatSpan))
+            {
+                return false;
+            }
+
+            NarrowToHalf(floatSpan, imageBuffer);
+            return true;
+        }
+        finally
+        {
+            ArrayPool<float>.Shared.Return(floatBuffer);
+        }
+    }
+
+    /// <summary>
+    /// Decompresses ASTC-compressed data read from a stream to FP16 (<see cref="Half"/>) RGBA values.
+    /// </summary>
+    /// <param name="stream">The stream containing ASTC-compressed block data.</param>
+    /// <param name="width">Image width in pixels.</param>
+    /// <param name="height">Image height in pixels.</param>
+    /// <param name="footprint">The ASTC block footprint.</param>
+    /// <returns>
+    /// Values in RGBA order as FP16. The stream's read position advances by the consumed block bytes.
+    /// </returns>
+    /// <exception cref="EndOfStreamException">
+    /// Thrown if the stream contains fewer bytes than the footprint requires.
+    /// </exception>
+    public static Span<Half> DecompressHdrImageHalf(Stream stream, int width, int height, Footprint footprint)
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(width, 0);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(height, 0);
+
+        long totalPixels = (long)width * height;
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(totalPixels, (long)int.MaxValue / BlockInfo.ChannelsPerPixel);
+
+        Half[] imageBuffer = new Half[(int)(totalPixels * BlockInfo.ChannelsPerPixel)];
+        return DecompressHdrImageHalf(stream, width, height, footprint, imageBuffer)
+            ? imageBuffer
+            : [];
+    }
+
+    /// <summary>
+    /// Decompresses ASTC-compressed data read from a stream into a caller-provided FP16
+    /// (<see cref="Half"/>) buffer.
+    /// </summary>
+    /// <param name="stream">The stream containing ASTC-compressed block data.</param>
+    /// <param name="width">Image width in pixels.</param>
+    /// <param name="height">Image height in pixels.</param>
+    /// <param name="footprint">The ASTC block footprint.</param>
+    /// <param name="imageBuffer">Output buffer. Must be at least <c>width * height * 4</c> elements.</param>
+    /// <returns>
+    /// True if the stream contained the expected block count and decoding ran. The stream's
+    /// read position advances by the consumed block bytes.
+    /// </returns>
+    /// <exception cref="EndOfStreamException">
+    /// Thrown if the stream contains fewer bytes than the footprint requires.
+    /// </exception>
+    public static bool DecompressHdrImageHalf(Stream stream, int width, int height, Footprint footprint, Span<Half> imageBuffer)
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+        ValidateImageArgs(width, height, imageBuffer.Length, BlockInfo.ChannelsPerPixel);
+
+        int expectedBytes = ComputeExpectedBlockStreamSize(width, height, footprint);
+        byte[] blocks = ArrayPool<byte>.Shared.Rent(expectedBytes);
+        try
+        {
+            Span<byte> blockSpan = blocks.AsSpan(0, expectedBytes);
+            stream.ReadExactly(blockSpan);
+            return DecompressHdrImageHalf(blockSpan, width, height, footprint, imageBuffer);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(blocks);
+        }
+    }
+
+    /// <summary>
+    /// Decompresses a single ASTC block to FP16 (<see cref="Half"/>) RGBA values.
+    /// </summary>
+    /// <param name="blockData">The 16-byte ASTC block to decode</param>
+    /// <param name="footprint">The ASTC block footprint</param>
+    /// <param name="buffer">The buffer to write decoded values into (must be at least footprint.Width * footprint.Height * 4 elements)</param>
+    public static void DecompressHdrBlockHalf(ReadOnlySpan<byte> blockData, Footprint footprint, Span<Half> buffer)
+    {
+        if (blockData.Length < BlockInfo.SizeInBytes)
+        {
+            throw new ArgumentException($"ASTC block data must be at least {BlockInfo.SizeInBytes} bytes.", nameof(blockData));
+        }
+
+        int requiredBufferSize = footprint.PixelCount * BlockInfo.ChannelsPerPixel;
+        if (buffer.Length < requiredBufferSize)
+        {
+            throw new ArgumentException($"Output buffer must be at least {requiredBufferSize} elements.", nameof(buffer));
+        }
+
+        Span<float> floatBuffer = stackalloc float[requiredBufferSize];
+        DecodeSingleBlock<HdrPipeline, float>(blockData, footprint, floatBuffer);
+        NarrowToHalf(floatBuffer, buffer);
+    }
+
+    /// <summary>
+    /// Narrows decoded HDR float channels to <see cref="Half"/>. For values that originated as
+    /// FP16 (HDR/LNS and void-extent channels, ASTC spec §C.2.15, §C.2.23) this is an exact
+    /// round-trip; LDR-endpoint channels narrow to the nearest <see cref="Half"/>.
+    /// </summary>
+    private static void NarrowToHalf(ReadOnlySpan<float> source, Span<Half> destination)
+    {
+        for (int i = 0; i < source.Length; i++)
+        {
+            destination[i] = (Half)source[i];
+        }
     }
 
     internal static Span<byte> DecompressImage(AstcFile file)

@@ -20,6 +20,7 @@ public class AstcFullImageDecodeBenchmark
     private int hdrHeight;
     private Footprint hdrFootprint;
     private float[] hdrOutput = [];
+    private Half[] hdrHalfOutput = [];
 
     [GlobalSetup]
     public void Setup()
@@ -39,6 +40,7 @@ public class AstcFullImageDecodeBenchmark
         this.hdrHeight = hdr.Height;
         this.hdrFootprint = hdr.Footprint;
         this.hdrOutput = new float[hdr.Width * hdr.Height * 4];
+        this.hdrHalfOutput = new Half[hdr.Width * hdr.Height * 4];
     }
 
     [Benchmark]
@@ -52,4 +54,8 @@ public class AstcFullImageDecodeBenchmark
     [Benchmark]
     public bool DecompressHdrImage()
         => AstcDecoder.DecompressHdrImage(this.hdrBlocks, this.hdrWidth, this.hdrHeight, this.hdrFootprint, this.hdrOutput);
+
+    [Benchmark]
+    public bool DecompressHdrImageHalf()
+        => AstcDecoder.DecompressHdrImageHalf(this.hdrBlocks, this.hdrWidth, this.hdrHeight, this.hdrFootprint, this.hdrHalfOutput);
 }
