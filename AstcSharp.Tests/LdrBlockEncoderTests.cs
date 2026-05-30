@@ -55,6 +55,34 @@ public class LdrBlockEncoderTests
     }
 
     [Fact]
+    public void Compress_TwoColorRegionBlock_SelectsMultiPartition()
+    {
+        // A block split into two very different solid colours is poorly served by a single
+        // endpoint line; the encoder should pick a multi-partition encoding for it.
+        Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint8x8);
+        byte[] pixels = TwoRegionImage(footprint.Width, footprint.Height);
+
+        byte[] encoded = AstcEncoder.CompressImage(pixels, footprint.Width, footprint.Height, footprint);
+
+        UInt128 bits = System.Buffers.Binary.BinaryPrimitives.ReadUInt128LittleEndian(encoded.AsSpan(0, 16));
+        BlockInfo info = BlockModeDecoder.Decode(bits);
+        Assert.True(info.PartitionCount > 1, $"expected a multi-partition block, got {info.PartitionCount} partition(s)");
+    }
+
+    [Fact]
+    public void Compress_TwoColorRegionBlock_ReconstructsWellViaPartitioning()
+    {
+        Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint8x8);
+        byte[] pixels = TwoRegionImage(footprint.Width, footprint.Height);
+
+        byte[] encoded = AstcEncoder.CompressImage(pixels, footprint.Width, footprint.Height, footprint);
+        Span<byte> decoded = AstcDecoder.DecompressImage(encoded, footprint.Width, footprint.Height, footprint);
+
+        // Two separate ramps reconstruct well once each region gets its own endpoint line.
+        AssertMeanSquaredErrorAtMost(pixels, decoded, maxMeanSquaredError: 100.0, footprint);
+    }
+
+    [Fact]
     public void Compress_GrayscaleOpaqueBlock_SelectsLuminanceMode()
     {
         // A grey, opaque block should be encoded with a luminance CEM (mode 0 or 1), which is
@@ -179,6 +207,39 @@ public class LdrBlockEncoderTests
         UInt128 bits = System.Buffers.Binary.BinaryPrimitives.ReadUInt128LittleEndian(encoded.AsSpan(0, 16));
         BlockInfo info = BlockModeDecoder.Decode(bits);
         return info.GetEndpointMode(0);
+    }
+
+    // Two regions, each with its own colour ramp between different endpoint pairs. The four
+    // endpoints are not collinear, so no single endpoint line fits well — partitioning is needed.
+    private static byte[] TwoRegionImage(int width, int height)
+    {
+        byte[] pixels = new byte[width * height * 4];
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                int idx = ((y * width) + x) * 4;
+                float t = (float)y / (height - 1);
+                if (x < width / 2)
+                {
+                    // Left: red -> yellow ramp.
+                    pixels[idx] = 220;
+                    pixels[idx + 1] = (byte)(20 + (t * 200));
+                    pixels[idx + 2] = 20;
+                }
+                else
+                {
+                    // Right: blue -> cyan ramp (a different line in RGB space).
+                    pixels[idx] = 20;
+                    pixels[idx + 1] = (byte)(20 + (t * 200));
+                    pixels[idx + 2] = 220;
+                }
+
+                pixels[idx + 3] = 255;
+            }
+        }
+
+        return pixels;
     }
 
     private static byte[] SolidImage(int width, int height, byte r, byte g, byte b, byte a)

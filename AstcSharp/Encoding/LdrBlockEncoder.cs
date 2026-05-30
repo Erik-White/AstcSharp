@@ -30,16 +30,38 @@ internal static class LdrBlockEncoder
     // base+offset). Sizes the candidate-mode scratch span.
     private const int MaxCandidateModes = 6;
 
-    // Block-mode layout for a single-partition block (spec §C.2.10): the 11-bit block mode, then
-    // the 2-bit partition-count field, the colour endpoint mode, and the colour data.
+    // Block-mode layout (spec §C.2.10): the 11-bit block mode, then the 2-bit partition-count
+    // field. Single-partition blocks store the colour endpoint mode at bit 13 and colour data at
+    // bit 17. Multi-partition blocks store a 10-bit partition seed at bit 13, a 2-bit shared-CEM
+    // marker (0) at bit 23, the shared CEM at bit 25, and colour data at bit 29.
     private const int BlockModeStartBit = 0;
     private const int BlockModeBits = 11;
     private const int PartitionCountStartBit = 11;
     private const int PartitionCountBits = 2;
-    private const int PartitionCountField = 0; // single partition: (partitionCount - 1)
     private const int CemStartBit = 13;
     private const int CemBits = 4;
     private const int ColorStartBit = 17;
+    private const int SinglePartitionField = 0; // partition-count field value for 1 partition (count - 1)
+    private const int PartitionSeedStartBit = 13;
+    private const int PartitionSeedBits = 10;
+    private const int SharedCemMarkerStartBit = 23;
+    private const int SharedCemMarkerBits = 2;
+    private const int SharedCemStartBit = 25;
+    private const int MultiColorStartBit = 29;
+
+    // Partition counts the encoder searches (spec §C.2.10 allows 1..4). Single-plane blocks may use
+    // all four; the seed space is 10 bits (1024 patterns).
+    private const int MinMultiPartitions = 2;
+    private const int MaxPartitions = 4;
+    private const int PartitionSeedCount = 1 << PartitionSeedBits;
+
+    // Partitioning only helps when there are enough texels to host distinct colour regions; below
+    // this, the per-partition endpoint and seed overhead outweighs any benefit.
+    private const int MinTexelsForPartitioning = 16;
+
+    // Number of best seeds (by endpoint-fit error) carried into the full per-config search per
+    // partition count — the seed space is searched cheaply first, then refined for a few finalists.
+    private const int SeedFinalists = 4;
 
     // Candidate weight ranges to try, richest first (spec §C.2.7 Table 23 weight ranges).
     private static ReadOnlySpan<int> WeightRangeCandidates => [31, 23, 19, 15, 11, 9, 7, 5, 4, 3, 2, 1];
@@ -68,13 +90,34 @@ internal static class LdrBlockEncoder
 
     /// <summary>
     /// Encodes <paramref name="texels"/> (one <see cref="RgbaColor"/> per footprint texel, raster
-    /// order) into a 128-bit block. Searches weight-grid sizes from the footprint down to 2x2 and,
-    /// per grid, the weight ranges that fit the bit budget, keeping the configuration with the
-    /// lowest reconstruction error. A grid smaller than the footprint (decimation, spec §C.2.18)
-    /// is what makes footprints larger than 64 texels encodable and lets large blocks spend more
-    /// bits per weight.
+    /// order) into a 128-bit block. Tries a single-partition encoding and, when the footprint is
+    /// large enough, multi-partition encodings (spec §C.2.21), returning whichever reconstructs the
+    /// block with the lowest error.
     /// </summary>
     public static UInt128 Encode(ReadOnlySpan<RgbaColor> texels, Footprint footprint)
+    {
+        UInt128 bestBlock = EncodeSinglePartition(texels, footprint, out long bestError);
+
+        if (bestError > 0 && footprint.PixelCount >= MinTexelsForPartitioning)
+        {
+            UInt128 multiBlock = TryEncodeMultiPartition(texels, footprint, out long multiError);
+            if (multiError < bestError)
+            {
+                bestBlock = multiBlock;
+            }
+        }
+
+        return bestBlock;
+    }
+
+    /// <summary>
+    /// Encodes a single-partition block (the proven path) and reports its reconstruction error.
+    /// Searches weight-grid sizes from the footprint down to 2x2 and, per grid, the weight ranges
+    /// that fit the bit budget, keeping the configuration with the lowest error. A grid smaller than
+    /// the footprint (decimation, spec §C.2.18) is what makes footprints larger than 64 texels
+    /// encodable and lets large blocks spend more bits per weight.
+    /// </summary>
+    public static UInt128 EncodeSinglePartition(ReadOnlySpan<RgbaColor> texels, Footprint footprint, out long bestErrorOut)
     {
         (RgbaColor low, RgbaColor high) = FitEndpoints(texels);
 
@@ -164,6 +207,7 @@ internal static class LdrBlockEncoder
                 $"No legal single-partition encoding fits footprint {footprint.Width}x{footprint.Height}.");
         }
 
+        bestErrorOut = bestError;
         int bestGridCount = best.GridWidth * best.GridHeight;
         return Assemble(best, bestColorValues[..best.ColorValueCount], bestGridWeights[..bestGridCount]);
     }
@@ -488,13 +532,306 @@ internal static class LdrBlockEncoder
 
     private static byte ClampByte(double value) => (byte)Math.Clamp(Math.Round(value), 0, MaxChannel);
 
+    /// <summary>
+    /// Tries multi-partition encodings (2..4 partitions, spec §C.2.21) and returns the lowest-error
+    /// block found with its reconstruction error. Uses a shared colour endpoint mode across
+    /// partitions (the simplest legal multi-partition layout). For each partition count it scores
+    /// all 1024 partition seeds by a cheap endpoint-fit metric, then runs the full weight-grid /
+    /// range search only on the best few seeds.
+    /// </summary>
+    private static UInt128 TryEncodeMultiPartition(ReadOnlySpan<RgbaColor> texels, Footprint footprint, out long bestErrorOut)
+    {
+        bestErrorOut = long.MaxValue;
+        UInt128 bestBlock = default;
+
+        Span<int> seedErrors = stackalloc int[SeedFinalists];
+        Span<int> seedFinalists = stackalloc int[SeedFinalists];
+
+        int maxPartitions = Math.Min(MaxPartitions, footprint.PixelCount);
+        for (int partitionCount = MinMultiPartitions; partitionCount <= maxPartitions; partitionCount++)
+        {
+            int finalistCount = SelectSeedFinalists(texels, footprint, partitionCount, seedFinalists, seedErrors);
+
+            for (int f = 0; f < finalistCount; f++)
+            {
+                int seed = seedFinalists[f];
+                UInt128 block = EncodeMultiPartitionSeed(texels, footprint, partitionCount, seed, out long error);
+                if (error < bestErrorOut)
+                {
+                    bestErrorOut = error;
+                    bestBlock = block;
+                }
+            }
+        }
+
+        return bestBlock;
+    }
+
+    /// <summary>
+    /// Scores every partition seed by the summed per-subset endpoint-line fit error (a cheap proxy
+    /// for final quality that ignores weight quantisation) and returns the indices of the
+    /// <see cref="SeedFinalists"/> lowest-error seeds. Seeds whose hash leaves a subset empty are
+    /// skipped — an empty subset wastes endpoint budget.
+    /// </summary>
+    private static int SelectSeedFinalists(
+        ReadOnlySpan<RgbaColor> texels, Footprint footprint, int partitionCount, Span<int> finalists, Span<int> finalistErrors)
+    {
+        finalistErrors.Fill(int.MaxValue);
+        int count = 0;
+
+        for (int seed = 0; seed < PartitionSeedCount; seed++)
+        {
+            ReadOnlySpan<int> assignment = Partition.GetASTCPartition(footprint, partitionCount, seed).Assignment;
+            long error = PartitionFitError(texels, assignment, partitionCount);
+            if (error < 0)
+            {
+                continue; // an empty subset; skip this seed.
+            }
+
+            // Insert into the small sorted finalist list if it beats the current worst.
+            int worst = (int)Math.Min(error, int.MaxValue);
+            if (worst < finalistErrors[SeedFinalists - 1])
+            {
+                int pos = SeedFinalists - 1;
+                while (pos > 0 && finalistErrors[pos - 1] > worst)
+                {
+                    finalistErrors[pos] = finalistErrors[pos - 1];
+                    finalists[pos] = finalists[pos - 1];
+                    pos--;
+                }
+
+                finalistErrors[pos] = worst;
+                finalists[pos] = seed;
+                count = Math.Min(count + 1, SeedFinalists);
+            }
+        }
+
+        return count;
+    }
+
+    /// <summary>
+    /// Returns the total squared distance of each texel from its subset's fitted endpoint line, or
+    /// -1 if any subset is empty under this assignment.
+    /// </summary>
+    private static long PartitionFitError(ReadOnlySpan<RgbaColor> texels, ReadOnlySpan<int> assignment, int partitionCount)
+    {
+        Span<RgbaColor> subsetLow = stackalloc RgbaColor[MaxPartitions];
+        Span<RgbaColor> subsetHigh = stackalloc RgbaColor[MaxPartitions];
+
+        // Gather buffer reused across subsets (fully overwritten per subset before use).
+        Span<RgbaColor> subset = stackalloc RgbaColor[texels.Length];
+        for (int p = 0; p < partitionCount; p++)
+        {
+            int n = GatherSubset(texels, assignment, p, subset);
+            if (n == 0)
+            {
+                return -1;
+            }
+
+            (subsetLow[p], subsetHigh[p]) = FitEndpoints(subset[..n]);
+        }
+
+        long error = 0;
+        Span<int> low = stackalloc int[ChannelCount];
+        Span<int> high = stackalloc int[ChannelCount];
+        for (int t = 0; t < texels.Length; t++)
+        {
+            int p = assignment[t];
+            StoreChannels(subsetLow[p], low);
+            StoreChannels(subsetHigh[p], high);
+            int weight = ProjectWeight(texels[t], low, high);
+            error += ReconstructionError(texels[t], low, high, weight);
+        }
+
+        return error;
+    }
+
+    /// <summary>
+    /// Encodes the block for a fixed partition count and seed: fits per-subset endpoints, searches
+    /// shared weight grid / range / colour range for the lowest reconstruction error, and assembles
+    /// the multi-partition block. Returns the block and its error (<see cref="long.MaxValue"/> if no
+    /// legal configuration fits).
+    /// </summary>
+    private static UInt128 EncodeMultiPartitionSeed(
+        ReadOnlySpan<RgbaColor> texels, Footprint footprint, int partitionCount, int seed, out long bestErrorOut)
+    {
+        bestErrorOut = long.MaxValue;
+        ReadOnlySpan<int> assignment = Partition.GetASTCPartition(footprint, partitionCount, seed).Assignment;
+        int texelCount = footprint.PixelCount;
+
+        // Per-subset fitted endpoints.
+        Span<RgbaColor> subsetLow = stackalloc RgbaColor[MaxPartitions];
+        Span<RgbaColor> subsetHigh = stackalloc RgbaColor[MaxPartitions];
+        if (!FitSubsetEndpoints(texels, assignment, partitionCount, subsetLow, subsetHigh))
+        {
+            return default;
+        }
+
+        // A shared RGBA-direct mode keeps the layout simple and always legal; colour values are the
+        // concatenation of every subset's encoded endpoint pair.
+        ColorEndpointMode mode = ColorEndpointMode.LdrRgbaDirect;
+        int valuesPerPartition = mode.GetColorValuesCount();
+        int colorValueCount = valuesPerPartition * partitionCount;
+
+        Span<int> idealWeights = stackalloc int[texelCount];
+        Span<int> perTexelWeights = stackalloc int[texelCount];
+        Span<int> effectiveLow = stackalloc int[ChannelCount * MaxPartitions];
+        Span<int> effectiveHigh = stackalloc int[ChannelCount * MaxPartitions];
+        Span<int> colorValues = stackalloc int[colorValueCount];
+        Span<int> candidateColorValues = stackalloc int[colorValueCount];
+        Span<int> unquantized = stackalloc int[valuesPerPartition];
+        Span<double> fittedGrid = stackalloc double[MaxGridWeights];
+        Span<int> quantGrid = stackalloc int[MaxGridWeights];
+        Span<int> effectiveGrid = stackalloc int[MaxGridWeights];
+        Span<int> bestGridWeights = stackalloc int[MaxGridWeights];
+
+        int bestGridWidth = 0, bestGridHeight = 0, bestWeightRange = 0, bestColorRange = 0;
+
+        int maxGridWidth = Math.Min(footprint.Width, MaxGridDim);
+        int maxGridHeight = Math.Min(footprint.Height, MaxGridDim);
+
+        for (int gridHeight = MinGridDim; gridHeight <= maxGridHeight; gridHeight++)
+        {
+            for (int gridWidth = MinGridDim; gridWidth <= maxGridWidth; gridWidth++)
+            {
+                int gridWeightCount = gridWidth * gridHeight;
+                if (gridWeightCount > MaxGridWeights)
+                {
+                    continue;
+                }
+
+                foreach (int weightRange in WeightRangeCandidates)
+                {
+                    if (!BlockModeEncoder.TryEncode(gridWidth, gridHeight, weightRange, isDualPlane: false, out _))
+                    {
+                        continue;
+                    }
+
+                    int weightBitCount = BoundedIntegerSequenceCodec.GetBitCountForRange(gridWeightCount, weightRange);
+                    if (weightBitCount is < MinWeightBits or > MaxWeightBits)
+                    {
+                        continue;
+                    }
+
+                    int maxColorBits = BlockBits - weightBitCount - MultiColorStartBit;
+                    if (!BlockModeDecoder.TryResolveColorEncoding(colorValueCount, maxColorBits, out int colorRange, out _))
+                    {
+                        continue;
+                    }
+
+                    // Encode every subset's endpoints into the concatenated colour-value stream and
+                    // recover the effective per-subset endpoints from the real codec.
+                    for (int p = 0; p < partitionCount; p++)
+                    {
+                        Span<int> slice = candidateColorValues.Slice(p * valuesPerPartition, valuesPerPartition);
+                        EncodeAndDecodeEndpoints(
+                            mode, subsetLow[p], subsetHigh[p], colorRange, slice, unquantized,
+                            effectiveLow.Slice(p * ChannelCount, ChannelCount),
+                            effectiveHigh.Slice(p * ChannelCount, ChannelCount));
+                    }
+
+                    // Ideal per-texel weight is the projection onto the texel's own subset line.
+                    for (int t = 0; t < texelCount; t++)
+                    {
+                        int p = assignment[t];
+                        idealWeights[t] = ProjectWeight(
+                            texels[t], effectiveLow.Slice(p * ChannelCount, ChannelCount), effectiveHigh.Slice(p * ChannelCount, ChannelCount));
+                    }
+
+                    DecimationInfo decimation = DecimationTable.Get(footprint, gridWidth, gridHeight);
+                    Span<double> fitGrid = fittedGrid[..gridWeightCount];
+                    DecimationFit.Fit(idealWeights, decimation, gridWeightCount, fitGrid);
+
+                    Span<int> effGrid = effectiveGrid[..gridWeightCount];
+                    for (int p = 0; p < gridWeightCount; p++)
+                    {
+                        int quant = Quantization.QuantizeWeightToRange((int)Math.Round(fitGrid[p]), weightRange);
+                        quantGrid[p] = quant;
+                        effGrid[p] = Quantization.UnquantizeWeightFromRange(quant, weightRange);
+                    }
+
+                    DecimationTable.InfillWeights(effGrid, decimation, perTexelWeights);
+
+                    long error = 0;
+                    for (int t = 0; t < texelCount; t++)
+                    {
+                        int p = assignment[t];
+                        error += ReconstructionError(
+                            texels[t], effectiveLow.Slice(p * ChannelCount, ChannelCount), effectiveHigh.Slice(p * ChannelCount, ChannelCount), perTexelWeights[t]);
+                    }
+
+                    if (error < bestErrorOut)
+                    {
+                        bestErrorOut = error;
+                        bestGridWidth = gridWidth;
+                        bestGridHeight = gridHeight;
+                        bestWeightRange = weightRange;
+                        bestColorRange = colorRange;
+                        candidateColorValues.CopyTo(colorValues);
+                        quantGrid[..gridWeightCount].CopyTo(bestGridWeights);
+                    }
+                }
+            }
+        }
+
+        if (bestWeightRange == 0)
+        {
+            return default;
+        }
+
+        int bestGridCount = bestGridWidth * bestGridHeight;
+        return AssembleMultiPartition(
+            partitionCount, seed, mode, bestGridWidth, bestGridHeight, bestWeightRange, bestColorRange,
+            colorValues, bestGridWeights[..bestGridCount]);
+    }
+
+    /// <summary>
+    /// Fits an endpoint pair for each partition subset. Returns false if any subset is empty.
+    /// </summary>
+    private static bool FitSubsetEndpoints(
+        ReadOnlySpan<RgbaColor> texels, ReadOnlySpan<int> assignment, int partitionCount, Span<RgbaColor> subsetLow, Span<RgbaColor> subsetHigh)
+    {
+        // Gather buffer reused across subsets (fully overwritten per subset before use).
+        Span<RgbaColor> subset = stackalloc RgbaColor[texels.Length];
+        for (int p = 0; p < partitionCount; p++)
+        {
+            int n = GatherSubset(texels, assignment, p, subset);
+            if (n == 0)
+            {
+                return false;
+            }
+
+            (subsetLow[p], subsetHigh[p]) = FitEndpoints(subset[..n]);
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Copies the texels assigned to partition <paramref name="partition"/> into
+    /// <paramref name="subset"/> in order, returning the count.
+    /// </summary>
+    private static int GatherSubset(ReadOnlySpan<RgbaColor> texels, ReadOnlySpan<int> assignment, int partition, Span<RgbaColor> subset)
+    {
+        int n = 0;
+        for (int t = 0; t < texels.Length; t++)
+        {
+            if (assignment[t] == partition)
+            {
+                subset[n++] = texels[t];
+            }
+        }
+
+        return n;
+    }
+
     private static UInt128 Assemble(in BestConfig config, ReadOnlySpan<int> colorValues, ReadOnlySpan<int> quantWeights)
     {
         ushort blockMode = BlockModeEncoder.Encode(config.GridWidth, config.GridHeight, config.WeightRange, isDualPlane: false);
 
         var builder = new AstcBlockBuilder();
         builder.PlaceLowField(blockMode, BlockModeStartBit, BlockModeBits);
-        builder.PlaceLowField(PartitionCountField, PartitionCountStartBit, PartitionCountBits);
+        builder.PlaceLowField(SinglePartitionField, PartitionCountStartBit, PartitionCountBits);
         builder.PlaceLowField((ulong)config.Mode, CemStartBit, CemBits);
 
         var colorStream = new BitStream();
@@ -503,6 +840,42 @@ internal static class LdrBlockEncoder
 
         var weightStream = new BitStream();
         BoundedIntegerSequenceEncoder.Encode(config.WeightRange, quantWeights, ref weightStream);
+        builder.PlaceWeightData(weightStream);
+
+        return builder.Build();
+    }
+
+    /// <summary>
+    /// Assembles a multi-partition block (spec §C.2.10): partition count, 10-bit seed, a
+    /// shared-CEM marker of 0, the shared colour endpoint mode, the concatenated per-partition
+    /// colour values from bit 29, and the weight data at the top.
+    /// </summary>
+    private static UInt128 AssembleMultiPartition(
+        int partitionCount,
+        int seed,
+        ColorEndpointMode mode,
+        int gridWidth,
+        int gridHeight,
+        int weightRange,
+        int colorRange,
+        ReadOnlySpan<int> colorValues,
+        ReadOnlySpan<int> quantWeights)
+    {
+        ushort blockMode = BlockModeEncoder.Encode(gridWidth, gridHeight, weightRange, isDualPlane: false);
+
+        var builder = new AstcBlockBuilder();
+        builder.PlaceLowField(blockMode, BlockModeStartBit, BlockModeBits);
+        builder.PlaceLowField((ulong)(partitionCount - 1), PartitionCountStartBit, PartitionCountBits);
+        builder.PlaceLowField((ulong)seed, PartitionSeedStartBit, PartitionSeedBits);
+        builder.PlaceLowField(0, SharedCemMarkerStartBit, SharedCemMarkerBits);
+        builder.PlaceLowField((ulong)mode, SharedCemStartBit, CemBits);
+
+        var colorStream = new BitStream();
+        BoundedIntegerSequenceEncoder.Encode(colorRange, colorValues, ref colorStream);
+        builder.PlaceColorData(colorStream, MultiColorStartBit);
+
+        var weightStream = new BitStream();
+        BoundedIntegerSequenceEncoder.Encode(weightRange, quantWeights, ref weightStream);
         builder.PlaceWeightData(weightStream);
 
         return builder.Build();

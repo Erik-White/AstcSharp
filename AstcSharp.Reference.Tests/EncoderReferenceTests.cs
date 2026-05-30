@@ -40,6 +40,34 @@ public class EncoderReferenceTests
         CompareRgba8(armDecoded, pixels, $"VoidExtent_{footprintType}");
     }
 
+    // Footprints large enough to host distinct colour regions, where the encoder may pick a
+    // multi-partition encoding.
+    public static TheoryData<FootprintType> PartitionableFootprints =>
+    [
+        FootprintType.Footprint6x6, FootprintType.Footprint8x6, FootprintType.Footprint8x8,
+        FootprintType.Footprint10x8, FootprintType.Footprint10x10, FootprintType.Footprint12x12,
+    ];
+
+    [Theory]
+    [MemberData(nameof(PartitionableFootprints))]
+    public void EncodedTwoRegion_DecodesUnderArmReference(FootprintType footprintType)
+    {
+        // Two-region content the encoder may encode with multiple partitions (spec §C.2.21). The
+        // resulting block — partition seed, shared CEM, and concatenated per-partition colour
+        // values — must be spec-legal: ARM's decoder must read it back in agreement with ours.
+        var (blockX, blockY) = ReferenceDecoder.ToBlockDimensions(footprintType);
+        Footprint footprint = Footprint.FromFootprintType(footprintType);
+        int width = blockX * 2;
+        int height = blockY * 2;
+        byte[] pixels = TwoRegionImage(width, height);
+
+        byte[] encoded = AstcEncoder.CompressImage(pixels, width, height, footprint);
+        byte[] armDecoded = ReferenceDecoder.DecompressLdr(encoded, width, height, blockX, blockY);
+        Span<byte> ourDecoded = AstcDecoder.DecompressImage(encoded, width, height, footprint);
+
+        CompareRgba8(armDecoded, ourDecoded.ToArray(), $"TwoRegion_{footprintType}");
+    }
+
     [Theory]
     [InlineData(0, 0, 0, 255)]
     [InlineData(255, 255, 255, 255)]
@@ -143,6 +171,35 @@ public class EncoderReferenceTests
     };
 
     private static IEnumerable<FootprintType> EnumerateFootprints() => Enum.GetValues<FootprintType>();
+
+    private static byte[] TwoRegionImage(int width, int height)
+    {
+        byte[] pixels = new byte[width * height * 4];
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                int idx = ((y * width) + x) * 4;
+                float t = (float)y / (height - 1);
+                if (x < width / 2)
+                {
+                    pixels[idx] = 220;
+                    pixels[idx + 1] = (byte)(20 + (t * 200));
+                    pixels[idx + 2] = 20;
+                }
+                else
+                {
+                    pixels[idx] = 20;
+                    pixels[idx + 1] = (byte)(20 + (t * 200));
+                    pixels[idx + 2] = 220;
+                }
+
+                pixels[idx + 3] = 255;
+            }
+        }
+
+        return pixels;
+    }
 
     private static byte[] GrayscaleGradient(int width, int height)
     {
