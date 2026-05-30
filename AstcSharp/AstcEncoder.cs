@@ -16,8 +16,10 @@ namespace AstcSharp;
 /// production encoder.
 /// </para>
 /// <para>
-/// Constant-colour blocks are encoded as void-extent blocks (spec §C.2.23). Blocks whose texels
-/// are not all identical are not yet supported and throw <see cref="NotSupportedException"/>.
+/// Constant-colour blocks are encoded as void-extent blocks (spec §C.2.23);
+/// other blocks use a single-partition, identity-grid, RGBA-direct encoding (mode 12).
+/// Footprints larger than 64 texels require weight-grid decimation, which is not yet
+/// implemented, and throw <see cref="NotSupportedException"/>.
 /// </para>
 /// </remarks>
 public static class AstcEncoder
@@ -76,46 +78,61 @@ public static class AstcEncoder
     }
 
     /// <summary>
-    /// Encodes a single LDR block at (<paramref name="blockX"/>, <paramref name="blockY"/>).
-    /// Only constant-colour blocks are supported, emitted as void-extent blocks (spec §C.2.23).
+    /// Encodes a single LDR block at (<paramref name="blockX"/>, <paramref name="blockY"/>):
+    /// a void-extent block when all texels are identical, otherwise a single-partition,
+    /// identity-grid, RGBA-direct block.
     /// </summary>
     private static UInt128 EncodeLdrBlock(ReadOnlySpan<byte> rgba, int width, int height, Footprint footprint, int blockX, int blockY)
+    {
+        Span<RgbaColor> texels = stackalloc RgbaColor[footprint.PixelCount];
+        GatherBlockTexels(rgba, width, height, footprint, blockX, blockY, texels);
+
+        if (IsConstant(texels, out RgbaColor constant))
+        {
+            return VoidExtentEncoder.EncodeLdr(constant.R, constant.G, constant.B, constant.A);
+        }
+
+        if (!LdrBlockEncoder.CanEncode(footprint))
+        {
+            throw new NotSupportedException(
+                $"Encoding non-constant {footprint.Width}x{footprint.Height} blocks requires weight-grid decimation, which is not yet implemented.");
+        }
+
+        return LdrBlockEncoder.Encode(texels, footprint);
+    }
+
+    /// <summary>
+    /// Copies a footprint-sized block of texels from the image into <paramref name="texels"/> in
+    /// raster order. At right/bottom edges where the footprint overhangs the image, the nearest
+    /// in-image texel is clamped into the padding positions — the decoder discards those texels,
+    /// so any in-range fill is valid, and clamping keeps the endpoint fit representative.
+    /// </summary>
+    private static void GatherBlockTexels(
+        ReadOnlySpan<byte> rgba, int width, int height, Footprint footprint, int blockX, int blockY, Span<RgbaColor> texels)
     {
         int baseX = blockX * footprint.Width;
         int baseY = blockY * footprint.Height;
 
-        // The block's first in-image texel sets the candidate constant colour; edge blocks clip to
-        // the image bounds (the decoder ignores texels outside the image).
-        int firstOffset = ((baseY * width) + baseX) * BlockInfo.ChannelsPerPixel;
-        byte r = rgba[firstOffset];
-        byte g = rgba[firstOffset + 1];
-        byte b = rgba[firstOffset + 2];
-        byte a = rgba[firstOffset + 3];
-
-        if (!BlockIsConstant(rgba, width, height, footprint, baseX, baseY, r, g, b, a))
+        for (int y = 0; y < footprint.Height; y++)
         {
-            throw new NotSupportedException(
-                "AstcEncoder currently supports only constant-colour blocks (void-extent). General block encoding is not yet implemented.");
+            int srcY = Math.Min(baseY + y, height - 1);
+            for (int x = 0; x < footprint.Width; x++)
+            {
+                int srcX = Math.Min(baseX + x, width - 1);
+                int offset = ((srcY * width) + srcX) * BlockInfo.ChannelsPerPixel;
+                texels[(y * footprint.Width) + x] = new RgbaColor(rgba[offset], rgba[offset + 1], rgba[offset + 2], rgba[offset + 3]);
+            }
         }
-
-        return VoidExtentEncoder.EncodeLdr(r, g, b, a);
     }
 
-    private static bool BlockIsConstant(
-        ReadOnlySpan<byte> rgba, int width, int height, Footprint footprint, int baseX, int baseY, byte r, byte g, byte b, byte a)
+    private static bool IsConstant(ReadOnlySpan<RgbaColor> texels, out RgbaColor constant)
     {
-        int maxY = Math.Min(baseY + footprint.Height, height);
-        int maxX = Math.Min(baseX + footprint.Width, width);
-
-        for (int y = baseY; y < maxY; y++)
+        constant = texels[0];
+        for (int i = 1; i < texels.Length; i++)
         {
-            for (int x = baseX; x < maxX; x++)
+            if (texels[i] != constant)
             {
-                int offset = ((y * width) + x) * BlockInfo.ChannelsPerPixel;
-                if (rgba[offset] != r || rgba[offset + 1] != g || rgba[offset + 2] != b || rgba[offset + 3] != a)
-                {
-                    return false;
-                }
+                return false;
             }
         }
 

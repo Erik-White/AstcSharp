@@ -367,6 +367,15 @@ internal static class BlockModeDecoder
     }
 
     /// <summary>
+    /// Resolves the implicit colour endpoint range and bit count from the colour value count and
+    /// available colour bits, using the same §C.2.22 procedure the decoder applies. Exposed so the
+    /// encoder derives the identical range the decoder will assume (the range is not stored in the
+    /// block — both sides compute it from the bit budget).
+    /// </summary>
+    internal static bool TryResolveColorEncoding(int colorValuesCount, int maxColorBits, out int colorValuesRange, out int colorBitCount)
+        => TryFitColorRange(colorValuesCount, maxColorBits, out colorValuesRange, out colorBitCount);
+
+    /// <summary>
     /// Finds the greatest valid BISE endpoint range whose encoding fits within
     /// <paramref name="maxColorBits"/> per ASTC spec §C.2.22. Returns false if the minimum
     /// encoding already exceeds the budget.

@@ -37,7 +37,7 @@ public class EncoderReferenceTests
 
         byte[] armDecoded = ReferenceDecoder.DecompressLdr(encoded, width, height, blockX, blockY);
 
-        CompareRgba8(armDecoded, pixels, width, height, $"VoidExtent_{footprintType}");
+        CompareRgba8(armDecoded, pixels, $"VoidExtent_{footprintType}");
     }
 
     [Theory]
@@ -55,7 +55,106 @@ public class EncoderReferenceTests
 
         byte[] armDecoded = ReferenceDecoder.DecompressLdr(encoded, width, height, 6, 6);
 
-        CompareRgba8(armDecoded, pixels, width, height, $"VoidExtentColor_{r}_{g}_{b}_{a}");
+        CompareRgba8(armDecoded, pixels, $"VoidExtentColor_{r}_{g}_{b}_{a}");
+    }
+
+    // Footprints with <= 64 texels, encodable by the identity-grid single-partition encoder.
+    public static TheoryData<FootprintType> SmallFootprints =>
+    [
+        FootprintType.Footprint4x4, FootprintType.Footprint5x4, FootprintType.Footprint5x5,
+        FootprintType.Footprint6x5, FootprintType.Footprint6x6, FootprintType.Footprint8x5,
+        FootprintType.Footprint8x6, FootprintType.Footprint8x8,
+    ];
+
+    [Theory]
+    [MemberData(nameof(SmallFootprints))]
+    public void EncodedGradient_DecodesUnderArmReference(FootprintType footprintType)
+    {
+        var (blockX, blockY) = ReferenceDecoder.ToBlockDimensions(footprintType);
+        Footprint footprint = Footprint.FromFootprintType(footprintType);
+        int width = blockX * 2;
+        int height = blockY * 2;
+        byte[] pixels = GradientImage(width, height);
+
+        byte[] encoded = AstcEncoder.CompressImage(pixels, width, height, footprint);
+
+        // Our blocks must be spec-legal: ARM's decoder reads them, and its reconstruction must
+        // agree with ours (both decode the same legal bitstream).
+        byte[] armDecoded = ReferenceDecoder.DecompressLdr(encoded, width, height, blockX, blockY);
+        Span<byte> ourDecoded = AstcDecoder.DecompressImage(encoded, width, height, footprint);
+
+        CompareRgba8(armDecoded, ourDecoded.ToArray(), $"Gradient_{footprintType}");
+    }
+
+    // Footprints where one weight per texel affords enough weight precision to stay within the
+    // reference's quality margin. From ~25 texels up, the reference pulls ahead by using a coarse
+    // weight grid with many bits per weight (decimation) to get near-lossless smooth gradients.
+    public static TheoryData<FootprintType> CompetitiveFootprints =>
+    [
+        FootprintType.Footprint4x4, FootprintType.Footprint5x4,
+    ];
+
+    [Theory]
+    [MemberData(nameof(CompetitiveFootprints))]
+    public void EncodedGradient_QualityWithinMarginOfReferenceEncoder(FootprintType footprintType)
+    {
+        var (blockX, blockY) = ReferenceDecoder.ToBlockDimensions(footprintType);
+        Footprint footprint = Footprint.FromFootprintType(footprintType);
+        int width = blockX * 2;
+        int height = blockY * 2;
+        byte[] pixels = GradientImage(width, height);
+
+        // Our encoder, decoded by our decoder.
+        byte[] ourEncoded = AstcEncoder.CompressImage(pixels, width, height, footprint);
+        Span<byte> ourDecoded = AstcDecoder.DecompressImage(ourEncoded, width, height, footprint);
+        double ourPsnr = Psnr(pixels, ourDecoded);
+
+        // ARM's encoder, decoded by ARM's decoder.
+        byte[] armEncoded = ReferenceDecoder.CompressLdr(pixels, width, height, blockX, blockY);
+        byte[] armDecoded = ReferenceDecoder.DecompressLdr(armEncoded, width, height, blockX, blockY);
+        double armPsnr = Psnr(pixels, armDecoded);
+
+        // The encoder targets quality within 3 dB of the reference, not bit parity.
+        ourPsnr.Should().BeGreaterThanOrEqualTo(
+            armPsnr - 3.0,
+            because: $"[{footprintType}] our PSNR {ourPsnr:F2} dB should be within 3 dB of ARM's {armPsnr:F2} dB");
+    }
+
+    private static byte[] GradientImage(int width, int height)
+    {
+        byte[] pixels = new byte[width * height * 4];
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                int idx = ((y * width) + x) * 4;
+                byte v = (byte)(255 * x / (width - 1));
+                pixels[idx] = v;
+                pixels[idx + 1] = (byte)(255 - v);
+                pixels[idx + 2] = (byte)(128 + (v / 2));
+                pixels[idx + 3] = 255;
+            }
+        }
+
+        return pixels;
+    }
+
+    private static double Psnr(ReadOnlySpan<byte> original, ReadOnlySpan<byte> decoded)
+    {
+        double sumSquaredError = 0;
+        for (int i = 0; i < original.Length; i++)
+        {
+            int diff = decoded[i] - original[i];
+            sumSquaredError += (double)diff * diff;
+        }
+
+        if (sumSquaredError == 0)
+        {
+            return double.PositiveInfinity;
+        }
+
+        double meanSquaredError = sumSquaredError / original.Length;
+        return 10.0 * Math.Log10((255.0 * 255.0) / meanSquaredError);
     }
 
     private static byte[] SolidImage(int width, int height, byte r, byte g, byte b, byte a)
@@ -72,7 +171,7 @@ public class EncoderReferenceTests
         return pixels;
     }
 
-    private static void CompareRgba8(byte[] actual, byte[] expected, int width, int height, string label)
+    private static void CompareRgba8(byte[] actual, byte[] expected, string label)
     {
         actual.Length.Should().Be(expected.Length, because: $"decoded size should match for {label}");
 

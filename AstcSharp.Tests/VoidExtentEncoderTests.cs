@@ -54,14 +54,23 @@ public class VoidExtentEncoderTests
     }
 
     [Fact]
-    public void Compress_NonConstantBlock_Throws()
+    public void Compress_NearConstantBlock_EncodesValidlyViaGeneralPath()
     {
+        // One perturbed texel makes the block non-constant, so it takes the general (non-void-extent)
+        // encoding path rather than throwing. The result must still be a legal block (no magenta).
         Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint4x4);
         byte[] pixels = SolidImage(4, 4, 10, 20, 30, 40);
-        pixels[^4] = 99; // perturb one texel's red channel
+        pixels[^4] = 99;
 
-        Assert.Throws<NotSupportedException>(() =>
-            AstcEncoder.CompressImage(pixels, 4, 4, footprint));
+        byte[] encoded = AstcEncoder.CompressImage(pixels, 4, 4, footprint);
+        Span<byte> decoded = AstcDecoder.DecompressImage(encoded, 4, 4, footprint);
+
+        Assert.Equal(pixels.Length, decoded.Length);
+        for (int i = 0; i < decoded.Length; i += 4)
+        {
+            bool isMagenta = decoded[i] == 255 && decoded[i + 1] == 0 && decoded[i + 2] == 255 && decoded[i + 3] == 255;
+            Assert.False(isMagenta, "near-constant block should encode to a legal (non-magenta) block");
+        }
     }
 
     [Fact]
