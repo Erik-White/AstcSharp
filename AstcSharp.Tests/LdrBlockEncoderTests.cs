@@ -3,23 +3,23 @@ using AstcSharp.Core;
 namespace AstcSharp.Tests;
 
 /// <summary>
-/// Round-trip tests for the single-partition identity-grid LDR encoder (spec §C.2.14 mode 12,
-/// §C.2.19). Correctness holds for every footprint with at most 64 texels; tight reconstruction
-/// quality is only expected on small footprints, where one weight per texel leaves enough bits for
-/// a fine weight range. Larger footprints need weight-grid decimation for comparable quality.
+/// Round-trip tests for the single-partition LDR encoder (spec §C.2.14 mode 12, §C.2.19). Every 2D
+/// footprint must produce legal blocks (weight-grid decimation handles those over 64 texels). Tight
+/// reconstruction quality is checked on the smaller footprints, where the fitted grid affords a fine
+/// weight range; the broader quality bar is validated against the reference encoder.
 /// </summary>
 public class LdrBlockEncoderTests
 {
-    // Footprints with <= 64 texels: the identity-grid encoder supports these before decimation.
-    public static TheoryData<FootprintType> SmallFootprints =>
+    public static TheoryData<FootprintType> AllFootprints =>
     [
         FootprintType.Footprint4x4, FootprintType.Footprint5x4, FootprintType.Footprint5x5,
         FootprintType.Footprint6x5, FootprintType.Footprint6x6, FootprintType.Footprint8x5,
         FootprintType.Footprint8x6, FootprintType.Footprint8x8, FootprintType.Footprint10x5,
-        FootprintType.Footprint10x6,
+        FootprintType.Footprint10x6, FootprintType.Footprint10x8, FootprintType.Footprint10x10,
+        FootprintType.Footprint12x10, FootprintType.Footprint12x12,
     ];
 
-    // Footprints small enough that one weight per texel still affords a fine weight range,
+    // Footprints small enough that the fitted weight grid still affords a fine weight range,
     // so a smooth single-line ramp reconstructs tightly.
     public static TheoryData<FootprintType> FineGridFootprints =>
     [
@@ -28,20 +28,14 @@ public class LdrBlockEncoderTests
     ];
 
     [Theory]
-    [MemberData(nameof(SmallFootprints))]
+    [MemberData(nameof(AllFootprints))]
     public void Compress_Gradient_ProducesValidBlocks(FootprintType footprintType)
     {
+        // Every 2D footprint must produce legal blocks. An illegal block decodes to the magenta
+        // error colour; reconstruction quality is validated against the reference encoder.
         Footprint footprint = Footprint.FromFootprintType(footprintType);
-        int width = footprint.Width * 2;
-        int height = footprint.Height * 2;
-        byte[] pixels = GradientImage(width, height);
+        (byte[] pixels, Span<byte> decoded) = EncodeThenDecode(footprint, GradientImage);
 
-        byte[] encoded = AstcEncoder.CompressImage(pixels, width, height, footprint);
-        Span<byte> decoded = AstcDecoder.DecompressImage(encoded, width, height, footprint);
-
-        // Correctness guarantee for all <= 64-texel footprints: every block is legal. An illegal
-        // block decodes to the magenta error colour. Reconstruction quality (which varies with
-        // footprint size for the identity grid) is validated against the reference encoder.
         Assert.Equal(pixels.Length, decoded.Length);
         AssertNoMagentaBlocks(decoded);
     }
@@ -51,27 +45,7 @@ public class LdrBlockEncoderTests
     public void Compress_SingleColorLineRamp_ReconstructsTightly(FootprintType footprintType)
     {
         Footprint footprint = Footprint.FromFootprintType(footprintType);
-        int width = footprint.Width * 2;
-        int height = footprint.Height * 2;
-
-        // A ramp between two fixed endpoint colours (all texels on one line in RGBA space) is the
-        // ideal case for a single-partition, single-line block: (20,200,0,255) -> (220,20,255,255).
-        byte[] pixels = new byte[width * height * 4];
-        for (int y = 0; y < height; y++)
-        {
-            for (int x = 0; x < width; x++)
-            {
-                int idx = ((y * width) + x) * 4;
-                float t = (float)(x + y) / (width + height - 2);
-                pixels[idx] = (byte)(20 + (t * 200));
-                pixels[idx + 1] = (byte)(200 - (t * 180));
-                pixels[idx + 2] = (byte)(t * 255);
-                pixels[idx + 3] = 255;
-            }
-        }
-
-        byte[] encoded = AstcEncoder.CompressImage(pixels, width, height, footprint);
-        Span<byte> decoded = AstcDecoder.DecompressImage(encoded, width, height, footprint);
+        (byte[] pixels, Span<byte> decoded) = EncodeThenDecode(footprint, SingleColorLineRamp);
 
         // ~PSNR 28 dB: a single-line block should track the ramp closely, but weight quantisation
         // and the byte-rounded endpoints leave a small residual that grows with texel count.
@@ -79,38 +53,32 @@ public class LdrBlockEncoderTests
     }
 
     [Theory]
-    [MemberData(nameof(SmallFootprints))]
+    [MemberData(nameof(AllFootprints))]
     public void Compress_SolidColor_RoundTripsExactly(FootprintType footprintType)
     {
         // Constant blocks take the void-extent path even through the general encoder entry point.
         Footprint footprint = Footprint.FromFootprintType(footprintType);
-        int width = footprint.Width;
-        int height = footprint.Height;
-        byte[] pixels = new byte[width * height * 4];
-        for (int i = 0; i < pixels.Length; i += 4)
-        {
-            pixels[i] = 73; pixels[i + 1] = 140; pixels[i + 2] = 200; pixels[i + 3] = 255;
-        }
+        byte[] pixels = SolidImage(footprint.Width, footprint.Height, 73, 140, 200, 255);
 
-        byte[] encoded = AstcEncoder.CompressImage(pixels, width, height, footprint);
-        Span<byte> decoded = AstcDecoder.DecompressImage(encoded, width, height, footprint);
+        byte[] encoded = AstcEncoder.CompressImage(pixels, footprint.Width, footprint.Height, footprint);
+        Span<byte> decoded = AstcDecoder.DecompressImage(encoded, footprint.Width, footprint.Height, footprint);
 
         Assert.Equal(pixels, decoded.ToArray());
     }
 
-    [Fact]
-    public void Compress_LargeFootprintNonConstant_Throws()
+    /// <summary>
+    /// Encodes a 2x2-block image (so interior and edge blocks are exercised) built by
+    /// <paramref name="fill"/>, decodes it back, and returns both for comparison.
+    /// </summary>
+    private static (byte[] Pixels, byte[] Decoded) EncodeThenDecode(Footprint footprint, Func<int, int, byte[]> fill)
     {
-        Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint12x12);
-        int width = footprint.Width;
-        int height = footprint.Height;
-        byte[] pixels = new byte[width * height * 4];
-        for (int i = 0; i < pixels.Length; i++)
-        {
-            pixels[i] = (byte)(i % 256);
-        }
+        int width = footprint.Width * 2;
+        int height = footprint.Height * 2;
+        byte[] pixels = fill(width, height);
 
-        Assert.Throws<NotSupportedException>(() => AstcEncoder.CompressImage(pixels, width, height, footprint));
+        byte[] encoded = AstcEncoder.CompressImage(pixels, width, height, footprint);
+        byte[] decoded = AstcDecoder.DecompressImage(encoded, width, height, footprint).ToArray();
+        return (pixels, decoded);
     }
 
     private static byte[] GradientImage(int width, int height)
@@ -127,6 +95,38 @@ public class LdrBlockEncoderTests
                 pixels[idx + 2] = v;
                 pixels[idx + 3] = 255;
             }
+        }
+
+        return pixels;
+    }
+
+    // A ramp between two fixed endpoint colours (all texels on one line in RGBA space):
+    // (20,200,0,255) -> (220,20,255,255) — the ideal case for a single-partition, single-line block.
+    private static byte[] SingleColorLineRamp(int width, int height)
+    {
+        byte[] pixels = new byte[width * height * 4];
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                int idx = ((y * width) + x) * 4;
+                float t = (float)(x + y) / (width + height - 2);
+                pixels[idx] = (byte)(20 + (t * 200));
+                pixels[idx + 1] = (byte)(200 - (t * 180));
+                pixels[idx + 2] = (byte)(t * 255);
+                pixels[idx + 3] = 255;
+            }
+        }
+
+        return pixels;
+    }
+
+    private static byte[] SolidImage(int width, int height, byte r, byte g, byte b, byte a)
+    {
+        byte[] pixels = new byte[width * height * 4];
+        for (int i = 0; i < pixels.Length; i += 4)
+        {
+            pixels[i] = r; pixels[i + 1] = g; pixels[i + 2] = b; pixels[i + 3] = a;
         }
 
         return pixels;

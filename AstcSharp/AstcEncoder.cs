@@ -17,9 +17,8 @@ namespace AstcSharp;
 /// </para>
 /// <para>
 /// Constant-colour blocks are encoded as void-extent blocks (spec §C.2.23);
-/// other blocks use a single-partition, identity-grid, RGBA-direct encoding (mode 12).
-/// Footprints larger than 64 texels require weight-grid decimation, which is not yet
-/// implemented, and throw <see cref="NotSupportedException"/>.
+/// other blocks use a single-partition, RGBA-direct encoding (mode 12) with a fitted weight grid
+/// (decimated below the footprint size as needed), so every 2D footprint is supported.
 /// </para>
 /// </remarks>
 public static class AstcEncoder
@@ -80,7 +79,7 @@ public static class AstcEncoder
     /// <summary>
     /// Encodes a single LDR block at (<paramref name="blockX"/>, <paramref name="blockY"/>):
     /// a void-extent block when all texels are identical, otherwise a single-partition,
-    /// identity-grid, RGBA-direct block.
+    /// RGBA-direct block whose weight grid is fitted (with decimation as needed) to the texels.
     /// </summary>
     private static UInt128 EncodeLdrBlock(ReadOnlySpan<byte> rgba, int width, int height, Footprint footprint, int blockX, int blockY)
     {
@@ -90,12 +89,6 @@ public static class AstcEncoder
         if (IsConstant(texels, out RgbaColor constant))
         {
             return VoidExtentEncoder.EncodeLdr(constant.R, constant.G, constant.B, constant.A);
-        }
-
-        if (!LdrBlockEncoder.CanEncode(footprint))
-        {
-            throw new NotSupportedException(
-                $"Encoding non-constant {footprint.Width}x{footprint.Height} blocks requires weight-grid decimation, which is not yet implemented.");
         }
 
         return LdrBlockEncoder.Encode(texels, footprint);

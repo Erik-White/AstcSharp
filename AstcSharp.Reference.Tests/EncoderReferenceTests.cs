@@ -58,16 +58,8 @@ public class EncoderReferenceTests
         CompareRgba8(armDecoded, pixels, $"VoidExtentColor_{r}_{g}_{b}_{a}");
     }
 
-    // Footprints with <= 64 texels, encodable by the identity-grid single-partition encoder.
-    public static TheoryData<FootprintType> SmallFootprints =>
-    [
-        FootprintType.Footprint4x4, FootprintType.Footprint5x4, FootprintType.Footprint5x5,
-        FootprintType.Footprint6x5, FootprintType.Footprint6x6, FootprintType.Footprint8x5,
-        FootprintType.Footprint8x6, FootprintType.Footprint8x8,
-    ];
-
     [Theory]
-    [MemberData(nameof(SmallFootprints))]
+    [MemberData(nameof(AllFootprintTypes))]
     public void EncodedGradient_DecodesUnderArmReference(FootprintType footprintType)
     {
         var (blockX, blockY) = ReferenceDecoder.ToBlockDimensions(footprintType);
@@ -86,16 +78,8 @@ public class EncoderReferenceTests
         CompareRgba8(armDecoded, ourDecoded.ToArray(), $"Gradient_{footprintType}");
     }
 
-    // Footprints where one weight per texel affords enough weight precision to stay within the
-    // reference's quality margin. From ~25 texels up, the reference pulls ahead by using a coarse
-    // weight grid with many bits per weight (decimation) to get near-lossless smooth gradients.
-    public static TheoryData<FootprintType> CompetitiveFootprints =>
-    [
-        FootprintType.Footprint4x4, FootprintType.Footprint5x4,
-    ];
-
     [Theory]
-    [MemberData(nameof(CompetitiveFootprints))]
+    [MemberData(nameof(AllFootprintTypes))]
     public void EncodedGradient_QualityWithinMarginOfReferenceEncoder(FootprintType footprintType)
     {
         var (blockX, blockY) = ReferenceDecoder.ToBlockDimensions(footprintType);
