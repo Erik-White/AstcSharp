@@ -127,6 +127,43 @@ internal static class BlockModeDecoder
     }
 
     /// <summary>
+    /// Decodes just the weight-configuration fields of the 11-bit block mode (bits [0:10]):
+    /// weight-grid dimensions (spec §C.2.8), weight range (§C.2.7), and the dual-plane flag
+    /// (§C.2.10). Returns false for void-extent markers and reserved/illegal mode encodings.
+    /// Single-sources the layout logic so the encoder (<c>BlockModeEncoder</c>) can build its
+    /// reverse table from the same decode path the full <see cref="Decode"/> uses.
+    /// </summary>
+    internal static bool TryDecodeWeightConfig(
+        ulong modeBits,
+        out int gridWidth,
+        out int gridHeight,
+        out int weightRange,
+        out bool isDualPlane)
+    {
+        gridWidth = gridHeight = weightRange = 0;
+        isDualPlane = false;
+
+        // A void-extent marker is not a normal weight-bearing block mode.
+        if ((modeBits & 0x1FF) == 0x1FC)
+        {
+            return false;
+        }
+
+        if (!TryDecodeWeightGrid(modeBits, out gridWidth, out gridHeight, out uint rBits, out bool isWidthA6HeightB6))
+        {
+            return false;
+        }
+
+        if (!TryResolveWeightRange(modeBits, rBits, isWidthA6HeightB6, out weightRange))
+        {
+            return false;
+        }
+
+        isDualPlane = !isWidthA6HeightB6 && ((modeBits >> 10) & 1) != 0;
+        return true;
+    }
+
+    /// <summary>
     /// Decodes the block-mode / weight-grid dimensions section of the block mode per ASTC spec
     /// §C.2.8 Table 24. Returns false for reserved block-mode encodings.
     /// </summary>
