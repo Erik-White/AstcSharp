@@ -39,12 +39,11 @@ internal sealed class Partition
         int w = footprint.Width;
         int h = footprint.Height;
         int[] assignment = new int[w * h];
-        int idx = 0;
         for (int y = 0; y < h; ++y)
         {
             for (int x = 0; x < w; ++x)
             {
-                assignment[idx++] = SelectASTCPartition(partitionId, x, y, 0, partitionCount, footprint.PixelCount);
+                assignment[(y * w) + x] = SelectASTCPartition(partitionId, x, y, 0, partitionCount, footprint.PixelCount);
             }
         }
 

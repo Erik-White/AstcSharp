@@ -40,8 +40,8 @@ internal static class EndpointCodec
         return ColorEndpointPair.Ldr(low, high);
     }
 
-    // Each decoder below implements one LDR endpoint mode per ASTC spec §C.2.14
-    // (Color Endpoint Decoding). Inputs are the unquantized color values for that mode.
+    // The decoders below take values already unquantized via Quantization.UnquantizeCEValuesBatch,
+    // each is a separate method so the JIT can inline it into the switch dispatch above.
 
     // Mode 0 (§C.2.14 "LDR luminance, direct"): two 8-bit luma values.
     private static (RgbaColor Low, RgbaColor High) DecodeLumaDirect(ReadOnlySpan<int> v)

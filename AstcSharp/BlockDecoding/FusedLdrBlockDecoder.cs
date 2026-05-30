@@ -11,6 +11,8 @@ namespace AstcSharp.BlockDecoding;
 /// </summary>
 internal static class FusedLdrBlockDecoder
 {
+    private const int SimdLaneCount = 4;
+
     /// <summary>
     /// Fused LDR decode to a contiguous buffer.
     /// Only handles single-partition, non-dual-plane, LDR blocks.
@@ -79,8 +81,8 @@ internal static class FusedLdrBlockDecoder
         in ColorEndpointPair endpointPair,
         Span<int> texelWeights)
     {
-        int lowR = endpointPair.LdrLow.R, lowG = endpointPair.LdrLow.G, lowB = endpointPair.LdrLow.B, lowA = endpointPair.LdrLow.A;
-        int highR = endpointPair.LdrHigh.R, highG = endpointPair.LdrHigh.G, highB = endpointPair.LdrHigh.B, highA = endpointPair.LdrHigh.A;
+        (byte lowR, byte lowG, byte lowB, byte lowA) = endpointPair.LdrLow;
+        (byte highR, byte highG, byte highB, byte highA) = endpointPair.LdrHigh;
 
         int footprintWidth = footprint.Width;
         int footprintHeight = footprint.Height;
@@ -93,8 +95,8 @@ internal static class FusedLdrBlockDecoder
 
             if (Vector128.IsHardwareAccelerated)
             {
-                int limit = footprintWidth - 3;
-                for (; pixelX < limit; pixelX += 4)
+                int limit = footprintWidth - (SimdLaneCount - 1);
+                for (; pixelX < limit; pixelX += SimdLaneCount)
                 {
                     int texelIndex = srcRowBase + pixelX;
                     Vector128<int> weights = Vector128.Create(

@@ -215,7 +215,7 @@ public static class AstcDecoder
     {
         TPipeline pipeline = default;
 
-        if (info.IsFusable && dest.IsFullInteriorBlock)
+        if (info.IsFusable && dest.IsFullInterior)
         {
             pipeline.FusedToImage(blockBits, in info, footprint, dest.DstBaseX, dest.DstBaseY, imageWidth, imageBuffer);
             return;
@@ -427,8 +427,8 @@ public static class AstcDecoder
     /// </returns>
     public static Span<float> DecompressHdrImage(ReadOnlySpan<byte> astcData, int width, int height, FootprintType footprint)
     {
-        Footprint footPrint = Footprint.FromFootprintType(footprint);
-        return DecompressHdrImage(astcData, width, height, footPrint);
+        Footprint requestedFootprint = Footprint.FromFootprintType(footprint);
+        return DecompressHdrImage(astcData, width, height, requestedFootprint);
     }
 
     /// <summary>
@@ -462,9 +462,9 @@ public static class AstcDecoder
 
     internal static Span<byte> DecompressImage(ReadOnlySpan<byte> astcData, int width, int height, FootprintType footprint)
     {
-        Footprint footPrint = Footprint.FromFootprintType(footprint);
+        Footprint requestedFootprint = Footprint.FromFootprintType(footprint);
 
-        return DecompressImage(astcData, width, height, footPrint);
+        return DecompressImage(astcData, width, height, requestedFootprint);
     }
 
     private static bool TryGetBlockLayout(

@@ -55,8 +55,7 @@ internal record AstcFile
                 $"ASTC payload contains {actualBlockCount} blocks but the header describes {expectedBlockCount}");
         }
 
-        byte[] blocks = new byte[blockDataLength];
-        Array.Copy(data, AstcFileHeader.SizeInBytes, blocks, 0, blocks.Length);
+        byte[] blocks = data[AstcFileHeader.SizeInBytes..];
 
         return new AstcFile(header, blocks);
     }

@@ -190,15 +190,7 @@ internal static class BoundedIntegerSequenceCodec
         // Precompute for all valid ranges [1, 255]
         for (int range = 1; range < cache.Length; range++)
         {
-            int index = -1;
-            for (int i = 0; i < MaxRanges.Length; i++)
-            {
-                if (MaxRanges[i] >= range)
-                {
-                    index = i;
-                    break;
-                }
-            }
+            int index = Array.FindIndex(MaxRanges, max => max >= range);
 
             int maxValue = index < 0
                 ? MaxRanges[^1] + 1
@@ -206,11 +198,11 @@ internal static class BoundedIntegerSequenceCodec
 
             // Check QuintEncoding (5), TritEncoding (3), BitEncoding (1) in descending order
             BiseEncodingMode encodingMode = BiseEncodingMode.Unknown;
-            foreach (BiseEncodingMode em in EncodingModesDescending)
+            foreach (BiseEncodingMode mode in EncodingModesDescending)
             {
-                if (maxValue % (int)em == 0 && int.IsPow2(maxValue / (int)em))
+                if (maxValue % (int)mode == 0 && int.IsPow2(maxValue / (int)mode))
                 {
-                    encodingMode = em;
+                    encodingMode = mode;
                     break;
                 }
             }

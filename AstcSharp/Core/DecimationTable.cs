@@ -140,15 +140,16 @@ internal static class DecimationTable
         ClampGridPoint(ref gridPoint2, ref factor2, gridLimit);
         ClampGridPoint(ref gridPoint3, ref factor3, gridLimit);
 
-        indices[texelIndex] = gridPoint0;
-        indices[texelCount + texelIndex] = gridPoint1;
-        indices[(2 * texelCount) + texelIndex] = gridPoint2;
-        indices[(3 * texelCount) + texelIndex] = gridPoint3;
-
-        factors[texelIndex] = factor0;
-        factors[texelCount + texelIndex] = factor1;
-        factors[(2 * texelCount) + texelIndex] = factor2;
-        factors[(3 * texelCount) + texelIndex] = factor3;
+        // The four bilinear corners are stored transposed: corner c for every texel occupies
+        // the contiguous run [c * texelCount, (c + 1) * texelCount), so InfillWeights can stride
+        // one corner at a time across all texels.
+        Span<int> gridPoints = [gridPoint0, gridPoint1, gridPoint2, gridPoint3];
+        Span<int> cornerFactors = [factor0, factor1, factor2, factor3];
+        for (int corner = 0; corner < 4; corner++)
+        {
+            indices[(corner * texelCount) + texelIndex] = gridPoints[corner];
+            factors[(corner * texelCount) + texelIndex] = cornerFactors[corner];
+        }
     }
 
     /// <summary>

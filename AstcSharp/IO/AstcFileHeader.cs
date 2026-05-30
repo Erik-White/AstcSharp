@@ -85,15 +85,5 @@ internal readonly record struct AstcFileHeader(byte BlockWidth, byte BlockHeight
     }
 
     private static bool IsValid2DFootprint(byte width, byte height)
-    {
-        foreach ((byte w, byte h) in Valid2DFootprints)
-        {
-            if (w == width && h == height)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
+        => Array.Exists(Valid2DFootprints, footprint => footprint == (width, height));
 }
