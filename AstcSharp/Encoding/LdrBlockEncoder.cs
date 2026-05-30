@@ -325,7 +325,7 @@ internal static class LdrBlockEncoder
         Span<int> effectiveGrid = scratch.EffectiveGrid[..gridWeightCount];
         for (int p = 0; p < gridWeightCount; p++)
         {
-            int quant = Quantization.QuantizeWeightToRange((int)Math.Round(fittedGrid[p]), weightRange);
+            int quant = Quantization.QuantizeWeightToRange(RoundWeight(fittedGrid[p]), weightRange);
             quantGridWeights[p] = quant;
             effectiveGrid[p] = Quantization.UnquantizeWeightFromRange(quant, weightRange);
         }
@@ -539,6 +539,14 @@ internal static class LdrBlockEncoder
     private static byte ClampByte(double value) => (byte)Math.Clamp(Math.Round(value), 0, MaxChannel);
 
     /// <summary>
+    /// Rounds a fitted grid weight to the nearest integer, rounding halves away from zero to match
+    /// the decoder's round-half-up infill convention (spec §C.2.18, <c>(… + 8) >> 4</c>). The
+    /// default <see cref="Math.Round(double)"/> rounds halves to even, which would bias half-valued
+    /// weights inconsistently against the decoder.
+    /// </summary>
+    private static int RoundWeight(double weight) => (int)Math.Round(weight, MidpointRounding.AwayFromZero);
+
+    /// <summary>
     /// Tries multi-partition encodings (2..4 partitions, spec §C.2.21) and returns the lowest-error
     /// block found with its reconstruction error. Uses a shared colour endpoint mode across
     /// partitions (the simplest legal multi-partition layout). For each partition count it scores
@@ -625,18 +633,9 @@ internal static class LdrBlockEncoder
     {
         Span<RgbaColor> subsetLow = stackalloc RgbaColor[MaxPartitions];
         Span<RgbaColor> subsetHigh = stackalloc RgbaColor[MaxPartitions];
-
-        // Gather buffer reused across subsets (fully overwritten per subset before use).
-        Span<RgbaColor> subset = stackalloc RgbaColor[texels.Length];
-        for (int p = 0; p < partitionCount; p++)
+        if (!FitSubsetEndpoints(texels, assignment, partitionCount, subsetLow, subsetHigh))
         {
-            int n = GatherSubset(texels, assignment, p, subset);
-            if (n == 0)
-            {
-                return -1;
-            }
-
-            (subsetLow[p], subsetHigh[p]) = FitEndpoints(subset[..n]);
+            return -1;
         }
 
         long error = 0;
@@ -761,7 +760,7 @@ internal static class LdrBlockEncoder
                     Span<int> effGrid = effectiveGrid[..gridWeightCount];
                     for (int p = 0; p < gridWeightCount; p++)
                     {
-                        int quant = Quantization.QuantizeWeightToRange((int)Math.Round(fitGrid[p]), weightRange);
+                        int quant = Quantization.QuantizeWeightToRange(RoundWeight(fitGrid[p]), weightRange);
                         quantGrid[p] = quant;
                         effGrid[p] = Quantization.UnquantizeWeightFromRange(quant, weightRange);
                     }
