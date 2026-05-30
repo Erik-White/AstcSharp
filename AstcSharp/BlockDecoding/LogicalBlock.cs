@@ -28,7 +28,7 @@ internal static class LogicalBlock
         // into a separate frame so the secondary-plane buffer is only stackalloc'd when needed.
         if (info.DualPlane.Enabled && !info.IsVoidExtent)
         {
-            DecodeToBytesDualPlane(bits, in info, footprint, pixels);
+            DecodeDualPlane<LdrPixelWriter, byte>(bits, in info, footprint, pixels);
             return;
         }
 
@@ -52,7 +52,7 @@ internal static class LogicalBlock
 
         if (info.DualPlane.Enabled && !info.IsVoidExtent)
         {
-            DecodeToFloatsDualPlane(bits, in info, footprint, pixels);
+            DecodeDualPlane<HdrPixelWriter, float>(bits, in info, footprint, pixels);
             return;
         }
 
@@ -63,30 +63,24 @@ internal static class LogicalBlock
         WriteAllPixels<HdrPixelWriter, float>(footprint, pixels, in state);
     }
 
+    /// <summary>
+    /// Decodes a dual-plane block (spec §C.2.20) and writes its pixels via
+    /// <typeparamref name="TWriter"/>. Split into its own non-inlined frame so the
+    /// secondary-plane buffer is only stackalloc'd for dual-plane blocks.
+    /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void DecodeToBytesDualPlane(UInt128 bits, in BlockInfo info, Footprint footprint, Span<byte> pixels)
+    private static void DecodeDualPlane<TWriter, T>(UInt128 bits, in BlockInfo info, Footprint footprint, Span<T> pixels)
+        where TWriter : struct, IPixelWriter<T>
+        where T : unmanaged
     {
         // Two weight planes for dual-plane blocks (spec §C.2.20). Up to 2 × 144 = 288 ints
         // (1152 bytes) at the largest 12×12 footprint.
         Span<int> weights = stackalloc int[footprint.PixelCount];
         Span<int> secondaryWeights = stackalloc int[footprint.PixelCount];
-        DecodedBlockState state = DecodeDualPlane(bits, in info, footprint, weights, secondaryWeights);
+        DecodedBlockState state = DecodeDualPlaneState(bits, in info, footprint, weights, secondaryWeights);
         DualPlane dualPlane = new() { Weights = secondaryWeights, Channel = info.DualPlane.Channel };
 
-        WriteAllPixelsDualPlane<LdrPixelWriter, byte>(footprint, pixels, in state, in dualPlane);
-    }
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void DecodeToFloatsDualPlane(UInt128 bits, in BlockInfo info, Footprint footprint, Span<float> pixels)
-    {
-        // Two weight planes for dual-plane blocks (spec §C.2.20). Up to 2 × 144 = 288 ints
-        // (1152 bytes) at the largest 12×12 footprint.
-        Span<int> weights = stackalloc int[footprint.PixelCount];
-        Span<int> secondaryWeights = stackalloc int[footprint.PixelCount];
-        DecodedBlockState state = DecodeDualPlane(bits, in info, footprint, weights, secondaryWeights);
-        DualPlane dualPlane = new() { Weights = secondaryWeights, Channel = info.DualPlane.Channel };
-
-        WriteAllPixelsDualPlane<HdrPixelWriter, float>(footprint, pixels, in state, in dualPlane);
+        WriteAllPixelsDualPlane<TWriter, T>(footprint, pixels, in state, in dualPlane);
     }
 
     /// <summary>
@@ -119,7 +113,7 @@ internal static class LogicalBlock
     /// Builds the <see cref="DecodedBlockState"/> for a dual-plane block (spec §C.2.20),
     /// filling <paramref name="secondaryWeights"/> with the second plane's per-texel weights.
     /// </summary>
-    private static DecodedBlockState DecodeDualPlane(
+    private static DecodedBlockState DecodeDualPlaneState(
         UInt128 bits,
         in BlockInfo info,
         Footprint footprint,
