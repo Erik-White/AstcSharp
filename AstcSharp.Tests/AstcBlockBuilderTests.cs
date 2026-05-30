@@ -6,7 +6,7 @@ using AstcSharp.IO;
 namespace AstcSharp.Tests;
 
 /// <summary>
-/// M0 assembly tests: the <see cref="AstcFileHeader.WriteTo"/> serialiser round-trips through
+/// Block-assembly tests: the <see cref="AstcFileHeader.WriteTo"/> serialiser round-trips through
 /// <see cref="AstcFileHeader.FromMemory"/>, and <see cref="AstcBlockBuilder"/> places low-bit
 /// fields where the decoder reads them. A constant-colour void-extent block (spec §C.2.23) is the
 /// simplest full block, exercising the marker, reserved bits, and 16-bit RGBA payload placement.
