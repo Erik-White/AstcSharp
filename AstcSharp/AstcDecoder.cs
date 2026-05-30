@@ -77,12 +77,12 @@ public static class AstcDecoder
             Span<byte> scratch = decodedBlock.AsSpan(0, decodedBlockSize);
             if (mode == LdrDecodeMode.Srgb)
             {
-                DecodeAllBlocks<LdrPipeline<SrgbExpand>, byte>(
+                DecodeAllBlocks<LdrPipeline<SrgbMode>, byte>(
                     astcData, width, height, footprint, blocksWide, blocksHigh, imageBuffer, scratch);
             }
             else
             {
-                DecodeAllBlocks<LdrPipeline<LinearExpand>, byte>(
+                DecodeAllBlocks<LdrPipeline<LinearMode>, byte>(
                     astcData, width, height, footprint, blocksWide, blocksHigh, imageBuffer, scratch);
             }
         }
@@ -303,11 +303,11 @@ public static class AstcDecoder
 
         if (mode == LdrDecodeMode.Srgb)
         {
-            DecodeSingleBlock<LdrPipeline<SrgbExpand>, byte>(blockData, footprint, buffer);
+            DecodeSingleBlock<LdrPipeline<SrgbMode>, byte>(blockData, footprint, buffer);
         }
         else
         {
-            DecodeSingleBlock<LdrPipeline<LinearExpand>, byte>(blockData, footprint, buffer);
+            DecodeSingleBlock<LdrPipeline<LinearMode>, byte>(blockData, footprint, buffer);
         }
     }
 

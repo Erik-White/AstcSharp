@@ -6,11 +6,11 @@ namespace AstcSharp.BlockDecoding;
 /// <summary>
 /// <see cref="IBlockPipeline{T}"/> implementation for the LDR (byte RGBA) decode profile
 /// (ASTC spec §C.2.5 "LDR Mode"). HDR-mode blocks are reserved in the LDR profile per §C.2.25
-/// and produce the error colour (magenta) per §C.2.19, §C.2.24. <typeparamref name="TExpand"/>
-/// selects linear vs sRGB channel expansion (ASTC spec §C.2.19).
+/// and produce the error colour (magenta) per §C.2.19, §C.2.24. <typeparamref name="TMode"/>
+/// selects linear vs sRGB decode (ASTC spec §C.2.19).
 /// </summary>
-internal readonly struct LdrPipeline<TExpand> : IBlockPipeline<byte>
-    where TExpand : struct, IChannelExpand
+internal readonly struct LdrPipeline<TMode> : IBlockPipeline<byte>
+    where TMode : struct, ILdrColorMode
 {
     /// <inheritdoc />
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -42,17 +42,17 @@ internal readonly struct LdrPipeline<TExpand> : IBlockPipeline<byte>
     /// <inheritdoc />
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void FusedToImage(UInt128 blockBits, in BlockInfo info, Footprint footprint, int dstBaseX, int dstBaseY, int imageWidth, Span<byte> imageBuffer)
-        => FusedLdrBlockDecoder.DecompressBlockFusedLdrToImage<TExpand>(blockBits, in info, footprint, dstBaseX, dstBaseY, imageWidth, imageBuffer);
+        => FusedLdrBlockDecoder.DecompressBlockFusedLdrToImage<TMode>(blockBits, in info, footprint, dstBaseX, dstBaseY, imageWidth, imageBuffer);
 
     /// <inheritdoc />
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void FusedToScratch(UInt128 blockBits, in BlockInfo info, Footprint footprint, Span<byte> decodedPixels)
-        => FusedLdrBlockDecoder.DecompressBlockFusedLdr<TExpand>(blockBits, in info, footprint, decodedPixels);
+        => FusedLdrBlockDecoder.DecompressBlockFusedLdr<TMode>(blockBits, in info, footprint, decodedPixels);
 
     /// <inheritdoc />
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void LogicalWrite(UInt128 blockBits, in BlockInfo info, Footprint footprint, Span<byte> decodedPixels)
-        => LogicalBlock.DecodeToBytes<TExpand>(blockBits, in info, footprint, decodedPixels);
+        => LogicalBlock.DecodeToBytes<TMode>(blockBits, in info, footprint, decodedPixels);
 
     /// <summary>
     /// Spec §C.2.19 error colour: opaque magenta <c>(0xFF, 0x00, 0xFF, 0xFF)</c> as UNORM8 RGBA.

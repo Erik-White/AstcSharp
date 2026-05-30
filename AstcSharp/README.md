@@ -88,7 +88,7 @@ This decoder emits magenta for both cases. ARM `astcenc` differs in two ways: it
 
 ### LDR UNORM8 reduction takes the top 8 bits
 
-Per spec §C.2.19 (Weight Application), the LDR-mode UNORM8 output for each channel is the **top 8 bits** of the UNORM16 interpolation result `C = floor((C0*(64-i) + C1*i + 32)/64)` — i.e. `byte = (C >> 8) & 0xFF`, not a "fair" UNORM16→UNORM8 round like `((C * 255) + 32767) / 65536`. The two formulas differ by 1 LSB at many `C` values, so the spec-mandated truncation is what `SimdHelpers.InterpolateChannelScalar` and `Interpolate4ChannelPixels` use. This mirrors ARM's `astcenc` (`lerp_color_int` in `astcenc_decompress_symbolic.cpp`). The comparison tests in `AstcSharp.Reference.Tests` check agreement within the ±1 UNORM8 tolerance the ASTC spec permits for rounding differences, not exact equality.
+Per spec §C.2.19 (Weight Application), the LDR-mode UNORM8 output for each channel is the **top 8 bits** of the UNORM16 interpolation result `C = floor((C0*(64-i) + C1*i + 32)/64)` — i.e. `byte = (C >> 8) & 0xFF`, not a "fair" UNORM16→UNORM8 round like `((C * 255) + 32767) / 65536`. The two formulas differ by 1 LSB at many `C` values, so the spec-mandated truncation is what the `SimdHelpers` scalar and `Interpolate4ExpandedPixels` SIMD paths use. This mirrors ARM's `astcenc` (`lerp_color_int` in `astcenc_decompress_symbolic.cpp`). The comparison tests in `AstcSharp.Reference.Tests` check agreement within the ±1 UNORM8 tolerance the ASTC spec permits for rounding differences, not exact equality.
 
 ### sRGB decode mode
 
