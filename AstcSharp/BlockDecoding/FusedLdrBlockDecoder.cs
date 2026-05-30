@@ -81,8 +81,8 @@ internal static class FusedLdrBlockDecoder
         in ColorEndpointPair endpointPair,
         Span<int> texelWeights)
     {
-        int lowR = endpointPair.LdrLow.R, lowG = endpointPair.LdrLow.G, lowB = endpointPair.LdrLow.B, lowA = endpointPair.LdrLow.A;
-        int highR = endpointPair.LdrHigh.R, highG = endpointPair.LdrHigh.G, highB = endpointPair.LdrHigh.B, highA = endpointPair.LdrHigh.A;
+        (byte lowR, byte lowG, byte lowB, byte lowA) = endpointPair.LdrLow;
+        (byte highR, byte highG, byte highB, byte highA) = endpointPair.LdrHigh;
 
         int footprintWidth = footprint.Width;
         int footprintHeight = footprint.Height;

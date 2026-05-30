@@ -81,8 +81,8 @@ internal static class FusedHdrBlockDecoder
         in ColorEndpointPair endpointPair,
         Span<int> texelWeights)
     {
-        int lowR = endpointPair.LdrLow.R, lowG = endpointPair.LdrLow.G, lowB = endpointPair.LdrLow.B, lowA = endpointPair.LdrLow.A;
-        int highR = endpointPair.LdrHigh.R, highG = endpointPair.LdrHigh.G, highB = endpointPair.LdrHigh.B, highA = endpointPair.LdrHigh.A;
+        (byte lowR, byte lowG, byte lowB, byte lowA) = endpointPair.LdrLow;
+        (byte highR, byte highG, byte highB, byte highA) = endpointPair.LdrHigh;
 
         int footprintWidth = footprint.Width;
         int footprintHeight = footprint.Height;
@@ -115,8 +115,8 @@ internal static class FusedHdrBlockDecoder
         Span<int> texelWeights)
     {
         bool alphaIsLdr = endpointPair.AlphaIsLdr;
-        int lowR = endpointPair.HdrLow.R, lowG = endpointPair.HdrLow.G, lowB = endpointPair.HdrLow.B, lowA = endpointPair.HdrLow.A;
-        int highR = endpointPair.HdrHigh.R, highG = endpointPair.HdrHigh.G, highB = endpointPair.HdrHigh.B, highA = endpointPair.HdrHigh.A;
+        (ushort lowR, ushort lowG, ushort lowB, ushort lowA) = endpointPair.HdrLow;
+        (ushort highR, ushort highG, ushort highB, ushort highA) = endpointPair.HdrHigh;
 
         int footprintWidth = footprint.Width;
         int footprintHeight = footprint.Height;
