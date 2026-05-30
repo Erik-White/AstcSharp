@@ -22,17 +22,31 @@ internal static class ReferenceDecoder
     /// Decompress ASTC blocks to RGBA8 (LDR) using the ARM reference decoder.
     /// </summary>
     public static byte[] DecompressLdr(ReadOnlySpan<byte> blocks, int w, int h, int blockX, int blockY)
+        => DecompressU8(AstcencProfile.AstcencPrfLdr, blocks, w, h, blockX, blockY);
+
+    /// <summary>
+    /// Decompress ASTC blocks to sRGB RGBA8 using the ARM reference decoder
+    /// (<see cref="AstcencProfile.AstcencPrfLdrSrgb"/>).
+    /// </summary>
+    public static byte[] DecompressLdrSrgb(ReadOnlySpan<byte> blocks, int w, int h, int blockX, int blockY)
+        => DecompressU8(AstcencProfile.AstcencPrfLdrSrgb, blocks, w, h, blockX, blockY);
+
+    /// <summary>
+    /// Decompress ASTC blocks to RGBA8 using the ARM reference decoder under the given
+    /// <paramref name="profile"/>.
+    /// </summary>
+    private static byte[] DecompressU8(AstcencProfile profile, ReadOnlySpan<byte> blocks, int w, int h, int blockX, int blockY)
     {
         var error = Astcenc.AstcencConfigInit(
-            AstcencProfile.AstcencPrfLdr,
+            profile,
             (uint)blockX, (uint)blockY, 1,
             Astcenc.AstcencPreFastest,
             AstcencFlags.DecompressOnly,
             out var config);
-        ThrowOnError(error, "ConfigInit(LDR)");
+        ThrowOnError(error, $"ConfigInit({profile})");
 
         error = Astcenc.AstcencContextAlloc(ref config, 1, out var context);
-        ThrowOnError(error, "ContextAlloc(LDR)");
+        ThrowOnError(error, $"ContextAlloc({profile})");
 
         try
         {
@@ -51,50 +65,7 @@ internal static class ReferenceDecoder
             // We need a mutable copy of blocks for the Span<byte> parameter
             var blocksCopy = blocks.ToArray();
             error = Astcenc.AstcencDecompressImage(context, blocksCopy, ref image, IdentitySwizzle, 0);
-            ThrowOnError(error, "DecompressImage(LDR)");
-
-            return outputBytes;
-        }
-        finally
-        {
-            Astcenc.AstcencContextFree(context);
-        }
-    }
-
-    /// <summary>
-    /// Decompress ASTC blocks to sRGB RGBA8 using the ARM reference decoder
-    /// (<see cref="AstcencProfile.AstcencPrfLdrSrgb"/>).
-    /// </summary>
-    public static byte[] DecompressLdrSrgb(ReadOnlySpan<byte> blocks, int w, int h, int blockX, int blockY)
-    {
-        var error = Astcenc.AstcencConfigInit(
-            AstcencProfile.AstcencPrfLdrSrgb,
-            (uint)blockX, (uint)blockY, 1,
-            Astcenc.AstcencPreFastest,
-            AstcencFlags.DecompressOnly,
-            out var config);
-        ThrowOnError(error, "ConfigInit(LDR sRGB)");
-
-        error = Astcenc.AstcencContextAlloc(ref config, 1, out var context);
-        ThrowOnError(error, "ContextAlloc(LDR sRGB)");
-
-        try
-        {
-            int pixelCount = w * h;
-            var outputBytes = new byte[pixelCount * 4]; // RGBA8
-
-            var image = new AstcencImage
-            {
-                dimX = (uint)w,
-                dimY = (uint)h,
-                dimZ = 1,
-                dataType = AstcencType.AstcencTypeU8,
-                data = outputBytes,
-            };
-
-            var blocksCopy = blocks.ToArray();
-            error = Astcenc.AstcencDecompressImage(context, blocksCopy, ref image, IdentitySwizzle, 0);
-            ThrowOnError(error, "DecompressImage(LDR sRGB)");
+            ThrowOnError(error, $"DecompressImage({profile})");
 
             return outputBytes;
         }
