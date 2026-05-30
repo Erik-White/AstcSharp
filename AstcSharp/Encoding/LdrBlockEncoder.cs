@@ -124,7 +124,7 @@ internal static class LdrBlockEncoder
     /// the footprint (decimation, spec §C.2.18) is what makes footprints larger than 64 texels
     /// encodable and lets large blocks spend more bits per weight.
     /// </summary>
-    public static UInt128 EncodeSinglePartition(ReadOnlySpan<RgbaColor> texels, Footprint footprint, out long bestErrorOut)
+    private static UInt128 EncodeSinglePartition(ReadOnlySpan<RgbaColor> texels, Footprint footprint, out long bestErrorOut)
     {
         (RgbaColor low, RgbaColor high) = FitEndpoints(texels);
 
@@ -638,7 +638,7 @@ internal static class LdrBlockEncoder
         bestErrorOut = long.MaxValue;
         UInt128 bestBlock = default;
 
-        Span<int> seedErrors = stackalloc int[SeedFinalists];
+        Span<long> seedErrors = stackalloc long[SeedFinalists];
         Span<int> seedFinalists = stackalloc int[SeedFinalists];
 
         // The shared RGBA-direct mode caps the partition count at two to stay within the 18-value
@@ -670,9 +670,9 @@ internal static class LdrBlockEncoder
     /// skipped — an empty subset wastes endpoint budget.
     /// </summary>
     private static int SelectSeedFinalists(
-        ReadOnlySpan<RgbaColor> texels, Footprint footprint, int partitionCount, Span<int> finalists, Span<int> finalistErrors)
+        ReadOnlySpan<RgbaColor> texels, Footprint footprint, int partitionCount, Span<int> finalists, Span<long> finalistErrors)
     {
-        finalistErrors.Fill(int.MaxValue);
+        finalistErrors.Fill(long.MaxValue);
         int count = 0;
 
         for (int seed = 0; seed < PartitionSeedCount; seed++)
@@ -685,18 +685,17 @@ internal static class LdrBlockEncoder
             }
 
             // Insert into the small sorted finalist list if it beats the current worst.
-            int worst = (int)Math.Min(error, int.MaxValue);
-            if (worst < finalistErrors[SeedFinalists - 1])
+            if (error < finalistErrors[SeedFinalists - 1])
             {
                 int pos = SeedFinalists - 1;
-                while (pos > 0 && finalistErrors[pos - 1] > worst)
+                while (pos > 0 && finalistErrors[pos - 1] > error)
                 {
                     finalistErrors[pos] = finalistErrors[pos - 1];
                     finalists[pos] = finalists[pos - 1];
                     pos--;
                 }
 
-                finalistErrors[pos] = worst;
+                finalistErrors[pos] = error;
                 finalists[pos] = seed;
                 count = Math.Min(count + 1, SeedFinalists);
             }
@@ -718,16 +717,23 @@ internal static class LdrBlockEncoder
             return -1;
         }
 
+        // Expand each subset's endpoints to int channels once, rather than per texel.
+        Span<int> low = stackalloc int[ChannelCount * MaxPartitions];
+        Span<int> high = stackalloc int[ChannelCount * MaxPartitions];
+        for (int p = 0; p < partitionCount; p++)
+        {
+            StoreChannels(subsetLow[p], low.Slice(p * ChannelCount, ChannelCount));
+            StoreChannels(subsetHigh[p], high.Slice(p * ChannelCount, ChannelCount));
+        }
+
         long error = 0;
-        Span<int> low = stackalloc int[ChannelCount];
-        Span<int> high = stackalloc int[ChannelCount];
         for (int t = 0; t < texels.Length; t++)
         {
             int p = assignment[t];
-            StoreChannels(subsetLow[p], low);
-            StoreChannels(subsetHigh[p], high);
-            int weight = ProjectWeight(texels[t], low, high);
-            error += ReconstructionError(texels[t], low, high, weight);
+            Span<int> pLow = low.Slice(p * ChannelCount, ChannelCount);
+            Span<int> pHigh = high.Slice(p * ChannelCount, ChannelCount);
+            int weight = ProjectWeight(texels[t], pLow, pHigh);
+            error += ReconstructionError(texels[t], pLow, pHigh, weight);
         }
 
         return error;
