@@ -133,13 +133,14 @@ internal struct BitStream
     private void ShiftBuffer(int count)
     {
         // C# masks shift amounts to the width of the operand, so `ulong << 64` and `ulong >> 64`
-        // are identity, not zero. Special-case count == 0 and count >= 128 to avoid polluting
-        // the low/high halves on boundary shifts.
+        // are identity, not zero. Reading zero bits is a no-op; count >= 128 is special-cased
+        // below to avoid polluting the low/high halves on boundary shifts.
         if (count == 0)
         {
-            // Reading zero bits is a no-op.
+            return;
         }
-        else if (count < 64)
+
+        if (count < 64)
         {
             this.low = (this.low >> count) | (this.high << (64 - count));
             this.high >>= count;
