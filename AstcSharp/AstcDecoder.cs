@@ -29,7 +29,7 @@ public static class AstcDecoder
     /// <param name="footprint">The ASTC block footprint (e.g., 4x4, 5x5)</param>
     /// <returns>
     /// Array of bytes in RGBA32 format (width * height * 4 bytes total), or an empty span if the
-    /// input is structurally invalid. Individual malformed blocks are skipped and leave zeros in the output.
+    /// input is structurally invalid. Individual malformed blocks produce the error colour (magenta) in the output.
     /// </returns>
     /// <param name="mode">LDR decode mode — linear (default) or sRGB endpoint expansion.</param>
     public static Span<byte> DecompressImage(ReadOnlySpan<byte> astcData, int width, int height, Footprint footprint, LdrDecodeMode mode = LdrDecodeMode.Linear)
@@ -58,7 +58,7 @@ public static class AstcDecoder
     /// <param name="imageBuffer">Output buffer. Must be at least width * height * 4 bytes.</param>
     /// <returns>
     /// True if the input was structurally valid and decoding ran, false if it was rejected
-    /// up front. Individual malformed blocks are skipped and leave zeros in the output.
+    /// up front. Individual malformed blocks produce the error colour (magenta) in the output.
     /// </returns>
     /// <param name="mode">LDR decode mode — linear (default) or sRGB endpoint expansion.</param>
     public static bool DecompressImage(ReadOnlySpan<byte> astcData, int width, int height, Footprint footprint, Span<byte> imageBuffer, LdrDecodeMode mode = LdrDecodeMode.Linear)
@@ -349,7 +349,7 @@ public static class AstcDecoder
     /// <param name="imageBuffer">Output buffer. Must be at least width * height * 4 floats.</param>
     /// <returns>
     /// True if the input was structurally valid and decoding ran, false if it was rejected
-    /// up front. Individual malformed blocks are skipped and leave zeros in the output.
+    /// up front. Individual malformed blocks produce the error colour (magenta) in the output.
     /// </returns>
     public static bool DecompressHdrImage(ReadOnlySpan<byte> astcData, int width, int height, Footprint footprint, Span<float> imageBuffer)
     {
@@ -512,7 +512,7 @@ public static class AstcDecoder
     /// <param name="imageBuffer">Output buffer. Must be at least width * height * 4 elements.</param>
     /// <returns>
     /// True if the input was structurally valid and decoding ran, false if it was rejected
-    /// up front. Individual malformed blocks are skipped and leave zeros in the output.
+    /// up front. Individual malformed blocks produce the error colour (magenta) in the output.
     /// </returns>
     public static bool DecompressHdrImageHalf(ReadOnlySpan<byte> astcData, int width, int height, Footprint footprint, Span<Half> imageBuffer)
     {
