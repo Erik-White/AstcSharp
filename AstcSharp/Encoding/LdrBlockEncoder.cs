@@ -7,12 +7,13 @@ using AstcSharp.Core;
 namespace AstcSharp.Encoding;
 
 /// <summary>
-/// Encodes a single-partition LDR block using the RGBA-direct colour endpoint mode (CEM 12, spec
-/// §C.2.14). Endpoints are fitted to the principal axis of the block's texels; per-texel weights
-/// are each texel's projection onto the endpoint line. A weight grid (possibly decimated below the
-/// footprint size, spec §C.2.18) is fitted to those weights. The grid size, weight range, and
-/// colour range are chosen by searching the configurations that fit the 128-bit budget and keeping
-/// the one with the lowest reconstruction error.
+/// Encodes an LDR block, trying a single-partition encoding and (for large enough footprints)
+/// multi-partition encodings (spec §C.2.21), keeping whichever reconstructs the block best. Within
+/// each partition, endpoints are fitted to the principal axis of that subset's texels and every
+/// texel's weight is its projection onto its subset's endpoint line. A weight grid (possibly
+/// decimated below the footprint size, spec §C.2.18) is fitted to those weights. The endpoint mode,
+/// grid size, weight range, and colour range are chosen by searching the configurations that fit
+/// the 128-bit budget and keeping the one with the lowest reconstruction error.
 /// </summary>
 internal static class LdrBlockEncoder
 {
@@ -133,87 +134,38 @@ internal static class LdrBlockEncoder
         Span<int> bestGridWeights = stackalloc int[MaxGridWeights];
         Span<int> candidateGridWeights = stackalloc int[MaxGridWeights];
 
-        // Per-config scratch, allocated once and reused across every configuration tried below so
-        // the search loop does not grow the stack per iteration. Each buffer is fully written
-        // before use in EvaluateConfig.
+        // Per-config scratch, allocated once on this frame and reused across every configuration
+        // tried below so the search loop does not grow the stack per iteration. Sized for up to
+        // MaxPartitions partitions; single-partition uses only the first slot.
         var scratch = new ConfigScratch(
-            effectiveLow: stackalloc int[ChannelCount],
-            effectiveHigh: stackalloc int[ChannelCount],
+            effectiveLow: stackalloc int[ChannelCount * MaxPartitions],
+            effectiveHigh: stackalloc int[ChannelCount * MaxPartitions],
             unquantizedColors: stackalloc int[MaxColorValueCount],
             idealWeights: stackalloc int[texelCount],
             fittedGrid: stackalloc double[MaxGridWeights],
             effectiveGrid: stackalloc int[MaxGridWeights],
             perTexelWeights: stackalloc int[texelCount]);
 
-        long bestError = long.MaxValue;
-        var best = default(BestConfig);
-
         // Cheaper endpoint modes (fewer colour values) leave more of the 128-bit budget for weight
-        // precision, so a mode that drops alpha or chroma can win on opaque or grey content. Try
-        // each candidate mode and keep the lowest-error legal configuration overall.
+        // precision, so a mode that drops alpha or chroma can win on opaque or grey content.
         Span<ColorEndpointMode> candidateModes = stackalloc ColorEndpointMode[MaxCandidateModes];
         int modeCount = SelectCandidateModes(texels, candidateModes);
 
-        int maxGridWidth = Math.Min(footprint.Width, MaxGridDim);
-        int maxGridHeight = Math.Min(footprint.Height, MaxGridDim);
+        // Single partition: one all-zero assignment, one endpoint pair.
+        ReadOnlySpan<int> assignment = Partition.GetSinglePartition(footprint).Assignment;
+        Span<RgbaColor> subsetLow = [low];
+        Span<RgbaColor> subsetHigh = [high];
 
-        for (int m = 0; m < modeCount; m++)
-        {
-            ColorEndpointMode mode = candidateModes[m];
-            int colorValueCount = mode.GetColorValuesCount();
-
-            for (int gridHeight = MinGridDim; gridHeight <= maxGridHeight; gridHeight++)
-            {
-                for (int gridWidth = MinGridDim; gridWidth <= maxGridWidth; gridWidth++)
-                {
-                    int gridWeightCount = gridWidth * gridHeight;
-                    if (gridWeightCount > MaxGridWeights)
-                    {
-                        continue;
-                    }
-
-                    foreach (int weightRange in WeightRangeCandidates)
-                    {
-                        if (!BlockModeEncoder.TryEncode(gridWidth, gridHeight, weightRange, isDualPlane: false, out _))
-                        {
-                            continue;
-                        }
-
-                        int weightBitCount = BoundedIntegerSequenceCodec.GetBitCountForRange(gridWeightCount, weightRange);
-                        if (weightBitCount is < MinWeightBits or > MaxWeightBits)
-                        {
-                            continue;
-                        }
-
-                        int maxColorBits = BlockBits - weightBitCount - ColorStartBit;
-                        if (!BlockModeDecoder.TryResolveColorEncoding(colorValueCount, maxColorBits, out int colorRange, out _))
-                        {
-                            continue;
-                        }
-
-                        long error = EvaluateConfig(
-                            texels, footprint, mode, low, high, gridWidth, gridHeight, gridWeightCount, weightRange, colorRange,
-                            candidateColorValues, candidateGridWeights, in scratch);
-
-                        if (error < bestError)
-                        {
-                            bestError = error;
-                            best = new BestConfig(mode, gridWidth, gridHeight, weightRange, colorRange, colorValueCount);
-                            candidateColorValues[..colorValueCount].CopyTo(bestColorValues);
-                            candidateGridWeights.CopyTo(bestGridWeights);
-                        }
-                    }
-                }
-            }
-        }
-
-        if (best.WeightRange == 0)
+        if (!SearchConfigs(
+                texels, footprint, assignment, partitionCount: 1, subsetLow, subsetHigh,
+                candidateModes[..modeCount], ColorStartBit, in scratch,
+                bestColorValues, bestGridWeights, candidateColorValues, candidateGridWeights,
+                out BestConfig best, out bestErrorOut))
         {
             throw new InvalidOperationException(
                 $"No legal single-partition encoding fits footprint {footprint.Width}x{footprint.Height}.");
         }
 
-        bestErrorOut = bestError;
         int bestGridCount = best.GridWidth * best.GridHeight;
         return Assemble(best, bestColorValues[..best.ColorValueCount], bestGridWeights[..bestGridCount]);
     }
@@ -281,20 +233,24 @@ internal static class LdrBlockEncoder
     }
 
     /// <summary>
-    /// Evaluates one (mode, grid, weight-range, colour-range) configuration: encodes the endpoints
-    /// for the mode and decodes them back through the real codec to get the effective endpoints,
-    /// projects the ideal per-texel weights, fits grid weights to them (the decimation inverse,
-    /// spec §C.2.18), quantises those, then reconstructs through the decoder's actual infill and
-    /// interpolation to measure the true reconstruction error. Fills <paramref name="colorValues"/>
-    /// (first <c>mode.GetColorValuesCount()</c> entries) and <paramref name="quantGridWeights"/>
-    /// (first <paramref name="gridWeightCount"/> entries).
+    /// Evaluates one (mode, grid, weight-range, colour-range) configuration for any partition count
+    /// (single-partition is the degenerate case of one all-zero <paramref name="assignment"/>):
+    /// encodes each partition's endpoints and decodes them back through the real codec to get the
+    /// effective endpoints, projects each texel's ideal weight onto its own partition's endpoint
+    /// line, fits grid weights to them (the decimation inverse, spec §C.2.18), quantises those, then
+    /// reconstructs through the decoder's actual infill and interpolation to measure the true error.
+    /// Fills <paramref name="colorValues"/> (first <c>mode.GetColorValuesCount() * partitionCount</c>
+    /// entries, concatenated per partition) and <paramref name="quantGridWeights"/> (first
+    /// <paramref name="gridWeightCount"/> entries).
     /// </summary>
     private static long EvaluateConfig(
         ReadOnlySpan<RgbaColor> texels,
         Footprint footprint,
+        ReadOnlySpan<int> assignment,
+        int partitionCount,
         ColorEndpointMode mode,
-        RgbaColor low,
-        RgbaColor high,
+        ReadOnlySpan<RgbaColor> subsetLow,
+        ReadOnlySpan<RgbaColor> subsetHigh,
         int gridWidth,
         int gridHeight,
         int gridWeightCount,
@@ -304,15 +260,28 @@ internal static class LdrBlockEncoder
         Span<int> quantGridWeights,
         in ConfigScratch scratch)
     {
+        // Encode every partition's endpoints into the concatenated colour-value stream and recover
+        // the effective per-partition endpoints from the real codec.
+        int valuesPerPartition = mode.GetColorValuesCount();
         Span<int> effectiveLow = scratch.EffectiveLow;
         Span<int> effectiveHigh = scratch.EffectiveHigh;
-        EncodeAndDecodeEndpoints(mode, low, high, colorRange, colorValues, scratch.UnquantizedColors, effectiveLow, effectiveHigh);
+        for (int p = 0; p < partitionCount; p++)
+        {
+            EncodeAndDecodeEndpoints(
+                mode, subsetLow[p], subsetHigh[p], colorRange,
+                colorValues.Slice(p * valuesPerPartition, valuesPerPartition),
+                scratch.UnquantizedColors,
+                effectiveLow.Slice(p * ChannelCount, ChannelCount),
+                effectiveHigh.Slice(p * ChannelCount, ChannelCount));
+        }
 
         int texelCount = footprint.PixelCount;
         Span<int> idealWeights = scratch.IdealWeights;
         for (int t = 0; t < texelCount; t++)
         {
-            idealWeights[t] = ProjectWeight(texels[t], effectiveLow, effectiveHigh);
+            int p = assignment[t];
+            idealWeights[t] = ProjectWeight(
+                texels[t], effectiveLow.Slice(p * ChannelCount, ChannelCount), effectiveHigh.Slice(p * ChannelCount, ChannelCount));
         }
 
         DecimationInfo decimation = DecimationTable.Get(footprint, gridWidth, gridHeight);
@@ -337,10 +306,100 @@ internal static class LdrBlockEncoder
         long error = 0;
         for (int t = 0; t < texelCount; t++)
         {
-            error += ReconstructionError(texels[t], effectiveLow, effectiveHigh, perTexelWeights[t]);
+            int p = assignment[t];
+            error += ReconstructionError(
+                texels[t], effectiveLow.Slice(p * ChannelCount, ChannelCount), effectiveHigh.Slice(p * ChannelCount, ChannelCount), perTexelWeights[t]);
         }
 
         return error;
+    }
+
+    /// <summary>
+    /// Searches grid sizes (footprint down to 2x2), weight ranges, and the candidate endpoint modes
+    /// for the configuration that reconstructs the block with the lowest error, for a fixed
+    /// partition assignment and per-partition endpoints. <paramref name="colorStartBit"/> is the
+    /// block layout's first colour-data bit (17 single-partition, 29 multi-partition), which sets
+    /// the colour bit budget. Writes the winning colour values and quantised grid weights into the
+    /// caller's buffers and returns the winning configuration, or false if nothing legal fits.
+    /// </summary>
+    private static bool SearchConfigs(
+        ReadOnlySpan<RgbaColor> texels,
+        Footprint footprint,
+        ReadOnlySpan<int> assignment,
+        int partitionCount,
+        ReadOnlySpan<RgbaColor> subsetLow,
+        ReadOnlySpan<RgbaColor> subsetHigh,
+        ReadOnlySpan<ColorEndpointMode> candidateModes,
+        int colorStartBit,
+        in ConfigScratch scratch,
+        Span<int> bestColorValues,
+        Span<int> bestGridWeights,
+        Span<int> candidateColorValues,
+        Span<int> candidateGridWeights,
+        out BestConfig best,
+        out long bestError)
+    {
+        bestError = long.MaxValue;
+        best = default;
+
+        int maxGridWidth = Math.Min(footprint.Width, MaxGridDim);
+        int maxGridHeight = Math.Min(footprint.Height, MaxGridDim);
+
+        foreach (ColorEndpointMode mode in candidateModes)
+        {
+            int colorValueCount = mode.GetColorValuesCount() * partitionCount;
+            if (colorValueCount > MaxColorValuesPerBlock)
+            {
+                continue;
+            }
+
+            for (int gridHeight = MinGridDim; gridHeight <= maxGridHeight; gridHeight++)
+            {
+                for (int gridWidth = MinGridDim; gridWidth <= maxGridWidth; gridWidth++)
+                {
+                    int gridWeightCount = gridWidth * gridHeight;
+                    if (gridWeightCount > MaxGridWeights)
+                    {
+                        continue;
+                    }
+
+                    foreach (int weightRange in WeightRangeCandidates)
+                    {
+                        if (!BlockModeEncoder.TryEncode(gridWidth, gridHeight, weightRange, isDualPlane: false, out _))
+                        {
+                            continue;
+                        }
+
+                        int weightBitCount = BoundedIntegerSequenceCodec.GetBitCountForRange(gridWeightCount, weightRange);
+                        if (weightBitCount is < MinWeightBits or > MaxWeightBits)
+                        {
+                            continue;
+                        }
+
+                        int maxColorBits = BlockBits - weightBitCount - colorStartBit;
+                        if (!BlockModeDecoder.TryResolveColorEncoding(colorValueCount, maxColorBits, out int colorRange, out _))
+                        {
+                            continue;
+                        }
+
+                        long error = EvaluateConfig(
+                            texels, footprint, assignment, partitionCount, mode, subsetLow, subsetHigh,
+                            gridWidth, gridHeight, gridWeightCount, weightRange, colorRange,
+                            candidateColorValues, candidateGridWeights, in scratch);
+
+                        if (error < bestError)
+                        {
+                            bestError = error;
+                            best = new BestConfig(mode, gridWidth, gridHeight, weightRange, colorRange, colorValueCount);
+                            candidateColorValues[..colorValueCount].CopyTo(bestColorValues);
+                            candidateGridWeights[..gridWeightCount].CopyTo(bestGridWeights);
+                        }
+                    }
+                }
+            }
+        }
+
+        return best.WeightRange != 0;
     }
 
     /// <summary>
@@ -664,9 +723,7 @@ internal static class LdrBlockEncoder
     {
         bestErrorOut = long.MaxValue;
         ReadOnlySpan<int> assignment = Partition.GetASTCPartition(footprint, partitionCount, seed).Assignment;
-        int texelCount = footprint.PixelCount;
 
-        // Per-subset fitted endpoints.
         Span<RgbaColor> subsetLow = stackalloc RgbaColor[MaxPartitions];
         Span<RgbaColor> subsetHigh = stackalloc RgbaColor[MaxPartitions];
         if (!FitSubsetEndpoints(texels, assignment, partitionCount, subsetLow, subsetHigh))
@@ -674,130 +731,38 @@ internal static class LdrBlockEncoder
             return default;
         }
 
-        // A shared RGBA-direct mode keeps the layout simple; colour values are the concatenation of
-        // every subset's encoded endpoint pair.
-        ColorEndpointMode mode = ColorEndpointMode.LdrRgbaDirect;
-        int valuesPerPartition = mode.GetColorValuesCount();
-        int colorValueCount = valuesPerPartition * partitionCount;
-
-        // Defence in depth: the decoder rejects any block over the 18-value colour budget
-        // (spec §C.2.11). The partition-count cap above already prevents this, but bail rather than
-        // emit an illegal block if that ever changes.
-        if (colorValueCount > MaxColorValuesPerBlock)
-        {
-            return default;
-        }
-
-        Span<int> idealWeights = stackalloc int[texelCount];
-        Span<int> perTexelWeights = stackalloc int[texelCount];
-        Span<int> effectiveLow = stackalloc int[ChannelCount * MaxPartitions];
-        Span<int> effectiveHigh = stackalloc int[ChannelCount * MaxPartitions];
-        Span<int> colorValues = stackalloc int[colorValueCount];
-        Span<int> candidateColorValues = stackalloc int[colorValueCount];
-        Span<int> unquantized = stackalloc int[valuesPerPartition];
-        Span<double> fittedGrid = stackalloc double[MaxGridWeights];
-        Span<int> quantGrid = stackalloc int[MaxGridWeights];
-        Span<int> effectiveGrid = stackalloc int[MaxGridWeights];
+        Span<int> bestColorValues = stackalloc int[MaxColorValueCount * MaxPartitions];
+        Span<int> candidateColorValues = stackalloc int[MaxColorValueCount * MaxPartitions];
         Span<int> bestGridWeights = stackalloc int[MaxGridWeights];
+        Span<int> candidateGridWeights = stackalloc int[MaxGridWeights];
 
-        int bestGridWidth = 0, bestGridHeight = 0, bestWeightRange = 0, bestColorRange = 0;
+        var scratch = new ConfigScratch(
+            effectiveLow: stackalloc int[ChannelCount * MaxPartitions],
+            effectiveHigh: stackalloc int[ChannelCount * MaxPartitions],
+            unquantizedColors: stackalloc int[MaxColorValueCount],
+            idealWeights: stackalloc int[footprint.PixelCount],
+            fittedGrid: stackalloc double[MaxGridWeights],
+            effectiveGrid: stackalloc int[MaxGridWeights],
+            perTexelWeights: stackalloc int[footprint.PixelCount]);
 
-        int maxGridWidth = Math.Min(footprint.Width, MaxGridDim);
-        int maxGridHeight = Math.Min(footprint.Height, MaxGridDim);
+        // A shared RGBA-direct mode keeps the multi-partition colour layout simple. The
+        // partition-count cap (MaxSharedRgbaPartitions) keeps the concatenated colour values within
+        // the 18-value budget; SearchConfigs also re-checks it as defence in depth.
+        Span<ColorEndpointMode> candidateModes = [ColorEndpointMode.LdrRgbaDirect];
 
-        for (int gridHeight = MinGridDim; gridHeight <= maxGridHeight; gridHeight++)
-        {
-            for (int gridWidth = MinGridDim; gridWidth <= maxGridWidth; gridWidth++)
-            {
-                int gridWeightCount = gridWidth * gridHeight;
-                if (gridWeightCount > MaxGridWeights)
-                {
-                    continue;
-                }
-
-                foreach (int weightRange in WeightRangeCandidates)
-                {
-                    if (!BlockModeEncoder.TryEncode(gridWidth, gridHeight, weightRange, isDualPlane: false, out _))
-                    {
-                        continue;
-                    }
-
-                    int weightBitCount = BoundedIntegerSequenceCodec.GetBitCountForRange(gridWeightCount, weightRange);
-                    if (weightBitCount is < MinWeightBits or > MaxWeightBits)
-                    {
-                        continue;
-                    }
-
-                    int maxColorBits = BlockBits - weightBitCount - MultiColorStartBit;
-                    if (!BlockModeDecoder.TryResolveColorEncoding(colorValueCount, maxColorBits, out int colorRange, out _))
-                    {
-                        continue;
-                    }
-
-                    // Encode every subset's endpoints into the concatenated colour-value stream and
-                    // recover the effective per-subset endpoints from the real codec.
-                    for (int p = 0; p < partitionCount; p++)
-                    {
-                        Span<int> slice = candidateColorValues.Slice(p * valuesPerPartition, valuesPerPartition);
-                        EncodeAndDecodeEndpoints(
-                            mode, subsetLow[p], subsetHigh[p], colorRange, slice, unquantized,
-                            effectiveLow.Slice(p * ChannelCount, ChannelCount),
-                            effectiveHigh.Slice(p * ChannelCount, ChannelCount));
-                    }
-
-                    // Ideal per-texel weight is the projection onto the texel's own subset line.
-                    for (int t = 0; t < texelCount; t++)
-                    {
-                        int p = assignment[t];
-                        idealWeights[t] = ProjectWeight(
-                            texels[t], effectiveLow.Slice(p * ChannelCount, ChannelCount), effectiveHigh.Slice(p * ChannelCount, ChannelCount));
-                    }
-
-                    DecimationInfo decimation = DecimationTable.Get(footprint, gridWidth, gridHeight);
-                    Span<double> fitGrid = fittedGrid[..gridWeightCount];
-                    DecimationFit.Fit(idealWeights, decimation, gridWeightCount, fitGrid);
-
-                    Span<int> effGrid = effectiveGrid[..gridWeightCount];
-                    for (int p = 0; p < gridWeightCount; p++)
-                    {
-                        int quant = Quantization.QuantizeWeightToRange(RoundWeight(fitGrid[p]), weightRange);
-                        quantGrid[p] = quant;
-                        effGrid[p] = Quantization.UnquantizeWeightFromRange(quant, weightRange);
-                    }
-
-                    DecimationTable.InfillWeights(effGrid, decimation, perTexelWeights);
-
-                    long error = 0;
-                    for (int t = 0; t < texelCount; t++)
-                    {
-                        int p = assignment[t];
-                        error += ReconstructionError(
-                            texels[t], effectiveLow.Slice(p * ChannelCount, ChannelCount), effectiveHigh.Slice(p * ChannelCount, ChannelCount), perTexelWeights[t]);
-                    }
-
-                    if (error < bestErrorOut)
-                    {
-                        bestErrorOut = error;
-                        bestGridWidth = gridWidth;
-                        bestGridHeight = gridHeight;
-                        bestWeightRange = weightRange;
-                        bestColorRange = colorRange;
-                        candidateColorValues.CopyTo(colorValues);
-                        quantGrid[..gridWeightCount].CopyTo(bestGridWeights);
-                    }
-                }
-            }
-        }
-
-        if (bestWeightRange == 0)
+        if (!SearchConfigs(
+                texels, footprint, assignment, partitionCount, subsetLow[..partitionCount], subsetHigh[..partitionCount],
+                candidateModes, MultiColorStartBit, in scratch,
+                bestColorValues, bestGridWeights, candidateColorValues, candidateGridWeights,
+                out BestConfig best, out bestErrorOut))
         {
             return default;
         }
 
-        int bestGridCount = bestGridWidth * bestGridHeight;
+        int bestGridCount = best.GridWidth * best.GridHeight;
         return AssembleMultiPartition(
-            partitionCount, seed, mode, bestGridWidth, bestGridHeight, bestWeightRange, bestColorRange,
-            colorValues, bestGridWeights[..bestGridCount]);
+            partitionCount, seed, best.Mode, best.GridWidth, best.GridHeight, best.WeightRange, best.ColorRange,
+            bestColorValues[..best.ColorValueCount], bestGridWeights[..bestGridCount]);
     }
 
     /// <summary>
