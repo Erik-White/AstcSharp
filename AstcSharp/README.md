@@ -1,6 +1,6 @@
 # ASTC decoder
 
-A managed C# decoder for [ASTC](https://registry.khronos.org/DataFormat/specs/1.3/dataformat.1.3.html#ASTC) (Adaptive Scalable Texture Compression) textures. Supports LDR and HDR content, all 14 two-dimensional block footprints from 4×4 to 12×12, and decodes to RGBA8 (LDR, `Span<byte>`) or RGBA float (HDR, `Span<float>`).
+A managed C# decoder for [ASTC](https://registry.khronos.org/DataFormat/specs/1.3/dataformat.1.3.html#ASTC) (Adaptive Scalable Texture Compression) textures. Supports LDR and HDR content, all 14 two-dimensional block footprints from 4×4 to 12×12, and decodes to RGBA8 (LDR, `Span<byte>`) or RGBA float / FP16 (HDR, `Span<float>` or `Span<Half>`).
 
 ## Format overview
 
