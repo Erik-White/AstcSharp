@@ -1,3 +1,5 @@
+using AstcSharp.BlockDecoding;
+using AstcSharp.ColorEncoding;
 using AstcSharp.Core;
 
 namespace AstcSharp.Tests;
@@ -50,6 +52,37 @@ public class LdrBlockEncoderTests
         // ~PSNR 28 dB: a single-line block should track the ramp closely, but weight quantisation
         // and the byte-rounded endpoints leave a small residual that grows with texel count.
         AssertMeanSquaredErrorAtMost(pixels, decoded, maxMeanSquaredError: 100.0, footprint);
+    }
+
+    [Fact]
+    public void Compress_GrayscaleOpaqueBlock_SelectsLuminanceMode()
+    {
+        // A grey, opaque block should be encoded with a luminance CEM (mode 0 or 1), which is
+        // cheaper than RGBA and frees budget for weight precision.
+        Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint6x6);
+        byte[] pixels = SingleChannelRamp(footprint.Width, footprint.Height);
+
+        byte[] encoded = AstcEncoder.CompressImage(pixels, footprint.Width, footprint.Height, footprint);
+        ColorEndpointMode mode = DecodeEndpointMode(encoded);
+
+        Assert.True(
+            mode is ColorEndpointMode.LdrLumaDirect or ColorEndpointMode.LdrLumaBaseOffset,
+            $"expected a luminance mode for grey content, got {mode}");
+    }
+
+    [Fact]
+    public void Compress_OpaqueColorBlock_SelectsRgbMode()
+    {
+        // An opaque, chromatic block should use an RGB CEM (mode 8 or 9), dropping alpha.
+        Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint6x6);
+        byte[] pixels = SingleColorLineRamp(footprint.Width, footprint.Height);
+
+        byte[] encoded = AstcEncoder.CompressImage(pixels, footprint.Width, footprint.Height, footprint);
+        ColorEndpointMode mode = DecodeEndpointMode(encoded);
+
+        Assert.True(
+            mode is ColorEndpointMode.LdrRgbDirect or ColorEndpointMode.LdrRgbBaseOffset,
+            $"expected an RGB mode for opaque colour content, got {mode}");
     }
 
     [Theory]
@@ -119,6 +152,33 @@ public class LdrBlockEncoderTests
         }
 
         return pixels;
+    }
+
+    // A grayscale ramp (R=G=B varying, opaque) — single-channel content for the luminance modes.
+    private static byte[] SingleChannelRamp(int width, int height)
+    {
+        byte[] pixels = new byte[width * height * 4];
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                int idx = ((y * width) + x) * 4;
+                byte v = (byte)(255 * (x + y) / (width + height - 2));
+                pixels[idx] = v; pixels[idx + 1] = v; pixels[idx + 2] = v; pixels[idx + 3] = 255;
+            }
+        }
+
+        return pixels;
+    }
+
+    /// <summary>
+    /// Decodes the colour endpoint mode of the first block of an encoded single-block image.
+    /// </summary>
+    private static ColorEndpointMode DecodeEndpointMode(byte[] encoded)
+    {
+        UInt128 bits = System.Buffers.Binary.BinaryPrimitives.ReadUInt128LittleEndian(encoded.AsSpan(0, 16));
+        BlockInfo info = BlockModeDecoder.Decode(bits);
+        return info.GetEndpointMode(0);
     }
 
     private static byte[] SolidImage(int width, int height, byte r, byte g, byte b, byte a)

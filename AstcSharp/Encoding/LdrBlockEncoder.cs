@@ -22,8 +22,13 @@ internal static class LdrBlockEncoder
     // RGBA channels per texel.
     private const int ChannelCount = 4;
 
-    private const ColorEndpointMode Mode = ColorEndpointMode.LdrRgbaDirect;
-    private const int ColorValueCount = 8; // r0,r1,g0,g1,b0,b1,a0,a1
+    // The widest single-partition colour value count (RGBA modes: r0,r1,g0,g1,b0,b1,a0,a1),
+    // used to size the colour-value scratch buffers.
+    private const int MaxColorValueCount = 8;
+
+    // Upper bound on candidate endpoint modes tried per block (luma, RGB, RGBA — each direct +
+    // base+offset). Sizes the candidate-mode scratch span.
+    private const int MaxCandidateModes = 6;
 
     // Block-mode layout for a single-partition block (spec §C.2.10): the 11-bit block mode, then
     // the 2-bit partition-count field, the colour endpoint mode, and the colour data.
@@ -74,8 +79,8 @@ internal static class LdrBlockEncoder
         (RgbaColor low, RgbaColor high) = FitEndpoints(texels);
 
         int texelCount = footprint.PixelCount;
-        Span<int> bestColorValues = stackalloc int[ColorValueCount];
-        Span<int> candidateColorValues = stackalloc int[ColorValueCount];
+        Span<int> bestColorValues = stackalloc int[MaxColorValueCount];
+        Span<int> candidateColorValues = stackalloc int[MaxColorValueCount];
         Span<int> bestGridWeights = stackalloc int[MaxGridWeights];
         Span<int> candidateGridWeights = stackalloc int[MaxGridWeights];
 
@@ -85,72 +90,123 @@ internal static class LdrBlockEncoder
         var scratch = new ConfigScratch(
             effectiveLow: stackalloc int[ChannelCount],
             effectiveHigh: stackalloc int[ChannelCount],
+            unquantizedColors: stackalloc int[MaxColorValueCount],
             idealWeights: stackalloc int[texelCount],
             fittedGrid: stackalloc double[MaxGridWeights],
             effectiveGrid: stackalloc int[MaxGridWeights],
             perTexelWeights: stackalloc int[texelCount]);
 
         long bestError = long.MaxValue;
-        int bestGridWidth = 0, bestGridHeight = 0, bestWeightRange = 0, bestColorRange = 0;
+        var best = default(BestConfig);
+
+        // Cheaper endpoint modes (fewer colour values) leave more of the 128-bit budget for weight
+        // precision, so a mode that drops alpha or chroma can win on opaque or grey content. Try
+        // each candidate mode and keep the lowest-error legal configuration overall.
+        Span<ColorEndpointMode> candidateModes = stackalloc ColorEndpointMode[MaxCandidateModes];
+        int modeCount = SelectCandidateModes(texels, candidateModes);
 
         int maxGridWidth = Math.Min(footprint.Width, MaxGridDim);
         int maxGridHeight = Math.Min(footprint.Height, MaxGridDim);
 
-        for (int gridHeight = MinGridDim; gridHeight <= maxGridHeight; gridHeight++)
+        for (int m = 0; m < modeCount; m++)
         {
-            for (int gridWidth = MinGridDim; gridWidth <= maxGridWidth; gridWidth++)
+            ColorEndpointMode mode = candidateModes[m];
+            int colorValueCount = mode.GetColorValuesCount();
+
+            for (int gridHeight = MinGridDim; gridHeight <= maxGridHeight; gridHeight++)
             {
-                int gridWeightCount = gridWidth * gridHeight;
-                if (gridWeightCount > MaxGridWeights)
+                for (int gridWidth = MinGridDim; gridWidth <= maxGridWidth; gridWidth++)
                 {
-                    continue;
-                }
-
-                foreach (int weightRange in WeightRangeCandidates)
-                {
-                    if (!BlockModeEncoder.TryEncode(gridWidth, gridHeight, weightRange, isDualPlane: false, out _))
+                    int gridWeightCount = gridWidth * gridHeight;
+                    if (gridWeightCount > MaxGridWeights)
                     {
                         continue;
                     }
 
-                    int weightBitCount = BoundedIntegerSequenceCodec.GetBitCountForRange(gridWeightCount, weightRange);
-                    if (weightBitCount is < MinWeightBits or > MaxWeightBits)
+                    foreach (int weightRange in WeightRangeCandidates)
                     {
-                        continue;
-                    }
+                        if (!BlockModeEncoder.TryEncode(gridWidth, gridHeight, weightRange, isDualPlane: false, out _))
+                        {
+                            continue;
+                        }
 
-                    int maxColorBits = BlockBits - weightBitCount - ColorStartBit;
-                    if (!BlockModeDecoder.TryResolveColorEncoding(ColorValueCount, maxColorBits, out int colorRange, out _))
-                    {
-                        continue;
-                    }
+                        int weightBitCount = BoundedIntegerSequenceCodec.GetBitCountForRange(gridWeightCount, weightRange);
+                        if (weightBitCount is < MinWeightBits or > MaxWeightBits)
+                        {
+                            continue;
+                        }
 
-                    long error = EvaluateConfig(
-                        texels, footprint, low, high, gridWidth, gridHeight, gridWeightCount, weightRange, colorRange,
-                        candidateColorValues, candidateGridWeights, in scratch);
+                        int maxColorBits = BlockBits - weightBitCount - ColorStartBit;
+                        if (!BlockModeDecoder.TryResolveColorEncoding(colorValueCount, maxColorBits, out int colorRange, out _))
+                        {
+                            continue;
+                        }
 
-                    if (error < bestError)
-                    {
-                        bestError = error;
-                        bestGridWidth = gridWidth;
-                        bestGridHeight = gridHeight;
-                        bestWeightRange = weightRange;
-                        bestColorRange = colorRange;
-                        candidateColorValues.CopyTo(bestColorValues);
-                        candidateGridWeights.CopyTo(bestGridWeights);
+                        long error = EvaluateConfig(
+                            texels, footprint, mode, low, high, gridWidth, gridHeight, gridWeightCount, weightRange, colorRange,
+                            candidateColorValues, candidateGridWeights, in scratch);
+
+                        if (error < bestError)
+                        {
+                            bestError = error;
+                            best = new BestConfig(mode, gridWidth, gridHeight, weightRange, colorRange, colorValueCount);
+                            candidateColorValues[..colorValueCount].CopyTo(bestColorValues);
+                            candidateGridWeights.CopyTo(bestGridWeights);
+                        }
                     }
                 }
             }
         }
 
-        if (bestWeightRange == 0)
+        if (best.WeightRange == 0)
         {
             throw new InvalidOperationException(
                 $"No legal single-partition encoding fits footprint {footprint.Width}x{footprint.Height}.");
         }
 
-        int bestGridCount = bestGridWidth * bestGridHeight;
-        return Assemble(bestGridWidth, bestGridHeight, bestWeightRange, bestColorRange, bestColorValues, bestGridWeights[..bestGridCount]);
+        int bestGridCount = best.GridWidth * best.GridHeight;
+        return Assemble(best, bestColorValues[..best.ColorValueCount], bestGridWeights[..bestGridCount]);
+    }
+
+    /// <summary>
+    /// The winning configuration of the per-block search.
+    /// </summary>
+    private readonly record struct BestConfig(
+        ColorEndpointMode Mode, int GridWidth, int GridHeight, int WeightRange, int ColorRange, int ColorValueCount);
+
+    /// <summary>
+    /// Picks the colour endpoint modes worth trying for a block, cheapest-content-fit first.
+    /// Grey blocks add the luminance modes (2 values); opaque blocks add the RGB modes (no alpha);
+    /// blocks with varying alpha or chroma fall back to the full RGBA modes. Each "direct" mode is
+    /// paired with its "base+offset" sibling, which can spend fewer bits when the endpoints are close.
+    /// </summary>
+    private static int SelectCandidateModes(ReadOnlySpan<RgbaColor> texels, Span<ColorEndpointMode> modes)
+    {
+        bool opaque = true;
+        bool grey = true;
+        foreach (RgbaColor texel in texels)
+        {
+            opaque &= texel.A == MaxChannel;
+            grey &= texel.R == texel.G && texel.G == texel.B;
+        }
+
+        int count = 0;
+        if (grey && opaque)
+        {
+            modes[count++] = ColorEndpointMode.LdrLumaDirect;
+            modes[count++] = ColorEndpointMode.LdrLumaBaseOffset;
+        }
+
+        if (opaque)
+        {
+            modes[count++] = ColorEndpointMode.LdrRgbDirect;
+            modes[count++] = ColorEndpointMode.LdrRgbBaseOffset;
+        }
+
+        // The full RGBA modes always apply and are the only legal choice when alpha varies.
+        modes[count++] = ColorEndpointMode.LdrRgbaDirect;
+        modes[count++] = ColorEndpointMode.LdrRgbaBaseOffset;
+        return count;
     }
 
     /// <summary>
@@ -159,6 +215,7 @@ internal static class LdrBlockEncoder
     private readonly ref struct ConfigScratch(
         Span<int> effectiveLow,
         Span<int> effectiveHigh,
+        Span<int> unquantizedColors,
         Span<int> idealWeights,
         Span<double> fittedGrid,
         Span<int> effectiveGrid,
@@ -166,6 +223,7 @@ internal static class LdrBlockEncoder
     {
         public Span<int> EffectiveLow { get; } = effectiveLow;
         public Span<int> EffectiveHigh { get; } = effectiveHigh;
+        public Span<int> UnquantizedColors { get; } = unquantizedColors;
         public Span<int> IdealWeights { get; } = idealWeights;
         public Span<double> FittedGrid { get; } = fittedGrid;
         public Span<int> EffectiveGrid { get; } = effectiveGrid;
@@ -173,15 +231,18 @@ internal static class LdrBlockEncoder
     }
 
     /// <summary>
-    /// Evaluates one (grid, weight-range, colour-range) configuration: quantises endpoints,
+    /// Evaluates one (mode, grid, weight-range, colour-range) configuration: encodes the endpoints
+    /// for the mode and decodes them back through the real codec to get the effective endpoints,
     /// projects the ideal per-texel weights, fits grid weights to them (the decimation inverse,
     /// spec §C.2.18), quantises those, then reconstructs through the decoder's actual infill and
     /// interpolation to measure the true reconstruction error. Fills <paramref name="colorValues"/>
-    /// and <paramref name="quantGridWeights"/> (first <paramref name="gridWeightCount"/> entries).
+    /// (first <c>mode.GetColorValuesCount()</c> entries) and <paramref name="quantGridWeights"/>
+    /// (first <paramref name="gridWeightCount"/> entries).
     /// </summary>
     private static long EvaluateConfig(
         ReadOnlySpan<RgbaColor> texels,
         Footprint footprint,
+        ColorEndpointMode mode,
         RgbaColor low,
         RgbaColor high,
         int gridWidth,
@@ -195,7 +256,7 @@ internal static class LdrBlockEncoder
     {
         Span<int> effectiveLow = scratch.EffectiveLow;
         Span<int> effectiveHigh = scratch.EffectiveHigh;
-        QuantizeEndpoints(low, high, colorRange, colorValues, effectiveLow, effectiveHigh);
+        EncodeAndDecodeEndpoints(mode, low, high, colorRange, colorValues, scratch.UnquantizedColors, effectiveLow, effectiveHigh);
 
         int texelCount = footprint.PixelCount;
         Span<int> idealWeights = scratch.IdealWeights;
@@ -233,31 +294,43 @@ internal static class LdrBlockEncoder
     }
 
     /// <summary>
-    /// Stores RGBA-direct colour values for the bounding box: interleaved (low, high) per channel
-    /// (spec §C.2.14 mode 12). Because each low channel is &lt;= its high channel and quantisation
-    /// is monotonic, the decoder's "blue contract" swap (triggered when the high triple is dimmer)
-    /// never fires, so this is the exact inverse of the decode path.
+    /// Encodes the endpoint pair for <paramref name="mode"/> into <paramref name="colorValues"/>,
+    /// then decodes those values back through the real <see cref="EndpointCodec"/> to recover the
+    /// effective endpoints the decoder will interpolate. Routing the measurement through the actual
+    /// decode path means any imperfection in an endpoint encoding only shows up as higher error
+    /// (the mode loses the search) and can never produce an illegal block.
     /// </summary>
-    private static void QuantizeEndpoints(
-        RgbaColor boxLow,
-        RgbaColor boxHigh,
+    private static void EncodeAndDecodeEndpoints(
+        ColorEndpointMode mode,
+        RgbaColor low,
+        RgbaColor high,
         int colorRange,
         Span<int> colorValues,
+        Span<int> unquantizedScratch,
         Span<int> effectiveLow,
         Span<int> effectiveHigh)
     {
-        ReadOnlySpan<byte> low = [boxLow.R, boxLow.G, boxLow.B, boxLow.A];
-        ReadOnlySpan<byte> high = [boxHigh.R, boxHigh.G, boxHigh.B, boxHigh.A];
+        int colorValueCount = mode.GetColorValuesCount();
+        Span<int> values = colorValues[..colorValueCount];
+        EndpointEncoder.Encode(mode, low, high, colorRange, values);
 
-        for (int channel = 0; channel < ChannelCount; channel++)
-        {
-            int quantLow = Quantization.QuantizeCEValueToRange(low[channel], colorRange);
-            int quantHigh = Quantization.QuantizeCEValueToRange(high[channel], colorRange);
-            colorValues[channel * 2] = quantLow;
-            colorValues[(channel * 2) + 1] = quantHigh;
-            effectiveLow[channel] = Quantization.UnquantizeCEValueFromRange(quantLow, colorRange);
-            effectiveHigh[channel] = Quantization.UnquantizeCEValueFromRange(quantHigh, colorRange);
-        }
+        // Unquantise the stored colour values and decode the endpoint pair exactly as the decoder
+        // does (its decode operates on unquantised values).
+        Span<int> unquantizedSlice = unquantizedScratch[..colorValueCount];
+        values.CopyTo(unquantizedSlice);
+        Quantization.UnquantizeCEValuesBatch(unquantizedSlice, colorRange);
+
+        ColorEndpointPair pair = EndpointCodec.Decode(unquantizedSlice, mode);
+        StoreChannels(pair.LdrLow, effectiveLow);
+        StoreChannels(pair.LdrHigh, effectiveHigh);
+    }
+
+    private static void StoreChannels(RgbaColor color, Span<int> channels)
+    {
+        channels[0] = color.R;
+        channels[1] = color.G;
+        channels[2] = color.B;
+        channels[3] = color.A;
     }
 
     /// <summary>
@@ -415,27 +488,21 @@ internal static class LdrBlockEncoder
 
     private static byte ClampByte(double value) => (byte)Math.Clamp(Math.Round(value), 0, MaxChannel);
 
-    private static UInt128 Assemble(
-        int gridWidth,
-        int gridHeight,
-        int weightRange,
-        int colorRange,
-        ReadOnlySpan<int> colorValues,
-        ReadOnlySpan<int> quantWeights)
+    private static UInt128 Assemble(in BestConfig config, ReadOnlySpan<int> colorValues, ReadOnlySpan<int> quantWeights)
     {
-        ushort blockMode = BlockModeEncoder.Encode(gridWidth, gridHeight, weightRange, isDualPlane: false);
+        ushort blockMode = BlockModeEncoder.Encode(config.GridWidth, config.GridHeight, config.WeightRange, isDualPlane: false);
 
         var builder = new AstcBlockBuilder();
         builder.PlaceLowField(blockMode, BlockModeStartBit, BlockModeBits);
         builder.PlaceLowField(PartitionCountField, PartitionCountStartBit, PartitionCountBits);
-        builder.PlaceLowField((ulong)Mode, CemStartBit, CemBits);
+        builder.PlaceLowField((ulong)config.Mode, CemStartBit, CemBits);
 
         var colorStream = new BitStream();
-        BoundedIntegerSequenceEncoder.Encode(colorRange, colorValues, ref colorStream);
+        BoundedIntegerSequenceEncoder.Encode(config.ColorRange, colorValues, ref colorStream);
         builder.PlaceColorData(colorStream, ColorStartBit);
 
         var weightStream = new BitStream();
-        BoundedIntegerSequenceEncoder.Encode(weightRange, quantWeights, ref weightStream);
+        BoundedIntegerSequenceEncoder.Encode(config.WeightRange, quantWeights, ref weightStream);
         builder.PlaceWeightData(weightStream);
 
         return builder.Build();

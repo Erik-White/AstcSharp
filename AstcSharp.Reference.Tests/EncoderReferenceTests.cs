@@ -58,15 +58,46 @@ public class EncoderReferenceTests
         CompareRgba8(armDecoded, pixels, $"VoidExtentColor_{r}_{g}_{b}_{a}");
     }
 
+    /// <summary>
+    /// Content patterns that exercise the different endpoint-mode choices the encoder makes.
+    /// </summary>
+    public enum Content
+    {
+        /// <summary>
+        /// Chromatic RGB gradient, opaque — exercises the RGB endpoint modes.
+        /// </summary>
+        Color,
+
+        /// <summary>
+        /// Grey ramp, opaque — exercises the luminance endpoint modes.
+        /// </summary>
+        Grayscale,
+    }
+
+    public static TheoryData<FootprintType, Content> FootprintsByContent
+    {
+        get
+        {
+            var data = new TheoryData<FootprintType, Content>();
+            foreach (FootprintType footprint in EnumerateFootprints())
+            {
+                data.Add(footprint, Content.Color);
+                data.Add(footprint, Content.Grayscale);
+            }
+
+            return data;
+        }
+    }
+
     [Theory]
-    [MemberData(nameof(AllFootprintTypes))]
-    public void EncodedGradient_DecodesUnderArmReference(FootprintType footprintType)
+    [MemberData(nameof(FootprintsByContent))]
+    public void Encoded_DecodesUnderArmReference(FootprintType footprintType, Content content)
     {
         var (blockX, blockY) = ReferenceDecoder.ToBlockDimensions(footprintType);
         Footprint footprint = Footprint.FromFootprintType(footprintType);
         int width = blockX * 2;
         int height = blockY * 2;
-        byte[] pixels = GradientImage(width, height);
+        byte[] pixels = ContentImage(content, width, height);
 
         byte[] encoded = AstcEncoder.CompressImage(pixels, width, height, footprint);
 
@@ -75,7 +106,7 @@ public class EncoderReferenceTests
         byte[] armDecoded = ReferenceDecoder.DecompressLdr(encoded, width, height, blockX, blockY);
         Span<byte> ourDecoded = AstcDecoder.DecompressImage(encoded, width, height, footprint);
 
-        CompareRgba8(armDecoded, ourDecoded.ToArray(), $"Gradient_{footprintType}");
+        CompareRgba8(armDecoded, ourDecoded.ToArray(), $"{content}_{footprintType}");
     }
 
     [Theory]
@@ -102,6 +133,34 @@ public class EncoderReferenceTests
         ourPsnr.Should().BeGreaterThanOrEqualTo(
             armPsnr - 3.0,
             because: $"[{footprintType}] our PSNR {ourPsnr:F2} dB should be within 3 dB of ARM's {armPsnr:F2} dB");
+    }
+
+    private static byte[] ContentImage(Content content, int width, int height) => content switch
+    {
+        Content.Color => GradientImage(width, height),
+        Content.Grayscale => GrayscaleGradient(width, height),
+        _ => throw new ArgumentOutOfRangeException(nameof(content), content, null),
+    };
+
+    private static IEnumerable<FootprintType> EnumerateFootprints() => Enum.GetValues<FootprintType>();
+
+    private static byte[] GrayscaleGradient(int width, int height)
+    {
+        byte[] pixels = new byte[width * height * 4];
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                int idx = ((y * width) + x) * 4;
+                byte v = (byte)(255 * (x + y) / (width + height - 2));
+                pixels[idx] = v;
+                pixels[idx + 1] = v;
+                pixels[idx + 2] = v;
+                pixels[idx + 3] = 255;
+            }
+        }
+
+        return pixels;
     }
 
     private static byte[] GradientImage(int width, int height)
