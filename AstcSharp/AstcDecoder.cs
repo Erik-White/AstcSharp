@@ -11,10 +11,12 @@ namespace AstcSharp;
 /// Provides methods to decode ASTC-compressed texture data into uncompressed pixel formats.
 /// </summary>
 /// <remarks>
-/// The decoder returns raw decoded values and does not apply any gamma or color-space
-/// transform. Callers loading ASTC data from an sRGB-tagged container (e.g. a KTX file
-/// with an *_SRGB_BLOCK format) are responsible for applying sRGB-to-linear conversion
-/// downstream if they need linear values.
+/// The decoder returns raw decoded values and does not apply an sRGB-to-linear transform.
+/// Passing <see cref="LdrDecodeMode.Srgb"/> to an LDR method selects the sRGB endpoint
+/// expansion mandated by ASTC spec §C.2.19 (matching the <c>COMPRESSED_SRGB8_ALPHA8_ASTC_*</c>
+/// formats) — the output is still sRGB-encoded 8-bit values. Callers loading ASTC data from an
+/// sRGB-tagged container who need linear values are responsible for applying sRGB-to-linear
+/// conversion downstream.
 /// </remarks>
 public static class AstcDecoder
 {
@@ -29,7 +31,8 @@ public static class AstcDecoder
     /// Array of bytes in RGBA32 format (width * height * 4 bytes total), or an empty span if the
     /// input is structurally invalid. Individual malformed blocks are skipped and leave zeros in the output.
     /// </returns>
-    public static Span<byte> DecompressImage(ReadOnlySpan<byte> astcData, int width, int height, Footprint footprint)
+    /// <param name="mode">LDR decode mode — linear (default) or sRGB endpoint expansion.</param>
+    public static Span<byte> DecompressImage(ReadOnlySpan<byte> astcData, int width, int height, Footprint footprint, LdrDecodeMode mode = LdrDecodeMode.Linear)
     {
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(width, 0);
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(height, 0);
@@ -40,7 +43,7 @@ public static class AstcDecoder
         int totalBytes = (int)(totalPixels * BlockInfo.ChannelsPerPixel);
         byte[] imageBuffer = new byte[totalBytes];
 
-        return DecompressImage(astcData, width, height, footprint, imageBuffer)
+        return DecompressImage(astcData, width, height, footprint, imageBuffer, mode)
             ? imageBuffer
             : [];
     }
@@ -57,7 +60,8 @@ public static class AstcDecoder
     /// True if the input was structurally valid and decoding ran, false if it was rejected
     /// up front. Individual malformed blocks are skipped and leave zeros in the output.
     /// </returns>
-    public static bool DecompressImage(ReadOnlySpan<byte> astcData, int width, int height, Footprint footprint, Span<byte> imageBuffer)
+    /// <param name="mode">LDR decode mode — linear (default) or sRGB endpoint expansion.</param>
+    public static bool DecompressImage(ReadOnlySpan<byte> astcData, int width, int height, Footprint footprint, Span<byte> imageBuffer, LdrDecodeMode mode = LdrDecodeMode.Linear)
     {
         ValidateImageArgs(width, height, imageBuffer.Length, BlockInfo.ChannelsPerPixel);
 
@@ -70,8 +74,17 @@ public static class AstcDecoder
         byte[] decodedBlock = ArrayPool<byte>.Shared.Rent(decodedBlockSize);
         try
         {
-            DecodeAllBlocks<LdrPipeline, byte>(
-                astcData, width, height, footprint, blocksWide, blocksHigh, imageBuffer, decodedBlock.AsSpan(0, decodedBlockSize));
+            Span<byte> scratch = decodedBlock.AsSpan(0, decodedBlockSize);
+            if (mode == LdrDecodeMode.Srgb)
+            {
+                DecodeAllBlocks<LdrPipeline<SrgbMode>, byte>(
+                    astcData, width, height, footprint, blocksWide, blocksHigh, imageBuffer, scratch);
+            }
+            else
+            {
+                DecodeAllBlocks<LdrPipeline<LinearMode>, byte>(
+                    astcData, width, height, footprint, blocksWide, blocksHigh, imageBuffer, scratch);
+            }
         }
         finally
         {
@@ -97,7 +110,8 @@ public static class AstcDecoder
     /// <exception cref="EndOfStreamException">
     /// Thrown if the stream contains fewer bytes than the footprint requires.
     /// </exception>
-    public static Span<byte> DecompressImage(Stream stream, int width, int height, Footprint footprint)
+    /// <param name="mode">LDR decode mode — linear (default) or sRGB endpoint expansion.</param>
+    public static Span<byte> DecompressImage(Stream stream, int width, int height, Footprint footprint, LdrDecodeMode mode = LdrDecodeMode.Linear)
     {
         ArgumentNullException.ThrowIfNull(stream);
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(width, 0);
@@ -107,7 +121,7 @@ public static class AstcDecoder
         ArgumentOutOfRangeException.ThrowIfGreaterThan(totalPixels, (long)int.MaxValue / BlockInfo.ChannelsPerPixel);
 
         byte[] imageBuffer = new byte[(int)(totalPixels * BlockInfo.ChannelsPerPixel)];
-        return DecompressImage(stream, width, height, footprint, imageBuffer)
+        return DecompressImage(stream, width, height, footprint, imageBuffer, mode)
             ? imageBuffer
             : [];
     }
@@ -127,7 +141,8 @@ public static class AstcDecoder
     /// <exception cref="EndOfStreamException">
     /// Thrown if the stream contains fewer bytes than the footprint requires.
     /// </exception>
-    public static bool DecompressImage(Stream stream, int width, int height, Footprint footprint, Span<byte> imageBuffer)
+    /// <param name="mode">LDR decode mode — linear (default) or sRGB endpoint expansion.</param>
+    public static bool DecompressImage(Stream stream, int width, int height, Footprint footprint, Span<byte> imageBuffer, LdrDecodeMode mode = LdrDecodeMode.Linear)
     {
         ArgumentNullException.ThrowIfNull(stream);
         ValidateImageArgs(width, height, imageBuffer.Length, BlockInfo.ChannelsPerPixel);
@@ -138,7 +153,7 @@ public static class AstcDecoder
         {
             Span<byte> blockSpan = blocks.AsSpan(0, expectedBytes);
             stream.ReadExactly(blockSpan);
-            return DecompressImage((ReadOnlySpan<byte>)blockSpan, width, height, footprint, imageBuffer);
+            return DecompressImage((ReadOnlySpan<byte>)blockSpan, width, height, footprint, imageBuffer, mode);
         }
         finally
         {
@@ -272,7 +287,8 @@ public static class AstcDecoder
     /// <param name="blockData">The data to decode</param>
     /// <param name="footprint">The type of ASTC block footprint e.g. 4x4, 5x5, etc.</param>
     /// <param name="buffer">The buffer to write the decoded pixels into</param>
-    public static void DecompressBlock(ReadOnlySpan<byte> blockData, Footprint footprint, Span<byte> buffer)
+    /// <param name="mode">LDR decode mode — linear (default) or sRGB endpoint expansion.</param>
+    public static void DecompressBlock(ReadOnlySpan<byte> blockData, Footprint footprint, Span<byte> buffer, LdrDecodeMode mode = LdrDecodeMode.Linear)
     {
         if (blockData.Length < BlockInfo.SizeInBytes)
         {
@@ -285,7 +301,14 @@ public static class AstcDecoder
             throw new ArgumentException($"Output buffer must be at least {requiredBufferSize} bytes.", nameof(buffer));
         }
 
-        DecodeSingleBlock<LdrPipeline, byte>(blockData, footprint, buffer);
+        if (mode == LdrDecodeMode.Srgb)
+        {
+            DecodeSingleBlock<LdrPipeline<SrgbMode>, byte>(blockData, footprint, buffer);
+        }
+        else
+        {
+            DecodeSingleBlock<LdrPipeline<LinearMode>, byte>(blockData, footprint, buffer);
+        }
     }
 
     /// <summary>

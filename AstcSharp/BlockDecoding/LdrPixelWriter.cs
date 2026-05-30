@@ -6,12 +6,14 @@ namespace AstcSharp.BlockDecoding;
 
 /// <summary>
 /// LDR <see cref="IPixelWriter{T}"/> — writes UNORM8 RGBA bytes via the scalar SIMD helpers.
+/// <typeparamref name="TMode"/> selects linear vs sRGB decode (ASTC spec §C.2.19).
 /// </summary>
-internal readonly struct LdrPixelWriter : IPixelWriter<byte>
+internal readonly struct LdrPixelWriter<TMode> : IPixelWriter<byte>
+    where TMode : struct, ILdrColorMode
 {
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void WritePixel(Span<byte> buffer, int offset, in ColorEndpointPair endpoint, int weight)
-        => SimdHelpers.WriteSinglePixelLdr(
+        => SimdHelpers.WriteSinglePixelLdr<TMode>(
             buffer,
             offset,
             endpoint.LdrLow.R,
@@ -32,7 +34,7 @@ internal readonly struct LdrPixelWriter : IPixelWriter<byte>
         int primaryWeight,
         int dualPlaneChannel,
         int dualPlaneWeight)
-        => SimdHelpers.WriteSinglePixelLdrDualPlane(
+        => SimdHelpers.WriteSinglePixelLdrDualPlane<TMode>(
             buffer,
             offset,
             endpoint.LdrLow.R,

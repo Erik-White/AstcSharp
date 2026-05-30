@@ -46,6 +46,10 @@ public class AstcFullImageDecodeBenchmark
         => AstcDecoder.DecompressImage(this.ldrBlocks, this.ldrWidth, this.ldrHeight, this.ldrFootprint, this.ldrOutput);
 
     [Benchmark]
+    public bool DecompressLdrImageSrgb()
+        => AstcDecoder.DecompressImage(this.ldrBlocks, this.ldrWidth, this.ldrHeight, this.ldrFootprint, this.ldrOutput, LdrDecodeMode.Srgb);
+
+    [Benchmark]
     public bool DecompressHdrImage()
         => AstcDecoder.DecompressHdrImage(this.hdrBlocks, this.hdrWidth, this.hdrHeight, this.hdrFootprint, this.hdrOutput);
 }

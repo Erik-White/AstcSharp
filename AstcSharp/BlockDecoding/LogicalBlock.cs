@@ -14,10 +14,12 @@ internal static class LogicalBlock
     /// <summary>
     /// Decodes a block to its UNORM8 RGBA pixels. HDR-endpoint blocks must not reach this
     /// method: the LDR entry points in <see cref="AstcDecoder"/> reject HDR content per
-    /// ASTC spec §C.2.19, so every partition's endpoint here is LDR.
+    /// ASTC spec §C.2.19, so every partition's endpoint here is LDR. <typeparamref name="TMode"/>
+    /// selects linear vs sRGB decode (ASTC spec §C.2.19).
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void DecodeToBytes(UInt128 bits, in BlockInfo info, Footprint footprint, Span<byte> pixels)
+    public static void DecodeToBytes<TMode>(UInt128 bits, in BlockInfo info, Footprint footprint, Span<byte> pixels)
+        where TMode : struct, ILdrColorMode
     {
         if (!info.IsValid)
         {
@@ -28,7 +30,7 @@ internal static class LogicalBlock
         // into a separate frame so the secondary-plane buffer is only stackalloc'd when needed.
         if (info.DualPlane.Enabled && !info.IsVoidExtent)
         {
-            DecodeDualPlane<LdrPixelWriter, byte>(bits, in info, footprint, pixels);
+            DecodeDualPlane<LdrPixelWriter<TMode>, byte>(bits, in info, footprint, pixels);
             return;
         }
 
@@ -36,7 +38,7 @@ internal static class LogicalBlock
         Span<int> weights = stackalloc int[footprint.PixelCount];
         DecodedBlockState state = DecodeSinglePlane(bits, in info, footprint, weights);
 
-        WriteAllPixels<LdrPixelWriter, byte>(footprint, pixels, in state);
+        WriteAllPixels<LdrPixelWriter<TMode>, byte>(footprint, pixels, in state);
     }
 
     /// <summary>

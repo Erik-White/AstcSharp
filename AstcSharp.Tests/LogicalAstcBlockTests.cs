@@ -19,7 +19,7 @@ public class LogicalAstcBlockTests
         byte[] pixels = new byte[footprint.PixelCount * 4];
         Array.Fill(pixels, (byte)0xCC);
 
-        LogicalBlock.DecodeToBytes(bits, in info, footprint, pixels);
+        LogicalBlock.DecodeToBytes<LinearMode>(bits, in info, footprint, pixels);
 
         // Invalid blocks short-circuit without touching the output buffer.
         Assert.All(pixels, b => Assert.Equal(0xCC, b));
@@ -34,7 +34,7 @@ public class LogicalAstcBlockTests
         Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint8x8);
         byte[] pixels = new byte[footprint.PixelCount * 4];
 
-        LogicalBlock.DecodeToBytes(bits, in info, footprint, pixels);
+        LogicalBlock.DecodeToBytes<LinearMode>(bits, in info, footprint, pixels);
 
         Assert.All(pixels, b => Assert.Equal(0, b));
     }
@@ -82,7 +82,7 @@ public class LogicalAstcBlockTests
         Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint6x5);
         byte[] pixels = new byte[footprint.PixelCount * 4];
 
-        LogicalBlock.DecodeToBytes(bits, in info, footprint, pixels);
+        LogicalBlock.DecodeToBytes<LinearMode>(bits, in info, footprint, pixels);
 
         // Block carries valid LDR data and decodes without throwing; we don't pin specific
         // pixel values here — those are covered by the image roundtrip tests below.
