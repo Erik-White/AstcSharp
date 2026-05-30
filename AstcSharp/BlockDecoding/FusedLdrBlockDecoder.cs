@@ -16,10 +16,12 @@ internal static class FusedLdrBlockDecoder
     /// <summary>
     /// Fused LDR decode to a contiguous buffer.
     /// Only handles single-partition, non-dual-plane, LDR blocks.
+    /// <typeparamref name="TExpand"/> selects linear vs sRGB channel expansion (ASTC spec §C.2.19).
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    internal static void DecompressBlockFusedLdr(UInt128 bits, in BlockInfo info, Footprint footprint, Span<byte> buffer)
-        => DecompressBlock(
+    internal static void DecompressBlockFusedLdr<TExpand>(UInt128 bits, in BlockInfo info, Footprint footprint, Span<byte> buffer)
+        where TExpand : struct, IChannelExpand
+        => DecompressBlock<TExpand>(
             bits,
             in info,
             footprint,
@@ -31,9 +33,10 @@ internal static class FusedLdrBlockDecoder
     /// <summary>
     /// Fused LDR decode writing directly to image buffer at strided positions.
     /// Only handles single-partition, non-dual-plane, LDR blocks.
+    /// <typeparamref name="TExpand"/> selects linear vs sRGB channel expansion (ASTC spec §C.2.19).
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    internal static void DecompressBlockFusedLdrToImage(
+    internal static void DecompressBlockFusedLdrToImage<TExpand>(
         UInt128 bits,
         in BlockInfo info,
         Footprint footprint,
@@ -41,7 +44,8 @@ internal static class FusedLdrBlockDecoder
         int dstBaseY,
         int imageWidth,
         Span<byte> imageBuffer)
-        => DecompressBlock(
+        where TExpand : struct, IChannelExpand
+        => DecompressBlock<TExpand>(
             bits,
             in info,
             footprint,
@@ -51,7 +55,7 @@ internal static class FusedLdrBlockDecoder
             dstRowStride: imageWidth * BlockInfo.ChannelsPerPixel);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void DecompressBlock(
+    private static void DecompressBlock<TExpand>(
         UInt128 bits,
         in BlockInfo info,
         Footprint footprint,
@@ -59,20 +63,22 @@ internal static class FusedLdrBlockDecoder
         int dstBaseX,
         int dstBaseY,
         int dstRowStride)
+        where TExpand : struct, IChannelExpand
     {
         // Up to 12×12 = 144 ints (576 bytes) for the largest 2D footprint per spec §C.2.4.
         Span<int> texelWeights = stackalloc int[footprint.PixelCount];
         ColorEndpointPair endpointPair = FusedBlockDecoder.DecodeFusedCore(bits, in info, footprint, texelWeights);
-        WriteLdrPixels(buffer, footprint, dstBaseX, dstBaseY, dstRowStride, in endpointPair, texelWeights);
+        WriteLdrPixels<TExpand>(buffer, footprint, dstBaseX, dstBaseY, dstRowStride, in endpointPair, texelWeights);
     }
 
     /// <summary>
     /// Writes a footprint-sized block of LDR pixels into <paramref name="buffer"/> at position
     /// (<paramref name="dstBaseX"/>, <paramref name="dstBaseY"/>) with the given row stride.
-    /// Uses SIMD where hardware-accelerated; scalar otherwise.
+    /// Uses SIMD where hardware-accelerated; scalar otherwise. <typeparamref name="TExpand"/>
+    /// selects linear vs sRGB channel expansion (ASTC spec §C.2.19).
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void WriteLdrPixels(
+    private static void WriteLdrPixels<TExpand>(
         Span<byte> buffer,
         Footprint footprint,
         int dstBaseX,
@@ -80,6 +86,7 @@ internal static class FusedLdrBlockDecoder
         int dstRowStride,
         in ColorEndpointPair endpointPair,
         Span<int> texelWeights)
+        where TExpand : struct, IChannelExpand
     {
         (byte lowR, byte lowG, byte lowB, byte lowA) = endpointPair.LdrLow;
         (byte highR, byte highG, byte highB, byte highA) = endpointPair.LdrHigh;
@@ -104,7 +111,7 @@ internal static class FusedLdrBlockDecoder
                         texelWeights[texelIndex + 1],
                         texelWeights[texelIndex + 2],
                         texelWeights[texelIndex + 3]);
-                    SimdHelpers.Write4PixelLdr(
+                    SimdHelpers.Write4PixelLdr<TExpand>(
                         buffer,
                         dstRowOffset + (pixelX * BlockInfo.ChannelsPerPixel),
                         lowR,
@@ -121,7 +128,7 @@ internal static class FusedLdrBlockDecoder
 
             for (; pixelX < footprintWidth; pixelX++)
             {
-                SimdHelpers.WriteSinglePixelLdr(
+                SimdHelpers.WriteSinglePixelLdr<TExpand>(
                     buffer,
                     dstRowOffset + (pixelX * BlockInfo.ChannelsPerPixel),
                     lowR,

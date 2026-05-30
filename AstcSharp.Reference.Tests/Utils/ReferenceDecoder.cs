@@ -62,6 +62,49 @@ internal static class ReferenceDecoder
     }
 
     /// <summary>
+    /// Decompress ASTC blocks to sRGB RGBA8 using the ARM reference decoder
+    /// (<see cref="AstcencProfile.AstcencPrfLdrSrgb"/>).
+    /// </summary>
+    public static byte[] DecompressLdrSrgb(ReadOnlySpan<byte> blocks, int w, int h, int blockX, int blockY)
+    {
+        var error = Astcenc.AstcencConfigInit(
+            AstcencProfile.AstcencPrfLdrSrgb,
+            (uint)blockX, (uint)blockY, 1,
+            Astcenc.AstcencPreFastest,
+            AstcencFlags.DecompressOnly,
+            out var config);
+        ThrowOnError(error, "ConfigInit(LDR sRGB)");
+
+        error = Astcenc.AstcencContextAlloc(ref config, 1, out var context);
+        ThrowOnError(error, "ContextAlloc(LDR sRGB)");
+
+        try
+        {
+            int pixelCount = w * h;
+            var outputBytes = new byte[pixelCount * 4]; // RGBA8
+
+            var image = new AstcencImage
+            {
+                dimX = (uint)w,
+                dimY = (uint)h,
+                dimZ = 1,
+                dataType = AstcencType.AstcencTypeU8,
+                data = outputBytes,
+            };
+
+            var blocksCopy = blocks.ToArray();
+            error = Astcenc.AstcencDecompressImage(context, blocksCopy, ref image, IdentitySwizzle, 0);
+            ThrowOnError(error, "DecompressImage(LDR sRGB)");
+
+            return outputBytes;
+        }
+        finally
+        {
+            Astcenc.AstcencContextFree(context);
+        }
+    }
+
+    /// <summary>
     /// Decompress ASTC blocks to FP16 RGBA (HDR) using the ARM reference decoder.
     /// </summary>
     public static Half[] DecompressHdr(ReadOnlySpan<byte> blocks, int w, int h, int blockX, int blockY)

@@ -90,9 +90,11 @@ This decoder emits magenta for both cases. ARM `astcenc` differs in two ways: it
 
 Per spec §C.2.19 (Weight Application), the LDR-mode UNORM8 output for each channel is the **top 8 bits** of the UNORM16 interpolation result `C = floor((C0*(64-i) + C1*i + 32)/64)` — i.e. `byte = (C >> 8) & 0xFF`, not a "fair" UNORM16→UNORM8 round like `((C * 255) + 32767) / 65536`. The two formulas differ by 1 LSB at many `C` values, so the spec-mandated truncation is what `SimdHelpers.InterpolateChannelScalar` and `Interpolate4ChannelPixels` use. This matches ARM's `astcenc` (`lerp_color_int` in `astcenc_decompress_symbolic.cpp`) bit-exactly, which is what the comparison tests in `AstcSharp.Reference.Tests` enforce.
 
-### sRGB is not applied at decode time
+### sRGB decode mode
 
-Any `VK_FORMAT_ASTC_*_SRGB_BLOCK` container decodes to the raw UNORM8 values without an sRGB→linear transform. Callers who need linear RGB apply the transform downstream. The sRGB *colour-space* tag is purely informational and passes through unchanged.
+Passing `LdrDecodeMode.Srgb` to an LDR decode method selects the sRGB endpoint expansion from spec §C.2.19: the R, G, and B endpoints expand to 16 bits as `(C << 8) | 0x80` instead of bit-replication, while alpha is unchanged. This matches the `COMPRESSED_SRGB8_ALPHA8_ASTC_*` / `VK_FORMAT_ASTC_*_SRGB_BLOCK` formats and ARM's `AstcencPrfLdrSrgb` profile bit-exactly (enforced by the comparison tests in `AstcSharp.Reference.Tests`). The two modes differ by at most 1 LSB per channel, only at certain rounding boundaries.
+
+The decoder still emits the sRGB-*encoded* 8-bit values — it does not apply an sRGB→linear transform. Callers who need linear RGB apply that transform downstream. The default, `LdrDecodeMode.Linear`, is unchanged from prior behaviour.
 
 ### Void-extent HDR flag convention
 

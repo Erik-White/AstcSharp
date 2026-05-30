@@ -18,13 +18,24 @@ internal static class Interpolation
         => ((p0 * (64 - weight)) + (p1 * weight) + 32) / 64;
 
     /// <summary>
-    /// LDR-to-UNORM16 blend: each 8-bit endpoint is bit-replicated to 16 bits
-    /// (<c>(p &lt;&lt; 8) | p</c>) per §C.2.19 before the weighted blend. Every LDR decode
-    /// path that produces 16-bit intermediate values goes through this primitive.
+    /// LDR-to-UNORM16 blend: each 8-bit endpoint is expanded to 16 bits via
+    /// <typeparamref name="TExpand"/> (§C.2.19 — bit-replication for linear, fixed low byte for
+    /// sRGB) before the weighted blend. Every LDR decode path that produces 16-bit intermediate
+    /// values goes through this primitive.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int BlendExpanded<TExpand>(int p0, int p1, int weight)
+        where TExpand : struct, IChannelExpand
+        => BlendWeighted(TExpand.Expand(p0), TExpand.Expand(p1), weight);
+
+    /// <summary>
+    /// LDR-to-UNORM16 blend with linear bit-replication (<c>(p &lt;&lt; 8) | p</c>) per §C.2.19.
+    /// Shorthand for <see cref="BlendExpanded{TExpand}"/> with <see cref="LinearExpand"/>, used by
+    /// the HDR output path where LDR channels always expand linearly.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int BlendLdrReplicated(int p0, int p1, int weight)
-        => BlendWeighted((p0 << 8) | p0, (p1 << 8) | p1, weight);
+        => BlendExpanded<LinearExpand>(p0, p1, weight);
 
     /// <summary>
     /// Normalises a UNORM16 value (clamped to [0, 0xFFFF]) to the [0.0, 1.0] float range.

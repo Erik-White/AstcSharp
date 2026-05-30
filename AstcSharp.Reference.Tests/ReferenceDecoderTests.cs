@@ -219,6 +219,82 @@ public class ReferenceDecoderTests
         CompareRgba8(actual, expected, blockX, blockY, "VoidExtent");
     }
 
+    [Theory]
+    [InlineData("rgb-4x4")]
+    [InlineData("rgb-6x6")]
+    [InlineData("rgb-8x8")]
+    [InlineData("rgba-4x4")]
+    [InlineData("rgba-5x5")]
+    [InlineData("rgba-6x6")]
+    [InlineData("rgba-8x8")]
+    [InlineData("checkered-4")]
+    [InlineData("checkered-8")]
+    [InlineData("checkered-12")]
+    public void DecompressLdrSrgb_WithImage_ShouldMatch(string basename)
+    {
+        var filePath = Path.Combine("TestData", "Input", "Astc", basename + ".astc");
+        var bytes = File.ReadAllBytes(filePath);
+        var astcFile = AstcFile.FromMemory(bytes);
+        var (blockX, blockY) = ReferenceDecoder.ToBlockDimensions(astcFile.Footprint.Type);
+
+        var expected = ReferenceDecoder.DecompressLdrSrgb(
+            astcFile.Blocks, astcFile.Width, astcFile.Height, blockX, blockY);
+        var actual = AstcDecoder.DecompressImage(
+            astcFile.Blocks, astcFile.Width, astcFile.Height, astcFile.Footprint, LdrDecodeMode.Srgb);
+
+        CompareRgba8(actual, expected, astcFile.Width, astcFile.Height, $"Srgb_{basename}");
+    }
+
+    [Theory]
+    [MemberData(nameof(AllFootprintTypes))]
+    public void DecompressLdrSrgb_RandomNoise_ShouldMatch(FootprintType footprintType)
+    {
+        var (blockX, blockY) = ReferenceDecoder.ToBlockDimensions(footprintType);
+        int width = blockX * 2;
+        int height = blockY * 2;
+
+        var rng = new Random(42);
+        var pixels = new byte[width * height * RgbaColor.BytesPerPixel];
+        rng.NextBytes(pixels);
+        for (int index = 3; index < pixels.Length; index += RgbaColor.BytesPerPixel)
+            pixels[index] = byte.MaxValue;
+
+        var compressed = ReferenceDecoder.CompressLdr(pixels, width, height, blockX, blockY);
+        var footprint = Footprint.FromFootprintType(footprintType);
+
+        var expected = ReferenceDecoder.DecompressLdrSrgb(compressed, width, height, blockX, blockY);
+        var actual = AstcDecoder.DecompressImage(compressed, width, height, footprint, LdrDecodeMode.Srgb);
+
+        CompareRgba8(actual, expected, width, height, $"Srgb_RandomNoise_{footprintType}");
+    }
+
+    /// <summary>
+    /// sRGB mode must change the RGB channels but leave alpha bit-identical to linear decode
+    /// (ASTC spec §C.2.19 — only R, G, B use the <c>0x80</c> low byte).
+    /// </summary>
+    [Fact]
+    public void DecompressLdrSrgb_LeavesAlphaUnchanged_AndAltersRgb()
+    {
+        var filePath = Path.Combine("TestData", "Input", "Astc", "rgba-4x4.astc");
+        var bytes = File.ReadAllBytes(filePath);
+        var astcFile = AstcFile.FromMemory(bytes);
+
+        var linear = AstcDecoder.DecompressImage(
+            astcFile.Blocks, astcFile.Width, astcFile.Height, astcFile.Footprint, LdrDecodeMode.Linear);
+        var srgb = AstcDecoder.DecompressImage(
+            astcFile.Blocks, astcFile.Width, astcFile.Height, astcFile.Footprint, LdrDecodeMode.Srgb);
+
+        bool anyRgbDiff = false;
+        for (int i = 0; i < linear.Length; i += RgbaColor.BytesPerPixel)
+        {
+            srgb[i + 3].Should().Be(linear[i + 3], because: "alpha must be identical in linear and sRGB modes");
+            if (srgb[i] != linear[i] || srgb[i + 1] != linear[i + 1] || srgb[i + 2] != linear[i + 2])
+                anyRgbDiff = true;
+        }
+
+        anyRgbDiff.Should().BeTrue(because: "sRGB endpoint expansion should change at least some RGB values");
+    }
+
     /// <summary>
     /// Compare RGBA8 output from both decoders with per-channel tolerance.
     /// </summary>
