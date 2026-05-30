@@ -212,7 +212,7 @@ internal static class LdrBlockEncoder
     }
 
     /// <summary>
-    /// Reusable per-configuration scratch buffers for <see cref="EvaluateConfig"/>
+    /// Reusable per-configuration scratch buffers for <see cref="PrepareConfig"/> and <see cref="MeasureConfig"/>
     /// </summary>
     private readonly ref struct ConfigScratch(
         Span<int> effectiveLow,
@@ -233,17 +233,14 @@ internal static class LdrBlockEncoder
     }
 
     /// <summary>
-    /// Evaluates one (mode, grid, weight-range, colour-range) configuration for any partition count
-    /// (single-partition is the degenerate case of one all-zero <paramref name="assignment"/>):
-    /// encodes each partition's endpoints and decodes them back through the real codec to get the
-    /// effective endpoints, projects each texel's ideal weight onto its own partition's endpoint
-    /// line, fits grid weights to them (the decimation inverse, spec §C.2.18), quantises those, then
-    /// reconstructs through the decoder's actual infill and interpolation to measure the true error.
-    /// Fills <paramref name="colorValues"/> (first <c>mode.GetColorValuesCount() * partitionCount</c>
-    /// entries, concatenated per partition) and <paramref name="quantGridWeights"/> (first
-    /// <paramref name="gridWeightCount"/> entries).
+    /// Computes the parts of a configuration that depend only on the colour range (not the weight
+    /// range): encodes each partition's endpoints (decoding them back through the real codec into
+    /// <see cref="ConfigScratch.EffectiveLow"/>/<see cref="ConfigScratch.EffectiveHigh"/>), projects
+    /// each texel's ideal weight onto its partition's endpoint line, and fits the continuous grid
+    /// weights (the decimation inverse, spec §C.2.18) into <see cref="ConfigScratch.FittedGrid"/>.
+    /// The weight-range loop reuses this across every range that resolves to the same colour range.
     /// </summary>
-    private static long EvaluateConfig(
+    private static void PrepareConfig(
         ReadOnlySpan<RgbaColor> texels,
         Footprint footprint,
         ReadOnlySpan<int> assignment,
@@ -251,17 +248,12 @@ internal static class LdrBlockEncoder
         ColorEndpointMode mode,
         ReadOnlySpan<RgbaColor> subsetLow,
         ReadOnlySpan<RgbaColor> subsetHigh,
-        int gridWidth,
-        int gridHeight,
         int gridWeightCount,
-        int weightRange,
+        DecimationInfo decimation,
         int colorRange,
         Span<int> colorValues,
-        Span<int> quantGridWeights,
         in ConfigScratch scratch)
     {
-        // Encode every partition's endpoints into the concatenated colour-value stream and recover
-        // the effective per-partition endpoints from the real codec.
         int valuesPerPartition = mode.GetColorValuesCount();
         Span<int> effectiveLow = scratch.EffectiveLow;
         Span<int> effectiveHigh = scratch.EffectiveHigh;
@@ -284,13 +276,26 @@ internal static class LdrBlockEncoder
                 texels[t], effectiveLow.Slice(p * ChannelCount, ChannelCount), effectiveHigh.Slice(p * ChannelCount, ChannelCount));
         }
 
-        DecimationInfo decimation = DecimationTable.Get(footprint, gridWidth, gridHeight);
+        DecimationFit.Fit(idealWeights, decimation, gridWeightCount, scratch.FittedGrid[..gridWeightCount]);
+    }
 
-        // Fit continuous grid weights to the ideal texel weights, then quantise and round-trip each
-        // through the weight range to get the values the decoder will actually interpolate with.
+    /// <summary>
+    /// Completes a configuration for one weight range using the prepared endpoints and fitted grid
+    /// (from <see cref="PrepareConfig"/>): quantises the grid weights to the range, reconstructs
+    /// through the decoder's actual infill and interpolation, and returns the sum-of-squared error.
+    /// Writes the quantised grid weights into <paramref name="quantGridWeights"/>.
+    /// </summary>
+    private static long MeasureConfig(
+        ReadOnlySpan<RgbaColor> texels,
+        Footprint footprint,
+        ReadOnlySpan<int> assignment,
+        int gridWeightCount,
+        int weightRange,
+        DecimationInfo decimation,
+        Span<int> quantGridWeights,
+        in ConfigScratch scratch)
+    {
         Span<double> fittedGrid = scratch.FittedGrid[..gridWeightCount];
-        DecimationFit.Fit(idealWeights, decimation, gridWeightCount, fittedGrid);
-
         Span<int> effectiveGrid = scratch.EffectiveGrid[..gridWeightCount];
         for (int p = 0; p < gridWeightCount; p++)
         {
@@ -300,9 +305,12 @@ internal static class LdrBlockEncoder
         }
 
         // Infill the effective grid weights back to per-texel weights exactly as the decoder does.
+        int texelCount = footprint.PixelCount;
         Span<int> perTexelWeights = scratch.PerTexelWeights[..texelCount];
         DecimationTable.InfillWeights(effectiveGrid, decimation, perTexelWeights);
 
+        Span<int> effectiveLow = scratch.EffectiveLow;
+        Span<int> effectiveHigh = scratch.EffectiveHigh;
         long error = 0;
         for (int t = 0; t < texelCount; t++)
         {
@@ -363,6 +371,13 @@ internal static class LdrBlockEncoder
                         continue;
                     }
 
+                    DecimationInfo decimation = DecimationTable.Get(footprint, gridWidth, gridHeight);
+
+                    // The endpoint encode/decode, texel projection, and grid fit depend only on the
+                    // colour range, which is non-increasing as the weight range shrinks; reuse them
+                    // across every weight range that resolves to the same colour range.
+                    int preparedColorRange = 0;
+
                     foreach (int weightRange in WeightRangeCandidates)
                     {
                         if (!BlockModeEncoder.TryEncode(gridWidth, gridHeight, weightRange, isDualPlane: false, out _))
@@ -382,10 +397,16 @@ internal static class LdrBlockEncoder
                             continue;
                         }
 
-                        long error = EvaluateConfig(
-                            texels, footprint, assignment, partitionCount, mode, subsetLow, subsetHigh,
-                            gridWidth, gridHeight, gridWeightCount, weightRange, colorRange,
-                            candidateColorValues, candidateGridWeights, in scratch);
+                        if (colorRange != preparedColorRange)
+                        {
+                            PrepareConfig(
+                                texels, footprint, assignment, partitionCount, mode, subsetLow, subsetHigh,
+                                gridWeightCount, decimation, colorRange, candidateColorValues, in scratch);
+                            preparedColorRange = colorRange;
+                        }
+
+                        long error = MeasureConfig(
+                            texels, footprint, assignment, gridWeightCount, weightRange, decimation, candidateGridWeights, in scratch);
 
                         if (error < bestError)
                         {
