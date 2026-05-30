@@ -433,15 +433,6 @@ internal static class HdrEndpointDecoder
             v7 <<= 4 - selector;
             v7 += v6;
 
-            if (v7 < 0)
-            {
-                v7 = 0;
-            }
-            else if (v7 > 0xFFF)
-            {
-                v7 = 0xFFF;
-            }
-
             a0 = v6;
             a1 = v7;
         }

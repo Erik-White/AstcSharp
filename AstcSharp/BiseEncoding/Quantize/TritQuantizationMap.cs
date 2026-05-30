@@ -1,3 +1,5 @@
+using System.Numerics;
+
 namespace AstcSharp.BiseEncoding.Quantize;
 
 /// <summary>
@@ -19,7 +21,7 @@ internal static class TritQuantizationMap
         }
 
         int bitsPowerOfTwo = (range + 1) / 3;
-        int bitCount = bitsPowerOfTwo == 0 ? 0 : QuantizationMap.Log2Floor(bitsPowerOfTwo);
+        int bitCount = BitOperations.Log2((uint)bitsPowerOfTwo);
 
         int[] unquantization = new int[3 * (1 << bitCount)];
         int idx = 0;

@@ -6,7 +6,7 @@ internal static class UInt128Extensions
     /// The lower 64 bits of the <see cref="UInt128"/> value
     /// </summary>
     public static ulong Low(this UInt128 value)
-        => (ulong)(value & 0xFFFFFFFFFFFFFFFFUL);
+        => (ulong)value;
 
     /// <summary>
     /// The upper 64 bits of the <see cref="UInt128"/> value

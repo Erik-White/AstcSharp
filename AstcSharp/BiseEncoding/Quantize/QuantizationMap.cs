@@ -30,17 +30,6 @@ internal sealed class QuantizationMap
             ? this.unquantizationMap[x]
             : 0;
 
-    internal static int Log2Floor(int value)
-    {
-        int result = 0;
-        while ((1 << (result + 1)) <= value)
-        {
-            result++;
-        }
-
-        return result;
-    }
-
     /// <summary>
     /// Builds a quantize-table from an already-populated unquantize-table by, for every
     /// unquantized value in [0, 255], picking the index in <paramref name="unquantized"/>
