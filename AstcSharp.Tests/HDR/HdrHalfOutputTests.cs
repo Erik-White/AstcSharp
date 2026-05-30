@@ -62,6 +62,58 @@ public class HdrHalfOutputTests
     }
 
     [Fact]
+    public void DecompressHdrImageHalf_StreamOverload_ShouldMatchSpanOverload()
+    {
+        byte[] astcData = File.ReadAllBytes(TestFile.GetInputFileFullPath(Path.Combine("Astc", TestData.Astc.Hdr.Hdr_Tile)));
+        AstcFile astcFile = AstcFile.FromMemory(astcData);
+
+        Span<Half> expected = AstcDecoder.DecompressHdrImageHalf(
+            astcFile.Blocks, astcFile.Width, astcFile.Height, astcFile.Footprint);
+        Assert.False(expected.IsEmpty);
+
+        using MemoryStream stream = new(astcFile.Blocks.ToArray());
+        Span<Half> actual = AstcDecoder.DecompressHdrImageHalf(stream, astcFile.Width, astcFile.Height, astcFile.Footprint);
+
+        Assert.Equal(expected.ToArray(), actual.ToArray());
+        Assert.Equal(stream.Length, stream.Position);
+    }
+
+    [Fact]
+    public void DecompressHdrImageHalf_StreamOverloadIntoBuffer_ShouldMatchSpanOverload()
+    {
+        byte[] astcData = File.ReadAllBytes(TestFile.GetInputFileFullPath(Path.Combine("Astc", TestData.Astc.Hdr.Hdr_Tile)));
+        AstcFile astcFile = AstcFile.FromMemory(astcData);
+
+        var expected = new Half[astcFile.Width * astcFile.Height * 4];
+        Assert.True(AstcDecoder.DecompressHdrImageHalf(astcFile.Blocks, astcFile.Width, astcFile.Height, astcFile.Footprint, expected));
+
+        var actual = new Half[expected.Length];
+        using MemoryStream stream = new(astcFile.Blocks.ToArray());
+        Assert.True(AstcDecoder.DecompressHdrImageHalf(stream, astcFile.Width, astcFile.Height, astcFile.Footprint, actual));
+
+        Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public void DecompressHdrImageHalf_StreamOverload_WithNullStream_ShouldThrow()
+    {
+        Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint4x4);
+
+        Assert.Throws<ArgumentNullException>(() =>
+            AstcDecoder.DecompressHdrImageHalf((Stream)null!, 4, 4, footprint).ToArray());
+    }
+
+    [Fact]
+    public void DecompressHdrImageHalf_StreamOverload_WithTruncatedStream_ShouldThrow()
+    {
+        using MemoryStream stream = new(new byte[8]);
+        Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint4x4);
+
+        Assert.Throws<EndOfStreamException>(() =>
+            AstcDecoder.DecompressHdrImageHalf(stream, 4, 4, footprint).ToArray());
+    }
+
+    [Fact]
     public void DecompressHdrImageHalf_TooSmallBuffer_Throws()
     {
         byte[] astcData = File.ReadAllBytes(TestFile.GetInputFileFullPath(Path.Combine("Astc", TestData.Astc.Hdr.Hdr_Tile)));

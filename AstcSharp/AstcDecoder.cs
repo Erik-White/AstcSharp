@@ -153,7 +153,7 @@ public static class AstcDecoder
         {
             Span<byte> blockSpan = blocks.AsSpan(0, expectedBytes);
             stream.ReadExactly(blockSpan);
-            return DecompressImage((ReadOnlySpan<byte>)blockSpan, width, height, footprint, imageBuffer, mode);
+            return DecompressImage(blockSpan, width, height, footprint, imageBuffer, mode);
         }
         finally
         {
@@ -430,7 +430,7 @@ public static class AstcDecoder
         {
             Span<byte> blockSpan = blocks.AsSpan(0, expectedBytes);
             stream.ReadExactly(blockSpan);
-            return DecompressHdrImage((ReadOnlySpan<byte>)blockSpan, width, height, footprint, imageBuffer);
+            return DecompressHdrImage(blockSpan, width, height, footprint, imageBuffer);
         }
         finally
         {
@@ -534,6 +534,69 @@ public static class AstcDecoder
         finally
         {
             ArrayPool<float>.Shared.Return(floatBuffer);
+        }
+    }
+
+    /// <summary>
+    /// Decompresses ASTC-compressed data read from a stream to FP16 (<see cref="Half"/>) RGBA values.
+    /// </summary>
+    /// <param name="stream">The stream containing ASTC-compressed block data.</param>
+    /// <param name="width">Image width in pixels.</param>
+    /// <param name="height">Image height in pixels.</param>
+    /// <param name="footprint">The ASTC block footprint.</param>
+    /// <returns>
+    /// Values in RGBA order as FP16. The stream's read position advances by the consumed block bytes.
+    /// </returns>
+    /// <exception cref="EndOfStreamException">
+    /// Thrown if the stream contains fewer bytes than the footprint requires.
+    /// </exception>
+    public static Span<Half> DecompressHdrImageHalf(Stream stream, int width, int height, Footprint footprint)
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(width, 0);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(height, 0);
+
+        long totalPixels = (long)width * height;
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(totalPixels, (long)int.MaxValue / BlockInfo.ChannelsPerPixel);
+
+        Half[] imageBuffer = new Half[(int)(totalPixels * BlockInfo.ChannelsPerPixel)];
+        return DecompressHdrImageHalf(stream, width, height, footprint, imageBuffer)
+            ? imageBuffer
+            : [];
+    }
+
+    /// <summary>
+    /// Decompresses ASTC-compressed data read from a stream into a caller-provided FP16
+    /// (<see cref="Half"/>) buffer.
+    /// </summary>
+    /// <param name="stream">The stream containing ASTC-compressed block data.</param>
+    /// <param name="width">Image width in pixels.</param>
+    /// <param name="height">Image height in pixels.</param>
+    /// <param name="footprint">The ASTC block footprint.</param>
+    /// <param name="imageBuffer">Output buffer. Must be at least <c>width * height * 4</c> elements.</param>
+    /// <returns>
+    /// True if the stream contained the expected block count and decoding ran. The stream's
+    /// read position advances by the consumed block bytes.
+    /// </returns>
+    /// <exception cref="EndOfStreamException">
+    /// Thrown if the stream contains fewer bytes than the footprint requires.
+    /// </exception>
+    public static bool DecompressHdrImageHalf(Stream stream, int width, int height, Footprint footprint, Span<Half> imageBuffer)
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+        ValidateImageArgs(width, height, imageBuffer.Length, BlockInfo.ChannelsPerPixel);
+
+        int expectedBytes = ComputeExpectedBlockStreamSize(width, height, footprint);
+        byte[] blocks = ArrayPool<byte>.Shared.Rent(expectedBytes);
+        try
+        {
+            Span<byte> blockSpan = blocks.AsSpan(0, expectedBytes);
+            stream.ReadExactly(blockSpan);
+            return DecompressHdrImageHalf(blockSpan, width, height, footprint, imageBuffer);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(blocks);
         }
     }
 
