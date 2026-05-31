@@ -1,4 +1,5 @@
 using AstcSharp.Core;
+using AstcSharp.IO;
 using AstcSharp.Reference.Tests.Utils;
 using AwesomeAssertions;
 
@@ -161,6 +162,34 @@ public class EncoderReferenceTests
         ourPsnr.Should().BeGreaterThanOrEqualTo(
             armPsnr - 3.0,
             because: $"[{footprintType}] our PSNR {ourPsnr:F2} dB should be within 3 dB of ARM's {armPsnr:F2} dB");
+    }
+
+    // A representative subset spanning the footprint range and both opaque/alpha content: the
+    // smallest and largest RGB footprints and the smallest and largest RGBA footprints. The encoder
+    // runs a full per-block search, so the full fixture set is too slow for routine runs.
+    [Theory]
+    [InlineData("rgb-4x4")]
+    [InlineData("rgb-12x12")]
+    [InlineData("rgba-4x4")]
+    [InlineData("rgba-8x8")]
+    public void ReencodedRealImage_DecodesUnderArmReference(string basename)
+    {
+        // Decode a real multi-block fixture to RGBA8, re-encode the whole image with our encoder,
+        // and confirm the re-encoded bitstream is spec-legal: ARM's decoder must read every block
+        // back in agreement with ours (±1 UNORM8). This is the full-image counterpart to the
+        // synthetic single-/two-region cases above.
+        var filePath = Path.Combine("TestData", "Input", "Astc", basename + ".astc");
+        AstcFile file = AstcFile.FromMemory(File.ReadAllBytes(filePath));
+        Footprint footprint = file.Footprint;
+        var (blockX, blockY) = ReferenceDecoder.ToBlockDimensions(footprint.Type);
+
+        byte[] source = AstcDecoder.DecompressImage(file.Blocks, file.Width, file.Height, footprint).ToArray();
+
+        byte[] reencoded = AstcEncoder.CompressImage(source, file.Width, file.Height, footprint);
+        byte[] armDecoded = ReferenceDecoder.DecompressLdr(reencoded, file.Width, file.Height, blockX, blockY);
+        Span<byte> ourDecoded = AstcDecoder.DecompressImage(reencoded, file.Width, file.Height, footprint);
+
+        CompareRgba8(armDecoded, ourDecoded.ToArray(), $"Reencode_{basename}");
     }
 
     private static byte[] ContentImage(Content content, int width, int height) => content switch
