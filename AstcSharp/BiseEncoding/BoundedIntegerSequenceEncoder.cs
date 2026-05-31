@@ -84,24 +84,16 @@ internal static class BoundedIntegerSequenceEncoder
     /// </summary>
     private static void EncodeTrits(ReadOnlySpan<int> values, int bitCount, ref BitStream stream)
     {
-        ulong mantissaMask = bitCount == 0 ? 0UL : (1UL << bitCount) - 1UL;
         int blockBitLength = BoundedIntegerSequenceCodec.GetEncodedBlockSize(BiseEncodingMode.TritEncoding, bitCount);
 
-        // Reused each iteration; the inner loop fully overwrites both spans, so no stale state
-        // carries between blocks. Hoisted out of the loop to avoid per-iteration stack growth.
+        // Reused each iteration; SplitBlock fully overwrites both spans, so no stale state carries
+        // between blocks. Hoisted out of the loop to avoid per-iteration stack growth.
         Span<int> tritDigits = stackalloc int[TritsPerBlock];
         Span<int> mantissas = stackalloc int[TritsPerBlock];
 
         for (int blockStart = 0; blockStart < values.Length; blockStart += TritsPerBlock)
         {
-            int count = Math.Min(TritsPerBlock, values.Length - blockStart);
-            for (int i = 0; i < TritsPerBlock; i++)
-            {
-                int value = i < count ? values[blockStart + i] : 0;
-                tritDigits[i] = value >> bitCount;
-                mantissas[i] = (int)((ulong)value & mantissaMask);
-            }
-
+            int count = SplitBlock(values, blockStart, bitCount, tritDigits, mantissas);
             int packed = TritTupleToPacked[TupleIndex(tritDigits, TritRadix)];
             ulong blockBits = EmitTritBlock(packed, mantissas, bitCount);
             int validBits = ValidPartialBitLength(count, BiseEncodingMode.TritEncoding, bitCount, blockBitLength);
@@ -115,29 +107,43 @@ internal static class BoundedIntegerSequenceEncoder
     /// </summary>
     private static void EncodeQuints(ReadOnlySpan<int> values, int bitCount, ref BitStream stream)
     {
-        ulong mantissaMask = bitCount == 0 ? 0UL : (1UL << bitCount) - 1UL;
         int blockBitLength = BoundedIntegerSequenceCodec.GetEncodedBlockSize(BiseEncodingMode.QuintEncoding, bitCount);
 
-        // Reused each iteration; the inner loop fully overwrites both spans, so no stale state
-        // carries between blocks. Hoisted out of the loop to avoid per-iteration stack growth.
+        // Reused each iteration; SplitBlock fully overwrites both spans, so no stale state carries
+        // between blocks. Hoisted out of the loop to avoid per-iteration stack growth.
         Span<int> quintDigits = stackalloc int[QuintsPerBlock];
         Span<int> mantissas = stackalloc int[QuintsPerBlock];
 
         for (int blockStart = 0; blockStart < values.Length; blockStart += QuintsPerBlock)
         {
-            int count = Math.Min(QuintsPerBlock, values.Length - blockStart);
-            for (int i = 0; i < QuintsPerBlock; i++)
-            {
-                int value = i < count ? values[blockStart + i] : 0;
-                quintDigits[i] = value >> bitCount;
-                mantissas[i] = (int)((ulong)value & mantissaMask);
-            }
-
+            int count = SplitBlock(values, blockStart, bitCount, quintDigits, mantissas);
             int packed = QuintTupleToPacked[TupleIndex(quintDigits, QuintRadix)];
             ulong blockBits = EmitQuintBlock(packed, mantissas, bitCount);
             int validBits = ValidPartialBitLength(count, BiseEncodingMode.QuintEncoding, bitCount, blockBitLength);
             stream.PutBits(blockBits, validBits);
         }
+    }
+
+    /// <summary>
+    /// Splits one block of values (starting at <paramref name="blockStart"/>) into per-value
+    /// trit/quint <paramref name="digits"/> (the high bits) and <paramref name="mantissas"/> (the
+    /// low <paramref name="bitCount"/> bits). Positions past the end of <paramref name="values"/>
+    /// are zero-filled (the spec's variable-length trailing-block rule). The two spans are sized to
+    /// the block length (5 trits or 3 quints). Returns the count of real values in the block.
+    /// </summary>
+    private static int SplitBlock(ReadOnlySpan<int> values, int blockStart, int bitCount, Span<int> digits, Span<int> mantissas)
+    {
+        // (1UL << bitCount) - 1 is 0 when bitCount == 0, so no special-casing is needed.
+        ulong mantissaMask = (1UL << bitCount) - 1UL;
+        int count = Math.Min(digits.Length, values.Length - blockStart);
+        for (int i = 0; i < digits.Length; i++)
+        {
+            int value = i < count ? values[blockStart + i] : 0;
+            digits[i] = value >> bitCount;
+            mantissas[i] = (int)((ulong)value & mantissaMask);
+        }
+
+        return count;
     }
 
     /// <summary>

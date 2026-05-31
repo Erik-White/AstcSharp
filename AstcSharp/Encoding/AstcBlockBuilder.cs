@@ -31,19 +31,10 @@ internal struct AstcBlockBuilder
     /// </summary>
     public void PlaceColorData(in BitStream colorStream, int startBit)
     {
-        BitStream stream = colorStream;
-        int count = (int)stream.Bits;
-        if (count == 0)
+        if (TryDrain(colorStream, out UInt128 value, out int count))
         {
-            return;
+            this.bits |= value << startBit;
         }
-
-        if (!stream.TryGetBits(count, out UInt128 value))
-        {
-            throw new InvalidOperationException("Colour BISE stream shorter than its reported bit count.");
-        }
-
-        this.bits |= (value & UInt128Extensions.OnesMask(count)) << startBit;
     }
 
     /// <summary>
@@ -53,21 +44,35 @@ internal struct AstcBlockBuilder
     /// </summary>
     public void PlaceWeightData(in BitStream weightStream)
     {
-        BitStream stream = weightStream;
-        int count = (int)stream.Bits;
+        if (TryDrain(weightStream, out UInt128 value, out _))
+        {
+            // value holds the weight bits LSB-first in its low bits; reversing the full 128-bit word
+            // moves them to the top so the decoder's block reversal restores them.
+            this.bits |= value.ReverseBits();
+        }
+    }
+
+    /// <summary>
+    /// Drains all bits from a (defensively copied) BISE stream into <paramref name="value"/>, masked
+    /// to its <paramref name="count"/> valid low bits. Returns false for an empty stream.
+    /// </summary>
+    private static bool TryDrain(in BitStream source, out UInt128 value, out int count)
+    {
+        BitStream stream = source;
+        count = (int)stream.Bits;
         if (count == 0)
         {
-            return;
+            value = default;
+            return false;
         }
 
-        if (!stream.TryGetBits(count, out UInt128 value))
+        if (!stream.TryGetBits(count, out value))
         {
-            throw new InvalidOperationException("Weight BISE stream shorter than its reported bit count.");
+            throw new InvalidOperationException("BISE stream shorter than its reported bit count.");
         }
 
-        // value holds the weight bits LSB-first in its low `count` bits; reversing the full
-        // 128-bit word moves them to the top so the decoder's block reversal restores them.
-        this.bits |= (value & UInt128Extensions.OnesMask(count)).ReverseBits();
+        value &= UInt128Extensions.OnesMask(count);
+        return true;
     }
 
     /// <summary>The assembled 128-bit block.</summary>

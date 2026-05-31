@@ -27,16 +27,10 @@ internal static class BlockModeEncoder
     /// configuration is not representable by any legal block mode.
     /// </summary>
     public static ushort Encode(int gridWidth, int gridHeight, int weightRange, bool isDualPlane)
-    {
-        var key = new WeightConfig(gridWidth, gridHeight, weightRange, isDualPlane);
-        if (!ConfigToModeBits.TryGetValue(key, out ushort modeBits))
-        {
-            throw new ArgumentException(
+        => TryEncode(gridWidth, gridHeight, weightRange, isDualPlane, out ushort modeBits)
+            ? modeBits
+            : throw new ArgumentException(
                 $"No legal ASTC block mode for grid {gridWidth}x{gridHeight}, weight range {weightRange}, dual-plane {isDualPlane}.");
-        }
-
-        return modeBits;
-    }
 
     /// <summary>
     /// Returns the 11-bit block mode for the configuration, or false if it is not representable.

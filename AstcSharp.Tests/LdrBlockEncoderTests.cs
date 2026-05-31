@@ -143,6 +143,25 @@ public class LdrBlockEncoderTests
             $"expected an RGB mode for opaque colour content, got {mode}");
     }
 
+    [Fact]
+    public void Compress_VaryingAlphaBlock_SelectsRgbaModeAndReconstructsAlpha()
+    {
+        // Alpha that varies across the block forces a full RGBA CEM (mode 12 or 13) — the only modes
+        // that carry alpha. This is the path that exercises the RGBA alpha colour-value slots
+        // end-to-end, which the opaque test images never reach.
+        Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint6x6);
+        byte[] pixels = VaryingAlphaRamp(footprint.Width, footprint.Height);
+
+        byte[] encoded = AstcEncoder.CompressImage(pixels, footprint.Width, footprint.Height, footprint);
+        ColorEndpointMode mode = DecodeEndpointMode(encoded);
+        Span<byte> decoded = AstcDecoder.DecompressImage(encoded, footprint.Width, footprint.Height, footprint);
+
+        Assert.True(
+            mode is ColorEndpointMode.LdrRgbaDirect or ColorEndpointMode.LdrRgbaBaseOffset,
+            $"expected an RGBA mode for varying-alpha content, got {mode}");
+        AssertMeanSquaredErrorAtMost(pixels, decoded, maxMeanSquaredError: 100.0, footprint);
+    }
+
     [Theory]
     [MemberData(nameof(AllFootprints))]
     public void Compress_SolidColor_RoundTripsExactly(FootprintType footprintType)
@@ -206,6 +225,26 @@ public class LdrBlockEncoderTests
                 pixels[idx + 1] = (byte)(200 - (t * 180));
                 pixels[idx + 2] = (byte)(t * 255);
                 pixels[idx + 3] = 255;
+            }
+        }
+
+        return pixels;
+    }
+
+    // A ramp whose alpha varies across the block (RGB fixed-ish), forcing a full RGBA endpoint mode.
+    private static byte[] VaryingAlphaRamp(int width, int height)
+    {
+        byte[] pixels = new byte[width * height * 4];
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                int idx = ((y * width) + x) * 4;
+                float t = (float)(x + y) / (width + height - 2);
+                pixels[idx] = (byte)(40 + (t * 160));
+                pixels[idx + 1] = 90;
+                pixels[idx + 2] = 150;
+                pixels[idx + 3] = (byte)(20 + (t * 220));
             }
         }
 

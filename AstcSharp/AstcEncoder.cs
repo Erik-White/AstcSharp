@@ -16,9 +16,10 @@ namespace AstcSharp;
 /// production encoder.
 /// </para>
 /// <para>
-/// Constant-colour blocks are encoded as void-extent blocks (spec §C.2.23);
-/// other blocks use a single-partition, RGBA-direct encoding (mode 12) with a fitted weight grid
-/// (decimated below the footprint size as needed), so every 2D footprint is supported.
+/// Constant-colour blocks are encoded as void-extent blocks (spec §C.2.23). Other blocks are fit
+/// per block: the endpoint colour mode (luminance, RGB, or RGBA — direct or base+offset) and the
+/// partition count (1 or 2, spec §C.2.21) are chosen by search, with a weight grid (decimated below
+/// the footprint size as needed, spec §C.2.18) fitted to the texels. Every 2D footprint is supported.
 /// </para>
 /// </remarks>
 public static class AstcEncoder
@@ -31,7 +32,10 @@ public static class AstcEncoder
     /// <param name="height">Image height in pixels.</param>
     /// <param name="footprint">The ASTC block footprint to encode with.</param>
     /// <returns>The ASTC block stream (16 bytes per block, row-major block order).</returns>
-    /// <exception cref="NotSupportedException">A block's texels are not all identical (general block encoding is not yet implemented).</exception>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="width"/> or <paramref name="height"/> is not positive, <paramref name="rgba"/>
+    /// is shorter than <c>width * height * 4</c>, or the image is too large to encode.
+    /// </exception>
     public static byte[] CompressImage(ReadOnlySpan<byte> rgba, int width, int height, Footprint footprint)
     {
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(width, 0);
@@ -43,7 +47,9 @@ public static class AstcEncoder
 
         int blocksWide = (width + footprint.Width - 1) / footprint.Width;
         int blocksHigh = (height + footprint.Height - 1) / footprint.Height;
-        byte[] output = new byte[blocksWide * blocksHigh * BlockInfo.SizeInBytes];
+        long blockCount = (long)blocksWide * blocksHigh;
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(blockCount, int.MaxValue / BlockInfo.SizeInBytes);
+        byte[] output = new byte[blockCount * BlockInfo.SizeInBytes];
 
         int blockIndex = 0;
         for (int blockY = 0; blockY < blocksHigh; blockY++)
