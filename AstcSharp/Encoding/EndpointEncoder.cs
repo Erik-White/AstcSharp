@@ -7,8 +7,8 @@ namespace AstcSharp.Encoding;
 /// <summary>
 /// Encodes a pair of LDR endpoints into the quantised colour values for a given colour endpoint
 /// mode (spec §C.2.14) — the inverse of <see cref="EndpointCodec.Decode"/>. Supports the LDR
-/// direct modes (luma 0, luma+alpha 4, RGB 8, RGBA 12) and base+offset modes (luma 1, luma+alpha 5,
-/// RGB 9, RGBA 13).
+/// direct modes (luma 0, luma+alpha 4, RGB 8, RGBA 12), base+offset modes (luma 1, luma+alpha 5,
+/// RGB 9, RGBA 13), and base+scale modes (RGB 6, RGB+two-alpha 10).
 /// </summary>
 /// <remarks>
 /// Correctness is guaranteed by construction: the caller decodes the produced colour values back
@@ -48,6 +48,8 @@ internal static class EndpointEncoder
             case ColorEndpointMode.LdrLumaAlphaBaseOffset: EncodeLumaAlphaBaseOffset(colorRange, colorValues, low, high); break;
             case ColorEndpointMode.LdrRgbBaseOffset: EncodeRgbBaseOffset(colorRange, colorValues, low, high); break;
             case ColorEndpointMode.LdrRgbaBaseOffset: EncodeRgbaBaseOffset(colorRange, colorValues, low, high); break;
+            case ColorEndpointMode.LdrRgbBaseScale: EncodeRgbBaseScale(colorRange, colorValues, low, high); break;
+            case ColorEndpointMode.LdrRgbBaseScaleTwoA: EncodeRgbBaseScaleTwoAlpha(colorRange, colorValues, low, high); break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(mode), mode, "Unsupported endpoint mode for encoding");
         }
@@ -73,6 +75,56 @@ internal static class EndpointEncoder
         QuantizeInto(colorRange, colorValues, 3, high.A);
     }
 
+    // Mode 5: luma base+offset plus alpha base+offset.
+    private static void EncodeLumaAlphaBaseOffset(int colorRange, Span<int> colorValues, RgbaColor low, RgbaColor high)
+    {
+        PackBaseOffset(colorRange, colorValues, 0, Luma(low), Luma(high));
+        PackBaseOffset(colorRange, colorValues, 1, low.A, high.A);
+    }
+
+    // Mode 6: RGB base+scale. The decoder stores high RGB in v0..2 and reconstructs
+    // low = high * v3 >> 8, so the low endpoint must lie on the line from the origin through high.
+    // This is cheaper than RGB-direct (4 values vs 6), so it wins for content whose dark endpoint is
+    // a uniformly darkened version of the bright one.
+    private static void EncodeRgbBaseScale(int colorRange, Span<int> colorValues, RgbaColor low, RgbaColor high)
+    {
+        QuantizeInto(colorRange, colorValues, 0, high.R);
+        QuantizeInto(colorRange, colorValues, 1, high.G);
+        QuantizeInto(colorRange, colorValues, 2, high.B);
+        QuantizeInto(colorRange, colorValues, 3, ScaleFactor(low, high));
+    }
+
+    // Mode 9: per-channel RGB base+offset.
+    private static void EncodeRgbBaseOffset(int colorRange, Span<int> colorValues, RgbaColor low, RgbaColor high)
+    {
+        PackBaseOffset(colorRange, colorValues, 0, low.R, high.R);
+        PackBaseOffset(colorRange, colorValues, 1, low.G, high.G);
+        PackBaseOffset(colorRange, colorValues, 2, low.B, high.B);
+    }
+
+    // Mode 10: RGB base+scale (as mode 6) plus independent low/high alpha in v4/v5.
+    private static void EncodeRgbBaseScaleTwoAlpha(int colorRange, Span<int> colorValues, RgbaColor low, RgbaColor high)
+    {
+        EncodeRgbBaseScale(colorRange, colorValues, low, high);
+        QuantizeInto(colorRange, colorValues, 4, low.A);
+        QuantizeInto(colorRange, colorValues, 5, high.A);
+    }
+
+    // Mode 12: RGB-direct plus low/high alpha.
+    private static void EncodeRgbaDirect(int colorRange, Span<int> colorValues, RgbaColor low, RgbaColor high)
+    {
+        EncodeRgbDirect(colorRange, colorValues, low, high);
+        QuantizeInto(colorRange, colorValues, 6, low.A);
+        QuantizeInto(colorRange, colorValues, 7, high.A);
+    }
+
+    // Mode 13: RGB base+offset plus alpha base+offset.
+    private static void EncodeRgbaBaseOffset(int colorRange, Span<int> colorValues, RgbaColor low, RgbaColor high)
+    {
+        EncodeRgbBaseOffset(colorRange, colorValues, low, high);
+        PackBaseOffset(colorRange, colorValues, 3, low.A, high.A);
+    }
+
     /// <summary>
     /// Mode 8: interleaved (low, high) per RGB channel. Because the endpoints are pre-ordered so the
     /// high RGB sum is the larger one, the decoder's blue-contract swap never fires, making this the
@@ -88,34 +140,24 @@ internal static class EndpointEncoder
         QuantizeInto(colorRange, colorValues, 5, high.B);
     }
 
-    // Mode 12: RGB-direct plus low/high alpha.
-    private static void EncodeRgbaDirect(int colorRange, Span<int> colorValues, RgbaColor low, RgbaColor high)
+    /// <summary>
+    /// Returns the 8-bit scale factor <c>s</c> that best maps the high RGB endpoint to the low one
+    /// under the decoder's <c>low = high * s >> 8</c> reconstruction (spec §C.2.14 mode 6). The
+    /// least-squares scalar projection of <paramref name="low"/> onto <paramref name="high"/> is
+    /// <c>256 * (low·high) / (high·high)</c>, clamped to a single byte. A zero high endpoint has no
+    /// defined direction, so the scale is irrelevant and reported as 0.
+    /// </summary>
+    private static int ScaleFactor(RgbaColor low, RgbaColor high)
     {
-        EncodeRgbDirect(colorRange, colorValues, low, high);
-        QuantizeInto(colorRange, colorValues, 6, low.A);
-        QuantizeInto(colorRange, colorValues, 7, high.A);
-    }
+        long highDotHigh = ((long)high.R * high.R) + ((long)high.G * high.G) + ((long)high.B * high.B);
+        if (highDotHigh == 0)
+        {
+            return 0;
+        }
 
-    // Mode 5: luma base+offset plus alpha base+offset.
-    private static void EncodeLumaAlphaBaseOffset(int colorRange, Span<int> colorValues, RgbaColor low, RgbaColor high)
-    {
-        PackBaseOffset(colorRange, colorValues, 0, Luma(low), Luma(high));
-        PackBaseOffset(colorRange, colorValues, 1, low.A, high.A);
-    }
-
-    // Mode 9: per-channel RGB base+offset.
-    private static void EncodeRgbBaseOffset(int colorRange, Span<int> colorValues, RgbaColor low, RgbaColor high)
-    {
-        PackBaseOffset(colorRange, colorValues, 0, low.R, high.R);
-        PackBaseOffset(colorRange, colorValues, 1, low.G, high.G);
-        PackBaseOffset(colorRange, colorValues, 2, low.B, high.B);
-    }
-
-    // Mode 13: RGB base+offset plus alpha base+offset.
-    private static void EncodeRgbaBaseOffset(int colorRange, Span<int> colorValues, RgbaColor low, RgbaColor high)
-    {
-        EncodeRgbBaseOffset(colorRange, colorValues, low, high);
-        PackBaseOffset(colorRange, colorValues, 3, low.A, high.A);
+        long lowDotHigh = ((long)low.R * high.R) + ((long)low.G * high.G) + ((long)low.B * high.B);
+        long scale = ((lowDotHigh << 8) + (highDotHigh / 2)) / highDotHigh;
+        return (int)Math.Clamp(scale, 0, MaxChannel);
     }
 
     /// <summary>

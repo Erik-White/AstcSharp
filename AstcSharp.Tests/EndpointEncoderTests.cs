@@ -124,4 +124,28 @@ public class EndpointEncoderTests
         Assert.Equal(new RgbaColor(40, 80, 120, 160), low);
         Assert.Equal(new RgbaColor(60, 100, 140, 180), high);
     }
+
+    [Fact]
+    public void Encode_RgbBaseScale_RecoversScaledEndpoints()
+    {
+        // Base+scale reconstructs low = high * scale >> 8, so it is exact only when low lies on the
+        // origin->high line. low = high * 128 >> 8 = high / 2 satisfies that; pin all three channels.
+        (RgbaColor low, RgbaColor high) = RoundTrip(
+            ColorEndpointMode.LdrRgbBaseScale, new RgbaColor(32, 64, 96, 255), new RgbaColor(64, 128, 192, 255));
+
+        Assert.Equal(new RgbaColor(32, 64, 96, 255), low);
+        Assert.Equal(new RgbaColor(64, 128, 192, 255), high);
+    }
+
+    [Fact]
+    public void Encode_RgbBaseScaleTwoAlpha_RecoversScaledRgbAndIndependentAlpha()
+    {
+        // Mode 10 is mode 6's RGB scaling plus independent low/high alpha (slots 4/5); distinct alpha
+        // (50/200) pins those slots against an RGB mix-up.
+        (RgbaColor low, RgbaColor high) = RoundTrip(
+            ColorEndpointMode.LdrRgbBaseScaleTwoA, new RgbaColor(32, 64, 96, 50), new RgbaColor(64, 128, 192, 200));
+
+        Assert.Equal(new RgbaColor(32, 64, 96, 50), low);
+        Assert.Equal(new RgbaColor(64, 128, 192, 200), high);
+    }
 }

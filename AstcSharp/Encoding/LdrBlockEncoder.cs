@@ -27,9 +27,10 @@ internal static class LdrBlockEncoder
     // used to size the colour-value scratch buffers.
     private const int MaxColorValueCount = 8;
 
-    // Upper bound on candidate endpoint modes tried per block (luma, RGB, RGBA — each direct +
-    // base+offset). Sizes the candidate-mode scratch span.
-    private const int MaxCandidateModes = 6;
+    // Upper bound on candidate endpoint modes tried per block: luma (direct + base+offset), RGB
+    // (direct + base+offset + base+scale), and RGBA (direct + base+offset + base+scale-two-alpha).
+    // Sizes the candidate-mode scratch span.
+    private const int MaxCandidateModes = 8;
 
     // Block-mode layout (spec §C.2.10): the 11-bit block mode, then the 2-bit partition-count
     // field. Single-partition blocks store the colour endpoint mode at bit 13 and colour data at
@@ -188,7 +189,9 @@ internal static class LdrBlockEncoder
     /// Picks the colour endpoint modes worth trying for a block, cheapest-content-fit first.
     /// Grey blocks add the luminance modes (2 values); opaque blocks add the RGB modes (no alpha);
     /// blocks with varying alpha or chroma fall back to the full RGBA modes. Each "direct" mode is
-    /// paired with its "base+offset" sibling, which can spend fewer bits when the endpoints are close.
+    /// paired with its "base+offset" sibling (fewer bits when the endpoints are close) and, for RGB,
+    /// a "base+scale" sibling (fewer values still — 4 vs 6 — when the dark endpoint is a uniformly
+    /// darkened version of the bright one, e.g. lit surfaces ramping toward black).
     /// </summary>
     private static int SelectCandidateModes(ReadOnlySpan<RgbaColor> texels, Span<ColorEndpointMode> modes)
     {
@@ -211,11 +214,13 @@ internal static class LdrBlockEncoder
         {
             modes[count++] = ColorEndpointMode.LdrRgbDirect;
             modes[count++] = ColorEndpointMode.LdrRgbBaseOffset;
+            modes[count++] = ColorEndpointMode.LdrRgbBaseScale;
         }
 
         // The full RGBA modes always apply and are the only legal choice when alpha varies.
         modes[count++] = ColorEndpointMode.LdrRgbaDirect;
         modes[count++] = ColorEndpointMode.LdrRgbaBaseOffset;
+        modes[count++] = ColorEndpointMode.LdrRgbBaseScaleTwoA;
         return count;
     }
 

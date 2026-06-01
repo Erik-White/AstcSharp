@@ -186,6 +186,24 @@ public class LdrBlockEncoderTests
         AssertMeanSquaredErrorAtMost(pixels, decoded, maxMeanSquaredError: 100.0, footprint);
     }
 
+    [Fact]
+    public void Compress_ScaledColorRampWithAlpha_SelectsBaseScaleTwoAlphaMode()
+    {
+        // RGB that ramps from black as a uniform scaling of one bright colour, plus varying alpha, is
+        // the sweet spot for RGB base+scale-with-two-alpha (mode 10): it carries alpha yet spends only
+        // 6 colour values (vs RGBA-direct's 8), freeing budget for weight precision. The encoder
+        // should pick it over the RGBA modes here.
+        Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint6x6);
+        byte[] pixels = ScaledColorRampWithAlpha(footprint.Width, footprint.Height);
+
+        byte[] encoded = AstcEncoder.CompressImage(pixels, footprint.Width, footprint.Height, footprint);
+        ColorEndpointMode mode = DecodeEndpointMode(encoded);
+        Span<byte> decoded = AstcDecoder.DecompressImage(encoded, footprint.Width, footprint.Height, footprint);
+
+        Assert.Equal(ColorEndpointMode.LdrRgbBaseScaleTwoA, mode);
+        AssertMeanSquaredErrorAtMost(pixels, decoded, maxMeanSquaredError: 100.0, footprint);
+    }
+
     [Theory]
     [MemberData(nameof(AllFootprints))]
     public void Compress_SolidColor_RoundTripsExactly(FootprintType footprintType)
@@ -249,6 +267,27 @@ public class LdrBlockEncoderTests
                 pixels[idx + 1] = (byte)(200 - (t * 180));
                 pixels[idx + 2] = (byte)(t * 255);
                 pixels[idx + 3] = 255;
+            }
+        }
+
+        return pixels;
+    }
+
+    // RGB ramping from black as a uniform scaling of one bright colour (every texel = base * t), plus
+    // independently varying alpha — the ideal content for RGB base+scale-with-two-alpha (mode 10).
+    private static byte[] ScaledColorRampWithAlpha(int width, int height)
+    {
+        byte[] pixels = new byte[width * height * 4];
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                int idx = ((y * width) + x) * 4;
+                float t = (float)(x + y) / (width + height - 2);
+                pixels[idx] = (byte)(t * 200);
+                pixels[idx + 1] = (byte)(t * 120);
+                pixels[idx + 2] = (byte)(t * 60);
+                pixels[idx + 3] = (byte)(40 + (t * 200));
             }
         }
 
