@@ -59,8 +59,8 @@ internal static class LdrBlockEncoder
     // A single-plane block may hold at most 18 colour endpoint values (spec §C.2.11); the decoder
     // rejects any block exceeding this. With a shared colour endpoint mode across partitions, the
     // per-partition value count caps how many partitions fit: RGBA (8 values) allows 2, RGB (6)
-    // allows 3, luma+alpha (4) allows 4. SearchConfigs prunes any mode/partition-count combination
-    // that exceeds this budget.
+    // allows 3, luma (2) allows 4. SearchConfigs prunes any mode/partition-count combination that
+    // exceeds this budget.
     private const int MaxColorValuesPerBlock = 18;
 
     // Partitioning only helps when there are enough texels to host distinct colour regions; below
@@ -546,18 +546,24 @@ internal static class LdrBlockEncoder
         Span<long> seedErrors = stackalloc long[SeedFinalists];
         Span<int> seedFinalists = stackalloc int[SeedFinalists];
 
+        // The candidate modes depend only on block content, not on the partition count or seed, so
+        // select them once here rather than per seed. SearchConfigs prunes any whose concatenated
+        // colour values exceed the 18-value budget at a given partition count.
+        Span<ColorEndpointMode> candidateModes = stackalloc ColorEndpointMode[MaxCandidateModes];
+        int modeCount = SelectCandidateModes(texels, candidateModes);
+        candidateModes = candidateModes[..modeCount];
+
         // Search every legal partition count (2..4, spec §C.2.21). The shared colour endpoint mode
-        // for each count is chosen to fit the 18-value budget (in EncodeMultiPartitionSeed), so
-        // higher counts simply use a cheaper mode rather than being skipped.
-        int maxPartitions = Math.Min(MaxPartitions, footprint.PixelCount);
-        for (int partitionCount = MinMultiPartitions; partitionCount <= maxPartitions; partitionCount++)
+        // for each count is chosen to fit the 18-value budget, so higher counts simply use a cheaper
+        // mode rather than being skipped.
+        for (int partitionCount = MinMultiPartitions; partitionCount <= MaxPartitions; partitionCount++)
         {
             int finalistCount = SelectSeedFinalists(texels, footprint, partitionCount, seedFinalists, seedErrors);
 
             for (int f = 0; f < finalistCount; f++)
             {
                 int seed = seedFinalists[f];
-                UInt128 block = EncodeMultiPartitionSeed(texels, footprint, partitionCount, seed, out long error);
+                UInt128 block = EncodeMultiPartitionSeed(texels, footprint, partitionCount, seed, candidateModes, out long error);
                 if (error < bestErrorOut)
                 {
                     bestErrorOut = error;
@@ -666,7 +672,8 @@ internal static class LdrBlockEncoder
     /// legal configuration fits).
     /// </summary>
     private static UInt128 EncodeMultiPartitionSeed(
-        ReadOnlySpan<RgbaColor> texels, Footprint footprint, int partitionCount, int seed, out long bestErrorOut)
+        ReadOnlySpan<RgbaColor> texels, Footprint footprint, int partitionCount, int seed,
+        ReadOnlySpan<ColorEndpointMode> candidateModes, out long bestErrorOut)
     {
         bestErrorOut = long.MaxValue;
         ReadOnlySpan<int> assignment = Partition.GetASTCPartition(footprint, partitionCount, seed).Assignment;
@@ -696,13 +703,10 @@ internal static class LdrBlockEncoder
             perTexelWeights: stackalloc int[texelCount]);
 
         // All partitions share one colour endpoint mode (the simplest legal multi-partition layout).
-        // Candidate modes are chosen by block content; SearchConfigs prunes any whose concatenated
-        // colour values exceed the 18-value budget at this partition count (e.g. RGBA needs 8 values,
-        // so it is dropped at 3+ partitions, leaving RGB at 3 and luma/luma+alpha at 4).
-        Span<ColorEndpointMode> candidateModes = stackalloc ColorEndpointMode[MaxCandidateModes];
-        int modeCount = SelectCandidateModes(texels, candidateModes);
-
-        if (!SearchConfigs(in block, candidateModes[..modeCount], MultiColorStartBit, in scratch, out BestConfig best, out bestErrorOut))
+        // SearchConfigs prunes any candidate whose concatenated colour values exceed the 18-value
+        // budget at this partition count (e.g. RGBA needs 8 values, so it is dropped at 3+ partitions,
+        // leaving RGB at 3 and luma at 4).
+        if (!SearchConfigs(in block, candidateModes, MultiColorStartBit, in scratch, out BestConfig best, out bestErrorOut))
         {
             return default;
         }

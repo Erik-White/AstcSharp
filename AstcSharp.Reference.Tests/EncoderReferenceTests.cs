@@ -257,7 +257,7 @@ public class EncoderReferenceTests
     }
 
     // Four saturated solid colours, one per quadrant — four well-separated points in RGB space that
-    // drive the encoder to a 3-partition shared-RGB fit.
+    // no two endpoint lines cover, giving a 3-partition fit (a shared RGB mode fits three).
     private static byte[] FourQuadrantImage(int width, int height)
     {
         (byte R, byte G, byte B)[] quadrant =
