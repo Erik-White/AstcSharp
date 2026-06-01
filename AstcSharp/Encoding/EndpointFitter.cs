@@ -152,7 +152,13 @@ internal static class EndpointFitter
     {
         // Reused each iteration (fully overwritten before use).
         Span<double> next = stackalloc double[ChannelCount];
-        axis[0] = 1; axis[1] = 1; axis[2] = 1; axis[3] = 1;
+
+        // Seed from the highest-variance channel rather than a uniform vector: the uniform seed can
+        // be exactly orthogonal to the dominant eigenvector (e.g. equal-variance anti-correlated
+        // channels, whose axis is (1,0,-1,0)), which would collapse to the degenerate fallback. The
+        // largest-diagonal basis vector projects onto that channel's covariance column, which is
+        // non-zero whenever the channel varies and aligns with the dominant axis.
+        SeedFromMaxVarianceChannel(covariance, axis);
         for (int iteration = 0; iteration < PrincipalAxisIterations; iteration++)
         {
             for (int i = 0; i < ChannelCount; i++)
@@ -179,6 +185,28 @@ internal static class EndpointFitter
                 axis[i] = next[i] / norm;
             }
         }
+    }
+
+    /// <summary>
+    /// Seeds <paramref name="axis"/> with the unit basis vector of the channel with the greatest
+    /// variance (the largest covariance diagonal entry).
+    /// </summary>
+    private static void SeedFromMaxVarianceChannel(ReadOnlySpan<double> covariance, Span<double> axis)
+    {
+        int maxChannel = 0;
+        double maxVariance = covariance[0];
+        for (int c = 1; c < ChannelCount; c++)
+        {
+            double variance = covariance[(c * ChannelCount) + c];
+            if (variance > maxVariance)
+            {
+                maxVariance = variance;
+                maxChannel = c;
+            }
+        }
+
+        axis.Clear();
+        axis[maxChannel] = 1;
     }
 
     private static RgbaColor EndpointAt(ReadOnlySpan<double> mean, ReadOnlySpan<double> axis, double projection)
