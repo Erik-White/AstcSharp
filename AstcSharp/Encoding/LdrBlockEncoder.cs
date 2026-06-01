@@ -351,15 +351,9 @@ internal static class LdrBlockEncoder
         DecimationInfo decimation,
         in ConfigScratch scratch)
     {
-        Span<double> fittedGrid = scratch.FittedGrid[..gridWeightCount];
-        Span<int> quantGridWeights = scratch.CandidateGridWeights;
         Span<int> effectiveGrid = scratch.EffectiveGrid[..gridWeightCount];
-        for (int p = 0; p < gridWeightCount; p++)
-        {
-            int quant = Quantization.QuantizeWeightToRange(RoundWeight(fittedGrid[p]), weightRange);
-            quantGridWeights[p] = quant;
-            effectiveGrid[p] = Quantization.UnquantizeWeightFromRange(quant, weightRange);
-        }
+        QuantizeGridToEffective(
+            scratch.FittedGrid[..gridWeightCount], weightRange, scratch.CandidateGridWeights[..gridWeightCount], effectiveGrid);
 
         // Infill the effective grid weights back to per-texel weights exactly as the decoder does.
         ReadOnlySpan<RgbaColor> texels = block.Texels;
@@ -807,6 +801,8 @@ internal static class LdrBlockEncoder
         Span<int> bestGridWeights0,
         Span<int> bestGridWeights1,
         Span<int> candidateColorValues,
+        Span<int> candidateGridWeights0,
+        Span<int> candidateGridWeights1,
         Span<int> effectiveLow,
         Span<int> effectiveHigh,
         Span<int> unquantizedColors,
@@ -823,6 +819,8 @@ internal static class LdrBlockEncoder
         public Span<int> BestGridWeights0 { get; } = bestGridWeights0;
         public Span<int> BestGridWeights1 { get; } = bestGridWeights1;
         public Span<int> CandidateColorValues { get; } = candidateColorValues;
+        public Span<int> CandidateGridWeights0 { get; } = candidateGridWeights0;
+        public Span<int> CandidateGridWeights1 { get; } = candidateGridWeights1;
         public Span<int> EffectiveLow { get; } = effectiveLow;
         public Span<int> EffectiveHigh { get; } = effectiveHigh;
         public Span<int> UnquantizedColors { get; } = unquantizedColors;
@@ -842,6 +840,8 @@ internal static class LdrBlockEncoder
     /// driven by an independent second weight plane; each of the four channels is tried as that
     /// channel, and for each the grid size, weight range, and colour mode are searched as in the
     /// single-plane path. Dual-plane doubles the weight count, so the grid is capped at 32 points.
+    /// Single-partition only: the colour/selector bit-budget arithmetic below assumes one partition
+    /// (no per-partition extra-CEM bits); supporting multi-partition would require accounting for them.
     /// </summary>
     private static UInt128 TryEncodeDualPlane(ReadOnlySpan<RgbaColor> texels, Footprint footprint, out long bestErrorOut)
     {
@@ -860,6 +860,8 @@ internal static class LdrBlockEncoder
             bestGridWeights0: stackalloc int[MaxDualPlaneGridWeights],
             bestGridWeights1: stackalloc int[MaxDualPlaneGridWeights],
             candidateColorValues: stackalloc int[MaxColorValueCount],
+            candidateGridWeights0: stackalloc int[MaxDualPlaneGridWeights],
+            candidateGridWeights1: stackalloc int[MaxDualPlaneGridWeights],
             effectiveLow: stackalloc int[ChannelCount],
             effectiveHigh: stackalloc int[ChannelCount],
             unquantizedColors: stackalloc int[MaxColorValueCount],
@@ -957,8 +959,8 @@ internal static class LdrBlockEncoder
                             best = new DualPlaneConfig(
                                 new BestConfig(mode, gridWidth, gridHeight, weightRange, colorRange, colorValueCount), dualPlaneChannel);
                             scratch.CandidateColorValues[..colorValueCount].CopyTo(scratch.BestColorValues);
-                            QuantizeGrid(scratch.FittedGrid0[..gridWeightCount], weightRange, scratch.BestGridWeights0);
-                            QuantizeGrid(scratch.FittedGrid1[..gridWeightCount], weightRange, scratch.BestGridWeights1);
+                            scratch.CandidateGridWeights0[..gridWeightCount].CopyTo(scratch.BestGridWeights0);
+                            scratch.CandidateGridWeights1[..gridWeightCount].CopyTo(scratch.BestGridWeights1);
                         }
                     }
                 }
@@ -989,6 +991,9 @@ internal static class LdrBlockEncoder
             return false;
         }
 
+        // Single-partition only: ColorStartBit is the 1-partition value (17) and there are no extra
+        // per-partition CEM bits to reserve. Extending dual-plane to multiple partitions would need
+        // the multi-partition colour start bit and the extra-CEM-bit accounting the decoder applies.
         int maxColorBits = BlockBits - weightBitCount - DualPlaneSelectorBits - ColorStartBit;
         return BlockModeDecoder.TryResolveColorEncoding(colorValueCount, maxColorBits, out colorRange, out _);
     }
@@ -1041,8 +1046,10 @@ internal static class LdrBlockEncoder
     {
         Span<int> effectiveGrid0 = scratch.EffectiveGrid0[..gridWeightCount];
         Span<int> effectiveGrid1 = scratch.EffectiveGrid1[..gridWeightCount];
-        EffectiveGrid(scratch.FittedGrid0[..gridWeightCount], weightRange, effectiveGrid0);
-        EffectiveGrid(scratch.FittedGrid1[..gridWeightCount], weightRange, effectiveGrid1);
+        QuantizeGridToEffective(
+            scratch.FittedGrid0[..gridWeightCount], weightRange, scratch.CandidateGridWeights0[..gridWeightCount], effectiveGrid0);
+        QuantizeGridToEffective(
+            scratch.FittedGrid1[..gridWeightCount], weightRange, scratch.CandidateGridWeights1[..gridWeightCount], effectiveGrid1);
 
         ReadOnlySpan<RgbaColor> texels = block.Texels;
         Span<int> perTexelWeights0 = scratch.PerTexelWeights0[..texels.Length];
@@ -1061,26 +1068,17 @@ internal static class LdrBlockEncoder
     }
 
     /// <summary>
-    /// Rounds and quantises a fitted grid to the weight range, leaving the quantised weights in
-    /// <paramref name="quantGridWeights"/>.
+    /// Quantises a fitted grid to the weight range, writing both the stored quantised weights (into
+    /// <paramref name="quantGridWeights"/>, for the bitstream) and the decoder's effective weights
+    /// (into <paramref name="effectiveGrid"/>, for reconstruction) in one pass.
     /// </summary>
-    private static void QuantizeGrid(ReadOnlySpan<double> fittedGrid, int weightRange, Span<int> quantGridWeights)
-    {
-        for (int i = 0; i < fittedGrid.Length; i++)
-        {
-            quantGridWeights[i] = Quantization.QuantizeWeightToRange(RoundWeight(fittedGrid[i]), weightRange);
-        }
-    }
-
-    /// <summary>
-    /// Quantises a fitted grid to the weight range and unquantises back, leaving the decoder's
-    /// effective grid weights in <paramref name="effectiveGrid"/>.
-    /// </summary>
-    private static void EffectiveGrid(ReadOnlySpan<double> fittedGrid, int weightRange, Span<int> effectiveGrid)
+    private static void QuantizeGridToEffective(
+        ReadOnlySpan<double> fittedGrid, int weightRange, Span<int> quantGridWeights, Span<int> effectiveGrid)
     {
         for (int i = 0; i < fittedGrid.Length; i++)
         {
             int quant = Quantization.QuantizeWeightToRange(RoundWeight(fittedGrid[i]), weightRange);
+            quantGridWeights[i] = quant;
             effectiveGrid[i] = Quantization.UnquantizeWeightFromRange(quant, weightRange);
         }
     }
@@ -1120,8 +1118,9 @@ internal static class LdrBlockEncoder
         BoundedIntegerSequenceEncoder.Encode(c.WeightRange, interleaved, ref weightStream);
         int weightBitCount = (int)weightStream.Bits;
 
-        // The 2-bit colour-component selector sits just below the weight data (spec §C.2.20):
-        // at bit 128 - weightBitCount - 2.
+        // The 2-bit colour-component selector sits just below the weight data (spec §C.2.20): at bit
+        // 128 - weightBitCount - 2. Single-partition only — the decoder's position also subtracts the
+        // per-partition extra-CEM bits, which are zero here; multi-partition dual-plane would need them.
         builder.PlaceLowField((ulong)config.DualPlaneChannel, BlockBits - weightBitCount - DualPlaneSelectorBits, DualPlaneSelectorBits);
         builder.PlaceWeightData(weightStream);
 
