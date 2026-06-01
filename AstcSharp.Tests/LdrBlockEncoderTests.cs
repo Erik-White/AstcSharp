@@ -101,11 +101,10 @@ public class LdrBlockEncoderTests
     [InlineData(FootprintType.Footprint12x12)]
     public void Compress_ManyRandomMultiRegionBlocks_StayWithinColorValueBudget(FootprintType footprintType)
     {
-        // A shared colour endpoint mode stores 8 values per partition for RGBA, 6 for RGB, 4 for
-        // luma+alpha; the encoder picks one that fits the 18-value budget (spec §C.2.11) at the
-        // chosen partition count (up to 4). Fuzz many multi-region blocks and assert every emitted
-        // block is legal: within the colour-value budget and decoding without any error-colour
-        // (magenta) texels.
+        // A shared colour endpoint mode stores 8 values per partition for RGBA, 6 for RGB, 2 for
+        // luma; the encoder picks one that fits the 18-value budget (spec §C.2.11) at the chosen
+        // partition count (up to 4). Fuzz many multi-region blocks and assert every emitted block is
+        // legal: within the colour-value budget and decoding without any error-colour (magenta) texels.
         Footprint footprint = Footprint.FromFootprintType(footprintType);
         var rng = new Random(1234);
 

@@ -57,10 +57,10 @@ internal static class LdrBlockEncoder
     private const int PartitionSeedCount = 1 << PartitionSeedBits;
 
     // A single-plane block may hold at most 18 colour endpoint values (spec §C.2.11); the decoder
-    // rejects any block exceeding this. With a shared colour endpoint mode across partitions, the
-    // per-partition value count caps how many partitions fit: RGBA (8 values) allows 2, RGB (6)
-    // allows 3, luma (2) allows 4. SearchConfigs prunes any mode/partition-count combination that
-    // exceeds this budget.
+    // rejects any block exceeding this. With one shared colour endpoint mode across partitions, this
+    // budget bounds the partition count by the mode's per-partition value count: RGBA (8) fits 2
+    // partitions, RGB (6) fits 3, luma (2) fits 4 (also the MaxPartitions cap). SearchConfigs prunes
+    // any mode/partition-count combination that exceeds the budget.
     private const int MaxColorValuesPerBlock = 18;
 
     // Partitioning only helps when there are enough texels to host distinct colour regions; below
@@ -217,6 +217,22 @@ internal static class LdrBlockEncoder
         modes[count++] = ColorEndpointMode.LdrRgbaDirect;
         modes[count++] = ColorEndpointMode.LdrRgbaBaseOffset;
         return count;
+    }
+
+    /// <summary>
+    /// Returns the smallest per-partition colour-value count among <paramref name="modes"/> — the
+    /// cheapest shared mode the multi-partition search could pick, used to decide whether a partition
+    /// count can fit the colour-value budget at all.
+    /// </summary>
+    private static int MinColorValuesPerPartition(ReadOnlySpan<ColorEndpointMode> modes)
+    {
+        int min = int.MaxValue;
+        foreach (ColorEndpointMode mode in modes)
+        {
+            min = Math.Min(min, mode.GetColorValuesCount());
+        }
+
+        return min;
     }
 
     /// <summary>
@@ -547,17 +563,25 @@ internal static class LdrBlockEncoder
         Span<int> seedFinalists = stackalloc int[SeedFinalists];
 
         // The candidate modes depend only on block content, not on the partition count or seed, so
-        // select them once here rather than per seed. SearchConfigs prunes any whose concatenated
-        // colour values exceed the 18-value budget at a given partition count.
+        // select them once here rather than per seed.
         Span<ColorEndpointMode> candidateModes = stackalloc ColorEndpointMode[MaxCandidateModes];
         int modeCount = SelectCandidateModes(texels, candidateModes);
         candidateModes = candidateModes[..modeCount];
 
-        // Search every legal partition count (2..4, spec §C.2.21). The shared colour endpoint mode
-        // for each count is chosen to fit the 18-value budget, so higher counts simply use a cheaper
-        // mode rather than being skipped.
+        // The cheapest candidate sets the smallest per-partition colour-value count, which decides
+        // whether a partition count can fit the colour-value budget at all.
+        int minValuesPerPartition = MinColorValuesPerPartition(candidateModes);
+
+        // Search every legal partition count (2..4, spec §C.2.21), skipping any whose cheapest shared
+        // mode would still exceed the colour-value budget — for those, the seed scan and per-config
+        // search below could only ever produce pruned (illegal) configurations.
         for (int partitionCount = MinMultiPartitions; partitionCount <= MaxPartitions; partitionCount++)
         {
+            if (minValuesPerPartition * partitionCount > MaxColorValuesPerBlock)
+            {
+                continue;
+            }
+
             int finalistCount = SelectSeedFinalists(texels, footprint, partitionCount, seedFinalists, seedErrors);
 
             for (int f = 0; f < finalistCount; f++)
@@ -702,10 +726,8 @@ internal static class LdrBlockEncoder
             effectiveGrid: stackalloc int[MaxGridWeights],
             perTexelWeights: stackalloc int[texelCount]);
 
-        // All partitions share one colour endpoint mode (the simplest legal multi-partition layout).
-        // SearchConfigs prunes any candidate whose concatenated colour values exceed the 18-value
-        // budget at this partition count (e.g. RGBA needs 8 values, so it is dropped at 3+ partitions,
-        // leaving RGB at 3 and luma at 4).
+        // All partitions share one colour endpoint mode (the simplest legal multi-partition layout);
+        // SearchConfigs keeps only those that fit the colour-value budget (see MaxColorValuesPerBlock).
         if (!SearchConfigs(in block, candidateModes, MultiColorStartBit, in scratch, out BestConfig best, out bestErrorOut))
         {
             return default;
