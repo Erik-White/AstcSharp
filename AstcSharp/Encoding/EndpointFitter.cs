@@ -1,3 +1,4 @@
+using AstcSharp.ColorEncoding;
 using AstcSharp.Core;
 
 namespace AstcSharp.Encoding;
@@ -32,7 +33,7 @@ internal static class EndpointFitter
         {
             for (int c = 0; c < ChannelCount; c++)
             {
-                mean[c] += texel[c];
+                mean[c] += texel.GetChannel(c);
             }
         }
 
@@ -109,7 +110,7 @@ internal static class EndpointFitter
             double projection = 0;
             for (int c = 0; c < ChannelCount; c++)
             {
-                projection += (texel[c] - mean[c]) * axis[c];
+                projection += (texel.GetChannel(c) - mean[c]) * axis[c];
             }
 
             min = Math.Min(min, projection);
@@ -141,7 +142,7 @@ internal static class EndpointFitter
         {
             for (int c = 0; c < ChannelCount; c++)
             {
-                centred[c] = texel[c] - mean[c];
+                centred[c] = texel.GetChannel(c) - mean[c];
             }
 
             for (int i = 0; i < ChannelCount; i++)

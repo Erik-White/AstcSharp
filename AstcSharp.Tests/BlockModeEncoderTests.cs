@@ -25,6 +25,14 @@ public class BlockModeEncoderTests
                 continue;
             }
 
+            // A full block decode also rejects configs with more than 64 weights (spec §C.2.11),
+            // the encoder mirrors that, so those configs are legitimately not representable.
+            int weightCount = gridWidth * gridHeight * (isDualPlane ? 2 : 1);
+            if (weightCount > 64)
+            {
+                continue;
+            }
+
             configsChecked++;
 
             ushort encoded = BlockModeEncoder.Encode(gridWidth, gridHeight, weightRange, isDualPlane);

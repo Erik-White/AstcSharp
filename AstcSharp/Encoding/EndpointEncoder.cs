@@ -64,8 +64,9 @@ internal static class EndpointEncoder
 
     /// <summary>
     /// Rounded luma (RGB average) of a colour, matching the grayscale assumption of the luma modes.
+    /// Uses the codebase's canonical round-to-nearest RGB mean so encode and decode agree.
     /// </summary>
-    private static int Luma(RgbaColor c) => ((c.R + c.G + c.B) + 1) / 3;
+    private static int Luma(RgbaColor c) => c.GetAverage();
 
     // Mode 0: two luma values.
     private static void EncodeLumaDirect(int colorRange, Span<int> colorValues, RgbaColor low, RgbaColor high)

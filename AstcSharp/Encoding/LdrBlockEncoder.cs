@@ -500,7 +500,7 @@ internal static class LdrBlockEncoder
     {
         for (int channel = 0; channel < ChannelCount; channel++)
         {
-            channels[channel] = color[channel];
+            channels[channel] = color.GetChannel(channel);
         }
     }
 
@@ -530,7 +530,7 @@ internal static class LdrBlockEncoder
 
             int direction = high[channel] - low[channel];
             dirDotDir += (long)direction * direction;
-            pixelDotDir += (long)(texel[channel] - low[channel]) * direction;
+            pixelDotDir += (long)(texel.GetChannel(channel) - low[channel]) * direction;
         }
 
         if (dirDotDir == 0)
@@ -563,7 +563,7 @@ internal static class LdrBlockEncoder
         {
             int channelWeight = channel == dualPlaneChannel ? secondaryWeight : weight;
             int reconstructed = (Interpolation.BlendLdrReplicated(low[channel], high[channel], channelWeight) >> 8) & byte.MaxValue;
-            int diff = reconstructed - texel[channel];
+            int diff = reconstructed - texel.GetChannel(channel);
             error += (long)diff * diff;
         }
 
@@ -829,8 +829,8 @@ internal static class LdrBlockEncoder
             perTexelWeights0: stackalloc int[texelCount],
             perTexelWeights1: stackalloc int[texelCount]);
 
-        // The full RGBA-direct mode carries all four channels independently — the only mode for which
-        // assigning a private weight plane to one channel is meaningful.
+        // Same content-aware candidate modes as the single-plane path; the search keeps whichever
+        // (mode, channel) pairing reconstructs best.
         Span<ColorEndpointMode> candidateModes = stackalloc ColorEndpointMode[MaxCandidateModes];
         int modeCount = SelectCandidateModes(texels, candidateModes);
 
@@ -874,11 +874,10 @@ internal static class LdrBlockEncoder
 
         foreach (ColorEndpointMode mode in candidateModes)
         {
+            // Single-partition, so the colour-value count is just the mode's own (at most 8 for RGBA)
+            // and always within the 18-value budget; the bit budget is enforced by
+            // TryResolveDualPlaneConfig, which also reserves the dual-plane selector bits.
             int colorValueCount = mode.GetColorValuesCount();
-            if (colorValueCount > MaxColorValuesPerBlock)
-            {
-                continue;
-            }
 
             for (int gridHeight = MinGridDim; gridHeight <= maxGridHeight; gridHeight++)
             {

@@ -37,6 +37,11 @@ public static class AstcEncoder
     /// <paramref name="width"/> or <paramref name="height"/> is not positive, <paramref name="rgba"/>
     /// is shorter than <c>width * height * 4</c>, or the image is too large to encode.
     /// </exception>
+    /// <exception cref="InvalidOperationException">
+    /// A block has no legal encoding. This indicates an internal invariant violation rather than bad
+    /// input — every supported 2D footprint admits a legal single-partition encoding — and should not
+    /// occur in practice.
+    /// </exception>
     public static byte[] CompressImage(ReadOnlySpan<byte> rgba, int width, int height, Footprint footprint)
     {
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(width, 0);
@@ -68,8 +73,18 @@ public static class AstcEncoder
     }
 
     /// <summary>
-    /// Compresses an RGBA32 LDR image and prepends the 16-byte <c>.astc</c> file header.
+    /// Compresses an RGBA32 LDR image and prepends the 16-byte <c>.astc</c> file header. The header
+    /// records a 2D footprint (block depth 1) and image depth 1; 3D textures are not supported.
     /// </summary>
+    /// <param name="rgba">Source pixels, 4 bytes per pixel in R, G, B, A order, row-major.</param>
+    /// <param name="width">Image width in pixels (at most 16,777,215 — the header's 24-bit field).</param>
+    /// <param name="height">Image height in pixels (at most 16,777,215).</param>
+    /// <param name="footprint">The ASTC block footprint to encode with.</param>
+    /// <returns>The <c>.astc</c> file bytes: the 16-byte header followed by the block stream.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// Any condition <see cref="CompressImage"/> rejects, or <paramref name="width"/>/<paramref name="height"/>
+    /// exceeds the header's 24-bit dimension field.
+    /// </exception>
     public static byte[] CompressToAstcFile(ReadOnlySpan<byte> rgba, int width, int height, Footprint footprint)
     {
         byte[] blocks = CompressImage(rgba, width, height, footprint);

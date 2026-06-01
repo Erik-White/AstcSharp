@@ -31,7 +31,7 @@ internal struct AstcBlockBuilder
     /// </summary>
     public void PlaceColorData(in BitStream colorStream, int startBit)
     {
-        if (TryDrain(colorStream, out UInt128 value, out int count))
+        if (TryDrain(colorStream, out UInt128 value, out _))
         {
             this.bits |= value << startBit;
         }
