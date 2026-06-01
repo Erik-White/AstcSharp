@@ -18,6 +18,9 @@ internal readonly record struct AstcFileHeader(byte BlockWidth, byte BlockHeight
     public const uint Magic = 0x5CA1AB13;
     public const int SizeInBytes = 16;
 
+    // Image dimensions are stored as 24-bit little-endian fields (spec), so each must fit in 24 bits.
+    private const int MaxImageDimension = 0xFFFFFF;
+
     // 2D footprints from the ASTC spec. 3D footprints are not supported.
     private static readonly (byte Width, byte Height)[] Valid2DFootprints =
     [
@@ -106,8 +109,15 @@ internal readonly record struct AstcFileHeader(byte BlockWidth, byte BlockHeight
         WriteUInt24LittleEndian(data[13..], this.ImageDepth);
     }
 
+    /// <summary>
+    /// Writes <paramref name="value"/> as a 24-bit little-endian field. Throws rather than silently
+    /// truncate a dimension that does not fit, since the readback (<see cref="FromMemory"/>) masks to
+    /// 24 bits and the corruption would otherwise be invisible.
+    /// </summary>
     private static void WriteUInt24LittleEndian(Span<byte> data, int value)
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(value);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(value, MaxImageDimension);
         data[0] = (byte)value;
         data[1] = (byte)(value >> 8);
         data[2] = (byte)(value >> 16);
