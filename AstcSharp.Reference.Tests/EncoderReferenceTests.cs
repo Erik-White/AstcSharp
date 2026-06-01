@@ -1,5 +1,4 @@
 using AstcSharp.BlockDecoding;
-using AstcSharp.ColorEncoding;
 using AstcSharp.Core;
 using AstcSharp.IO;
 using AstcSharp.Reference.Tests.Utils;
@@ -97,28 +96,27 @@ public class EncoderReferenceTests
     }
 
     [Fact]
-    public void EncodedBaseScaleTwoAlpha_DecodesUnderArmReference()
+    public void EncodedDualPlane_DecodesUnderArmReference()
     {
-        // RGB ramping from black as a uniform scaling of one bright colour, with varying alpha, drives
-        // the encoder to RGB base+scale-with-two-alpha (mode 10). Its bitstream — high RGB, the scale
-        // factor, and two alpha values — must be spec-legal: ARM's decoder reads it in agreement with
-        // ours. Assert mode 10 was actually selected so the cross-check exercises that layout.
+        // Anti-correlated RGB/alpha drives the encoder to a single-partition dual-plane block
+        // (spec §C.2.20). Its bitstream — the dual-plane block mode, the 2-bit colour-component
+        // selector in the high bits, and the two interleaved weight planes — must be spec-legal:
+        // ARM's decoder reads it in agreement with ours. Assert dual-plane was actually selected.
         var footprintType = FootprintType.Footprint6x6;
         var (blockX, blockY) = ReferenceDecoder.ToBlockDimensions(footprintType);
         Footprint footprint = Footprint.FromFootprintType(footprintType);
-        byte[] pixels = ScaledColorRampWithAlpha(blockX, blockY);
+        byte[] pixels = DecorrelatedAlphaRamp(blockX, blockY);
 
         byte[] encoded = AstcEncoder.CompressImage(pixels, blockX, blockY, footprint);
 
         UInt128 bits = System.Buffers.Binary.BinaryPrimitives.ReadUInt128LittleEndian(encoded.AsSpan(0, 16));
         BlockInfo info = BlockModeDecoder.Decode(bits);
-        info.GetEndpointMode(0).Should().Be(
-            ColorEndpointMode.LdrRgbBaseScaleTwoA, because: "the scaled colour + alpha ramp should encode as mode 10");
+        info.DualPlane.Enabled.Should().BeTrue(because: "anti-correlated RGB/alpha should encode as a dual-plane block");
 
         byte[] armDecoded = ReferenceDecoder.DecompressLdr(encoded, blockX, blockY, blockX, blockY);
         Span<byte> ourDecoded = AstcDecoder.DecompressImage(encoded, blockX, blockY, footprint);
 
-        CompareRgba8(armDecoded, ourDecoded.ToArray(), "BaseScaleTwoAlpha");
+        CompareRgba8(armDecoded, ourDecoded.ToArray(), "DualPlane");
     }
 
     [Theory]
@@ -283,9 +281,8 @@ public class EncoderReferenceTests
     }
 
     // Four saturated solid colours, one per quadrant — four well-separated points in RGB space that
-    // RGB ramping from black as a uniform scaling of one bright colour, plus independently varying
-    // alpha — the content that elicits RGB base+scale-with-two-alpha (mode 10).
-    private static byte[] ScaledColorRampWithAlpha(int width, int height)
+    // RGB ramps up while alpha ramps down — anti-correlated channels that elicit a dual-plane block.
+    private static byte[] DecorrelatedAlphaRamp(int width, int height)
     {
         byte[] pixels = new byte[width * height * 4];
         for (int y = 0; y < height; y++)
@@ -294,10 +291,9 @@ public class EncoderReferenceTests
             {
                 int idx = ((y * width) + x) * 4;
                 float t = (float)(x + y) / (width + height - 2);
-                pixels[idx] = (byte)(t * 200);
-                pixels[idx + 1] = (byte)(t * 120);
-                pixels[idx + 2] = (byte)(t * 60);
-                pixels[idx + 3] = (byte)(40 + (t * 200));
+                byte up = (byte)(t * 255);
+                pixels[idx] = up; pixels[idx + 1] = up; pixels[idx + 2] = up;
+                pixels[idx + 3] = (byte)((1 - t) * 255);
             }
         }
 

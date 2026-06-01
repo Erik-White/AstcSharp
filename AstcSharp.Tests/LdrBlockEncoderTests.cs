@@ -187,21 +187,22 @@ public class LdrBlockEncoderTests
     }
 
     [Fact]
-    public void Compress_ScaledColorRampWithAlpha_SelectsBaseScaleTwoAlphaMode()
+    public void Compress_DecorrelatedAlphaBlock_SelectsDualPlaneAndReconstructsWell()
     {
-        // RGB that ramps from black as a uniform scaling of one bright colour, plus varying alpha, is
-        // the sweet spot for RGB base+scale-with-two-alpha (mode 10): it carries alpha yet spends only
-        // 6 colour values (vs RGBA-direct's 8), freeing budget for weight precision. The encoder
-        // should pick it over the RGBA modes here.
+        // Alpha that ramps opposite to RGB cannot be tracked by a single shared weight (one endpoint
+        // line can't run two directions at once). A second weight plane on the alpha channel
+        // (spec §C.2.20) fits both independently, so the encoder should pick a dual-plane block and
+        // reconstruct the anti-correlated content tightly.
         Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint6x6);
-        byte[] pixels = ScaledColorRampWithAlpha(footprint.Width, footprint.Height);
+        byte[] pixels = DecorrelatedAlphaRamp(footprint.Width, footprint.Height);
 
         byte[] encoded = AstcEncoder.CompressImage(pixels, footprint.Width, footprint.Height, footprint);
-        ColorEndpointMode mode = DecodeEndpointMode(encoded);
         Span<byte> decoded = AstcDecoder.DecompressImage(encoded, footprint.Width, footprint.Height, footprint);
 
-        Assert.Equal(ColorEndpointMode.LdrRgbBaseScaleTwoA, mode);
-        AssertMeanSquaredErrorAtMost(pixels, decoded, maxMeanSquaredError: 100.0, footprint);
+        UInt128 bits = System.Buffers.Binary.BinaryPrimitives.ReadUInt128LittleEndian(encoded.AsSpan(0, 16));
+        BlockInfo info = BlockModeDecoder.Decode(bits);
+        Assert.True(info.DualPlane.Enabled, "expected a dual-plane block for anti-correlated alpha content");
+        AssertMeanSquaredErrorAtMost(pixels, decoded, maxMeanSquaredError: 50.0, footprint);
     }
 
     [Theory]
@@ -273,9 +274,9 @@ public class LdrBlockEncoderTests
         return pixels;
     }
 
-    // RGB ramping from black as a uniform scaling of one bright colour (every texel = base * t), plus
-    // independently varying alpha — the ideal content for RGB base+scale-with-two-alpha (mode 10).
-    private static byte[] ScaledColorRampWithAlpha(int width, int height)
+    // RGB ramps up while alpha ramps down — anti-correlated channels that one weight line cannot
+    // track, the ideal case for a dual-plane block with the second plane on alpha.
+    private static byte[] DecorrelatedAlphaRamp(int width, int height)
     {
         byte[] pixels = new byte[width * height * 4];
         for (int y = 0; y < height; y++)
@@ -284,10 +285,9 @@ public class LdrBlockEncoderTests
             {
                 int idx = ((y * width) + x) * 4;
                 float t = (float)(x + y) / (width + height - 2);
-                pixels[idx] = (byte)(t * 200);
-                pixels[idx + 1] = (byte)(t * 120);
-                pixels[idx + 2] = (byte)(t * 60);
-                pixels[idx + 3] = (byte)(40 + (t * 200));
+                byte up = (byte)(t * 255);
+                pixels[idx] = up; pixels[idx + 1] = up; pixels[idx + 2] = up;
+                pixels[idx + 3] = (byte)((1 - t) * 255);
             }
         }
 

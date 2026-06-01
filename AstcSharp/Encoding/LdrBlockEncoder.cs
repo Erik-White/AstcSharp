@@ -78,6 +78,15 @@ internal static class LdrBlockEncoder
     // The maximum weight value the decoder interpolates with (spec §C.2.19): weights span [0, 64].
     private const int MaxWeight = 64;
 
+    // Channel-mask covering all four RGBA channels, used for whole-line weight projection.
+    private const int AllChannelsMask = 0b1111;
+
+    // Dual-plane blocks (spec §C.2.20) carry two interleaved weight planes, so the grid holds twice
+    // the weights and is capped at 32 points; the 2-bit colour-component selector (which channel the
+    // second plane drives) sits in the high bits just below the weight data.
+    private const int MaxDualPlaneGridWeights = MaxGridWeights / 2;
+    private const int DualPlaneSelectorBits = 2;
+
     // Grid dimensions range from 2 to 12 (spec §C.2.8); a single weight plane holds at most 64
     // weights (spec §C.2.11), and the weight bit total must fall in [24, 96].
     private const int MinGridDim = 2;
@@ -101,7 +110,20 @@ internal static class LdrBlockEncoder
             UInt128 multiBlock = TryEncodeMultiPartition(texels, footprint, out long multiError);
             if (multiError < bestError)
             {
+                bestError = multiError;
                 bestBlock = multiBlock;
+            }
+        }
+
+        // A second weight plane lets one channel vary independently of the other three (spec §C.2.20)
+        // — a large win for content where, say, alpha is uncorrelated with RGB. Tried as an additive
+        // single-partition candidate; kept only if it reconstructs better than the plane-1 result.
+        if (bestError > 0)
+        {
+            UInt128 dualPlaneBlock = TryEncodeDualPlane(texels, footprint, out long dualPlaneError);
+            if (dualPlaneError < bestError)
+            {
+                bestBlock = dualPlaneBlock;
             }
         }
 
@@ -501,10 +523,19 @@ internal static class LdrBlockEncoder
     }
 
     /// <summary>
-    /// Projects a texel onto the endpoint line and returns the nearest weight in [0, 64]
-    /// (spec §C.2.19). Degenerate (low == high) endpoints map to weight 0.
+    /// Projects a texel onto the endpoint line over all channels and returns the nearest weight in
+    /// [0, 64] (spec §C.2.19). Degenerate (low == high) endpoints map to weight 0.
     /// </summary>
     private static int ProjectWeight(RgbaColor texel, ReadOnlySpan<int> low, ReadOnlySpan<int> high)
+        => ProjectWeightMasked(texel, low, high, AllChannelsMask);
+
+    /// <summary>
+    /// Projects a texel onto the endpoint line using only the channels selected by
+    /// <paramref name="channelMask"/> (bit <c>c</c> set = include channel <c>c</c>), returning the
+    /// nearest weight in [0, 64]. Dual-plane fitting uses this to weight the two planes from disjoint
+    /// channel sets; whole-line projection passes <see cref="AllChannelsMask"/>.
+    /// </summary>
+    private static int ProjectWeightMasked(RgbaColor texel, ReadOnlySpan<int> low, ReadOnlySpan<int> high, int channelMask)
     {
         ReadOnlySpan<int> pixel = [texel.R, texel.G, texel.B, texel.A];
 
@@ -512,6 +543,11 @@ internal static class LdrBlockEncoder
         long pixelDotDir = 0;
         for (int channel = 0; channel < ChannelCount; channel++)
         {
+            if ((channelMask & (1 << channel)) == 0)
+            {
+                continue;
+            }
+
             int direction = high[channel] - low[channel];
             dirDotDir += (long)direction * direction;
             pixelDotDir += (long)(pixel[channel] - low[channel]) * direction;
@@ -531,12 +567,23 @@ internal static class LdrBlockEncoder
     /// interpolation (spec §C.2.19) at the given weight.
     /// </summary>
     private static long ReconstructionError(RgbaColor texel, ReadOnlySpan<int> low, ReadOnlySpan<int> high, int weight)
+        => ReconstructionErrorDualPlane(texel, low, high, weight, dualPlaneChannel: -1, secondaryWeight: 0);
+
+    /// <summary>
+    /// Sum-of-squared error for a dual-plane texel: the channel named by
+    /// <paramref name="dualPlaneChannel"/> interpolates with <paramref name="secondaryWeight"/>, all
+    /// others with <paramref name="weight"/> — mirroring the decoder's dual-plane blend
+    /// (spec §C.2.20). A <paramref name="dualPlaneChannel"/> of -1 makes this the single-plane case.
+    /// </summary>
+    private static long ReconstructionErrorDualPlane(
+        RgbaColor texel, ReadOnlySpan<int> low, ReadOnlySpan<int> high, int weight, int dualPlaneChannel, int secondaryWeight)
     {
         ReadOnlySpan<int> pixel = [texel.R, texel.G, texel.B, texel.A];
         long error = 0;
         for (int channel = 0; channel < ChannelCount; channel++)
         {
-            int reconstructed = (Interpolation.BlendLdrReplicated(low[channel], high[channel], weight) >> 8) & 0xFF;
+            int channelWeight = channel == dualPlaneChannel ? secondaryWeight : weight;
+            int reconstructed = (Interpolation.BlendLdrReplicated(low[channel], high[channel], channelWeight) >> 8) & 0xFF;
             int diff = reconstructed - pixel[channel];
             error += (long)diff * diff;
         }
@@ -742,6 +789,343 @@ internal static class LdrBlockEncoder
         return AssembleMultiPartition(
             partitionCount, seed, best.Mode, best.GridWidth, best.GridHeight, best.WeightRange, best.ColorRange,
             scratch.BestColorValues[..best.ColorValueCount], scratch.BestGridWeights[..bestGridCount]);
+    }
+
+    /// <summary>
+    /// The winning configuration of the dual-plane search: a single-plane <see cref="BestConfig"/>
+    /// plus the colour-component selector (which channel the second weight plane drives).
+    /// </summary>
+    private readonly record struct DualPlaneConfig(BestConfig Config, int DualPlaneChannel);
+
+    /// <summary>
+    /// Reusable buffers for the dual-plane search, mirroring <see cref="ConfigScratch"/> but holding
+    /// two weight grids (one per plane). <c>Best*</c> retain the lowest-error config; <c>Candidate*</c>
+    /// hold the config under test; the rest are per-config working buffers.
+    /// </summary>
+    private readonly ref struct DualPlaneScratch(
+        Span<int> bestColorValues,
+        Span<int> bestGridWeights0,
+        Span<int> bestGridWeights1,
+        Span<int> candidateColorValues,
+        Span<int> effectiveLow,
+        Span<int> effectiveHigh,
+        Span<int> unquantizedColors,
+        Span<int> idealWeights0,
+        Span<int> idealWeights1,
+        Span<double> fittedGrid0,
+        Span<double> fittedGrid1,
+        Span<int> effectiveGrid0,
+        Span<int> effectiveGrid1,
+        Span<int> perTexelWeights0,
+        Span<int> perTexelWeights1)
+    {
+        public Span<int> BestColorValues { get; } = bestColorValues;
+        public Span<int> BestGridWeights0 { get; } = bestGridWeights0;
+        public Span<int> BestGridWeights1 { get; } = bestGridWeights1;
+        public Span<int> CandidateColorValues { get; } = candidateColorValues;
+        public Span<int> EffectiveLow { get; } = effectiveLow;
+        public Span<int> EffectiveHigh { get; } = effectiveHigh;
+        public Span<int> UnquantizedColors { get; } = unquantizedColors;
+        public Span<int> IdealWeights0 { get; } = idealWeights0;
+        public Span<int> IdealWeights1 { get; } = idealWeights1;
+        public Span<double> FittedGrid0 { get; } = fittedGrid0;
+        public Span<double> FittedGrid1 { get; } = fittedGrid1;
+        public Span<int> EffectiveGrid0 { get; } = effectiveGrid0;
+        public Span<int> EffectiveGrid1 { get; } = effectiveGrid1;
+        public Span<int> PerTexelWeights0 { get; } = perTexelWeights0;
+        public Span<int> PerTexelWeights1 { get; } = perTexelWeights1;
+    }
+
+    /// <summary>
+    /// Tries single-partition dual-plane encodings (spec §C.2.20) and returns the lowest-error block
+    /// with its reconstruction error (<see cref="long.MaxValue"/> if none fits). One channel is
+    /// driven by an independent second weight plane; each of the four channels is tried as that
+    /// channel, and for each the grid size, weight range, and colour mode are searched as in the
+    /// single-plane path. Dual-plane doubles the weight count, so the grid is capped at 32 points.
+    /// </summary>
+    private static UInt128 TryEncodeDualPlane(ReadOnlySpan<RgbaColor> texels, Footprint footprint, out long bestErrorOut)
+    {
+        bestErrorOut = long.MaxValue;
+        UInt128 bestBlock = default;
+
+        (RgbaColor low, RgbaColor high) = EndpointFitter.Fit(texels);
+        Span<RgbaColor> subsetLow = [low];
+        Span<RgbaColor> subsetHigh = [high];
+        var block = new BlockInput(
+            texels, footprint, Partition.GetSinglePartition(footprint).Assignment, partitionCount: 1, subsetLow, subsetHigh);
+
+        int texelCount = footprint.PixelCount;
+        var scratch = new DualPlaneScratch(
+            bestColorValues: stackalloc int[MaxColorValueCount],
+            bestGridWeights0: stackalloc int[MaxDualPlaneGridWeights],
+            bestGridWeights1: stackalloc int[MaxDualPlaneGridWeights],
+            candidateColorValues: stackalloc int[MaxColorValueCount],
+            effectiveLow: stackalloc int[ChannelCount],
+            effectiveHigh: stackalloc int[ChannelCount],
+            unquantizedColors: stackalloc int[MaxColorValueCount],
+            idealWeights0: stackalloc int[texelCount],
+            idealWeights1: stackalloc int[texelCount],
+            fittedGrid0: stackalloc double[MaxDualPlaneGridWeights],
+            fittedGrid1: stackalloc double[MaxDualPlaneGridWeights],
+            effectiveGrid0: stackalloc int[MaxDualPlaneGridWeights],
+            effectiveGrid1: stackalloc int[MaxDualPlaneGridWeights],
+            perTexelWeights0: stackalloc int[texelCount],
+            perTexelWeights1: stackalloc int[texelCount]);
+
+        // The full RGBA-direct mode carries all four channels independently — the only mode for which
+        // assigning a private weight plane to one channel is meaningful.
+        Span<ColorEndpointMode> candidateModes = stackalloc ColorEndpointMode[MaxCandidateModes];
+        int modeCount = SelectCandidateModes(texels, candidateModes);
+
+        for (int dualPlaneChannel = 0; dualPlaneChannel < ChannelCount; dualPlaneChannel++)
+        {
+            if (SearchDualPlaneConfigs(
+                    in block, candidateModes[..modeCount], dualPlaneChannel, in scratch, out DualPlaneConfig best, out long error)
+                && error < bestErrorOut)
+            {
+                bestErrorOut = error;
+                int gridCount = best.Config.GridWidth * best.Config.GridHeight;
+                bestBlock = AssembleDualPlane(
+                    best, scratch.BestColorValues[..best.Config.ColorValueCount],
+                    scratch.BestGridWeights0[..gridCount], scratch.BestGridWeights1[..gridCount]);
+            }
+        }
+
+        return bestBlock;
+    }
+
+    /// <summary>
+    /// Searches grid sizes, weight ranges, and endpoint modes for the lowest-error dual-plane
+    /// configuration with <paramref name="dualPlaneChannel"/> driven by the second plane. Plane 0 is
+    /// fitted over the other three channels and plane 1 over the selected channel alone; both grids
+    /// reconstruct through the decoder's infill and the dual-plane blend. Leaves the winning colour
+    /// values and both grids in <paramref name="scratch"/>. Returns false if nothing legal fits.
+    /// </summary>
+    private static bool SearchDualPlaneConfigs(
+        in BlockInput block,
+        ReadOnlySpan<ColorEndpointMode> candidateModes,
+        int dualPlaneChannel,
+        in DualPlaneScratch scratch,
+        out DualPlaneConfig best,
+        out long bestError)
+    {
+        bestError = long.MaxValue;
+        best = default;
+
+        int maxGridWidth = Math.Min(block.Footprint.Width, MaxGridDim);
+        int maxGridHeight = Math.Min(block.Footprint.Height, MaxGridDim);
+
+        foreach (ColorEndpointMode mode in candidateModes)
+        {
+            int colorValueCount = mode.GetColorValuesCount();
+            if (colorValueCount > MaxColorValuesPerBlock)
+            {
+                continue;
+            }
+
+            for (int gridHeight = MinGridDim; gridHeight <= maxGridHeight; gridHeight++)
+            {
+                for (int gridWidth = MinGridDim; gridWidth <= maxGridWidth; gridWidth++)
+                {
+                    int gridWeightCount = gridWidth * gridHeight;
+                    if (gridWeightCount > MaxDualPlaneGridWeights)
+                    {
+                        continue;
+                    }
+
+                    DecimationInfo decimation = DecimationTable.Get(block.Footprint, gridWidth, gridHeight);
+                    int preparedColorRange = 0;
+
+                    foreach (int weightRange in WeightRangeCandidates)
+                    {
+                        if (!TryResolveDualPlaneConfig(
+                                gridWidth, gridHeight, gridWeightCount, weightRange, colorValueCount, out int colorRange))
+                        {
+                            continue;
+                        }
+
+                        if (colorRange != preparedColorRange)
+                        {
+                            PrepareDualPlaneConfig(in block, mode, dualPlaneChannel, gridWeightCount, decimation, colorRange, in scratch);
+                            preparedColorRange = colorRange;
+                        }
+
+                        long error = MeasureDualPlaneConfig(in block, dualPlaneChannel, gridWeightCount, weightRange, decimation, in scratch);
+                        if (error < bestError)
+                        {
+                            bestError = error;
+                            best = new DualPlaneConfig(
+                                new BestConfig(mode, gridWidth, gridHeight, weightRange, colorRange, colorValueCount), dualPlaneChannel);
+                            scratch.CandidateColorValues[..colorValueCount].CopyTo(scratch.BestColorValues);
+                            QuantizeGrid(scratch.FittedGrid0[..gridWeightCount], weightRange, scratch.BestGridWeights0);
+                            QuantizeGrid(scratch.FittedGrid1[..gridWeightCount], weightRange, scratch.BestGridWeights1);
+                        }
+                    }
+                }
+            }
+        }
+
+        return best.Config.WeightRange != 0;
+    }
+
+    /// <summary>
+    /// Dual-plane variant of <see cref="TryResolveConfig"/>: validates the (grid, weight-range)
+    /// candidate as a dual-plane block mode, checks the doubled weight bit count against the
+    /// [24, 96] window, and resolves the colour range that fits the remaining budget. The 2-bit
+    /// colour-component selector takes two bits from the colour budget (spec §C.2.20).
+    /// </summary>
+    private static bool TryResolveDualPlaneConfig(
+        int gridWidth, int gridHeight, int gridWeightCount, int weightRange, int colorValueCount, out int colorRange)
+    {
+        colorRange = 0;
+        if (!BlockModeEncoder.TryEncode(gridWidth, gridHeight, weightRange, isDualPlane: true, out _))
+        {
+            return false;
+        }
+
+        int weightBitCount = BoundedIntegerSequenceCodec.GetBitCountForRange(gridWeightCount * 2, weightRange);
+        if (weightBitCount is < MinWeightBits or > MaxWeightBits)
+        {
+            return false;
+        }
+
+        int maxColorBits = BlockBits - weightBitCount - DualPlaneSelectorBits - ColorStartBit;
+        return BlockModeDecoder.TryResolveColorEncoding(colorValueCount, maxColorBits, out colorRange, out _);
+    }
+
+    /// <summary>
+    /// Dual-plane analogue of <see cref="PrepareConfig"/>: encodes/decodes the endpoints, then
+    /// projects each texel twice — plane 0 over the channels other than
+    /// <paramref name="dualPlaneChannel"/>, plane 1 over that channel alone — and fits both grids.
+    /// </summary>
+    private static void PrepareDualPlaneConfig(
+        in BlockInput block,
+        ColorEndpointMode mode,
+        int dualPlaneChannel,
+        int gridWeightCount,
+        DecimationInfo decimation,
+        int colorRange,
+        in DualPlaneScratch scratch)
+    {
+        EncodeAndDecodeEndpoints(
+            mode, block.SubsetLow[0], block.SubsetHigh[0], colorRange,
+            scratch.CandidateColorValues, scratch.UnquantizedColors, scratch.EffectiveLow, scratch.EffectiveHigh);
+
+        int plane1Mask = 1 << dualPlaneChannel;
+        int plane0Mask = AllChannelsMask & ~plane1Mask;
+        ReadOnlySpan<RgbaColor> texels = block.Texels;
+        Span<int> idealWeights0 = scratch.IdealWeights0;
+        Span<int> idealWeights1 = scratch.IdealWeights1;
+        for (int t = 0; t < texels.Length; t++)
+        {
+            idealWeights0[t] = ProjectWeightMasked(texels[t], scratch.EffectiveLow, scratch.EffectiveHigh, plane0Mask);
+            idealWeights1[t] = ProjectWeightMasked(texels[t], scratch.EffectiveLow, scratch.EffectiveHigh, plane1Mask);
+        }
+
+        DecimationFit.Fit(idealWeights0[..texels.Length], decimation, gridWeightCount, scratch.FittedGrid0[..gridWeightCount]);
+        DecimationFit.Fit(idealWeights1[..texels.Length], decimation, gridWeightCount, scratch.FittedGrid1[..gridWeightCount]);
+    }
+
+    /// <summary>
+    /// Dual-plane analogue of <see cref="MeasureConfig"/>: quantises both grids to the weight range,
+    /// infills both to per-texel weights, and sums the dual-plane reconstruction error (the selected
+    /// channel using plane 1's weight, the rest plane 0's).
+    /// </summary>
+    private static long MeasureDualPlaneConfig(
+        in BlockInput block,
+        int dualPlaneChannel,
+        int gridWeightCount,
+        int weightRange,
+        DecimationInfo decimation,
+        in DualPlaneScratch scratch)
+    {
+        Span<int> effectiveGrid0 = scratch.EffectiveGrid0[..gridWeightCount];
+        Span<int> effectiveGrid1 = scratch.EffectiveGrid1[..gridWeightCount];
+        EffectiveGrid(scratch.FittedGrid0[..gridWeightCount], weightRange, effectiveGrid0);
+        EffectiveGrid(scratch.FittedGrid1[..gridWeightCount], weightRange, effectiveGrid1);
+
+        ReadOnlySpan<RgbaColor> texels = block.Texels;
+        Span<int> perTexelWeights0 = scratch.PerTexelWeights0[..texels.Length];
+        Span<int> perTexelWeights1 = scratch.PerTexelWeights1[..texels.Length];
+        DecimationTable.InfillWeights(effectiveGrid0, decimation, perTexelWeights0);
+        DecimationTable.InfillWeights(effectiveGrid1, decimation, perTexelWeights1);
+
+        long error = 0;
+        for (int t = 0; t < texels.Length; t++)
+        {
+            error += ReconstructionErrorDualPlane(
+                texels[t], scratch.EffectiveLow, scratch.EffectiveHigh, perTexelWeights0[t], dualPlaneChannel, perTexelWeights1[t]);
+        }
+
+        return error;
+    }
+
+    /// <summary>
+    /// Rounds and quantises a fitted grid to the weight range, leaving the quantised weights in
+    /// <paramref name="quantGridWeights"/>.
+    /// </summary>
+    private static void QuantizeGrid(ReadOnlySpan<double> fittedGrid, int weightRange, Span<int> quantGridWeights)
+    {
+        for (int i = 0; i < fittedGrid.Length; i++)
+        {
+            quantGridWeights[i] = Quantization.QuantizeWeightToRange(RoundWeight(fittedGrid[i]), weightRange);
+        }
+    }
+
+    /// <summary>
+    /// Quantises a fitted grid to the weight range and unquantises back, leaving the decoder's
+    /// effective grid weights in <paramref name="effectiveGrid"/>.
+    /// </summary>
+    private static void EffectiveGrid(ReadOnlySpan<double> fittedGrid, int weightRange, Span<int> effectiveGrid)
+    {
+        for (int i = 0; i < fittedGrid.Length; i++)
+        {
+            int quant = Quantization.QuantizeWeightToRange(RoundWeight(fittedGrid[i]), weightRange);
+            effectiveGrid[i] = Quantization.UnquantizeWeightFromRange(quant, weightRange);
+        }
+    }
+
+    /// <summary>
+    /// Assembles a single-partition dual-plane block (spec §C.2.20): the dual-plane block mode, the
+    /// colour endpoint mode and values, the 2-bit colour-component selector in the high bits just
+    /// below the weights, and the two weight planes interleaved (plane 0 at even grid indices, plane 1
+    /// at odd) into the reversed weight region.
+    /// </summary>
+    private static UInt128 AssembleDualPlane(
+        in DualPlaneConfig config, ReadOnlySpan<int> colorValues, ReadOnlySpan<int> quantWeights0, ReadOnlySpan<int> quantWeights1)
+    {
+        BestConfig c = config.Config;
+        ushort blockMode = BlockModeEncoder.Encode(c.GridWidth, c.GridHeight, c.WeightRange, isDualPlane: true);
+
+        var builder = new AstcBlockBuilder();
+        builder.PlaceLowField(blockMode, BlockModeStartBit, BlockModeBits);
+        builder.PlaceLowField(SinglePartitionField, PartitionCountStartBit, PartitionCountBits);
+        builder.PlaceLowField((ulong)c.Mode, CemStartBit, CemBits);
+
+        var colorStream = new BitStream();
+        BoundedIntegerSequenceEncoder.Encode(c.ColorRange, colorValues, ref colorStream);
+        builder.PlaceColorData(colorStream, ColorStartBit);
+
+        // Interleave the two planes' grid weights (spec §C.2.20): even raw indices drive plane 0,
+        // odd plane 1 — the order the decoder de-interleaves.
+        int gridCount = quantWeights0.Length;
+        Span<int> interleaved = stackalloc int[gridCount * 2];
+        for (int i = 0; i < gridCount; i++)
+        {
+            interleaved[i * 2] = quantWeights0[i];
+            interleaved[(i * 2) + 1] = quantWeights1[i];
+        }
+
+        var weightStream = new BitStream();
+        BoundedIntegerSequenceEncoder.Encode(c.WeightRange, interleaved, ref weightStream);
+        int weightBitCount = (int)weightStream.Bits;
+
+        // The 2-bit colour-component selector sits just below the weight data (spec §C.2.20):
+        // at bit 128 - weightBitCount - 2.
+        builder.PlaceLowField((ulong)config.DualPlaneChannel, BlockBits - weightBitCount - DualPlaneSelectorBits, DualPlaneSelectorBits);
+        builder.PlaceWeightData(weightStream);
+
+        return builder.Build();
     }
 
     private static UInt128 Assemble(in BestConfig config, ReadOnlySpan<int> colorValues, ReadOnlySpan<int> quantWeights)
