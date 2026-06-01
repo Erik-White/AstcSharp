@@ -30,6 +30,13 @@ internal static class EndpointEncoder
     // Luma base+offset (mode 1) stores a 6-bit non-negative luma offset.
     private const int LumaOffsetMax = 63;
 
+    // Bit splits for the base+offset packings (spec §C.2.14): the low six / top two base bits, the
+    // sign-bit-carrying high base bit, and the low seven base bits, all of an 8-bit base value.
+    private const int LowSixBitsMask = 0x3F;
+    private const int TopTwoBitsMask = 0xC0;
+    private const int LowSevenBitsMask = 0x7F;
+    private const int HighBitMask = 0x80;
+
     /// <summary>
     /// Encodes <paramref name="low"/>/<paramref name="high"/> for <paramref name="mode"/> into
     /// quantised colour values written to <paramref name="colorValues"/> (length must be at least
@@ -174,8 +181,8 @@ internal static class EndpointEncoder
     {
         int baseLuma = Math.Clamp(lumaLow, 0, MaxChannel);
         int offset = Math.Clamp(lumaHigh - baseLuma, 0, LumaOffsetMax);
-        int v0 = (baseLuma & 0x3F) << 2;
-        int v1 = (baseLuma & 0xC0) | offset;
+        int v0 = (baseLuma & LowSixBitsMask) << 2;
+        int v1 = (baseLuma & TopTwoBitsMask) | offset;
         colorValues[0] = Quantization.QuantizeCEValueToRange(v0, colorRange);
         colorValues[1] = Quantization.QuantizeCEValueToRange(v1, colorRange);
     }
@@ -190,8 +197,8 @@ internal static class EndpointEncoder
         int baseValue = Math.Clamp(low, 0, MaxChannel);
         int offset = Math.Clamp(high - baseValue, OffsetMin, OffsetMax);
 
-        int valueB = (baseValue & 0x7F) << 1;
-        int valueA = ((offset & OffsetMask) << 1) | (baseValue & 0x80);
+        int valueB = (baseValue & LowSevenBitsMask) << 1;
+        int valueA = ((offset & OffsetMask) << 1) | (baseValue & HighBitMask);
 
         colorValues[pairIndex * 2] = Quantization.QuantizeCEValueToRange(valueB, colorRange);
         colorValues[(pairIndex * 2) + 1] = Quantization.QuantizeCEValueToRange(valueA, colorRange);

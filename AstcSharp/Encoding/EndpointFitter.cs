@@ -30,7 +30,10 @@ internal static class EndpointFitter
         Span<double> mean = stackalloc double[ChannelCount];
         foreach (RgbaColor texel in texels)
         {
-            mean[0] += texel.R; mean[1] += texel.G; mean[2] += texel.B; mean[3] += texel.A;
+            for (int c = 0; c < ChannelCount; c++)
+            {
+                mean[c] += texel[c];
+            }
         }
 
         for (int c = 0; c < ChannelCount; c++)
@@ -103,10 +106,12 @@ internal static class EndpointFitter
         double max = double.MinValue;
         foreach (RgbaColor texel in texels)
         {
-            double projection = ((texel.R - mean[0]) * axis[0])
-                + ((texel.G - mean[1]) * axis[1])
-                + ((texel.B - mean[2]) * axis[2])
-                + ((texel.A - mean[3]) * axis[3]);
+            double projection = 0;
+            for (int c = 0; c < ChannelCount; c++)
+            {
+                projection += (texel[c] - mean[c]) * axis[c];
+            }
+
             min = Math.Min(min, projection);
             max = Math.Max(max, projection);
         }
@@ -134,7 +139,11 @@ internal static class EndpointFitter
         Span<double> centred = stackalloc double[ChannelCount];
         foreach (RgbaColor texel in texels)
         {
-            centred[0] = texel.R - mean[0]; centred[1] = texel.G - mean[1]; centred[2] = texel.B - mean[2]; centred[3] = texel.A - mean[3];
+            for (int c = 0; c < ChannelCount; c++)
+            {
+                centred[c] = texel[c] - mean[c];
+            }
+
             for (int i = 0; i < ChannelCount; i++)
             {
                 for (int j = 0; j < ChannelCount; j++)
@@ -172,11 +181,17 @@ internal static class EndpointFitter
                 next[i] = sum;
             }
 
-            double norm = Math.Sqrt((next[0] * next[0]) + (next[1] * next[1]) + (next[2] * next[2]) + (next[3] * next[3]));
+            double normSquared = 0;
+            for (int i = 0; i < ChannelCount; i++)
+            {
+                normSquared += next[i] * next[i];
+            }
+
+            double norm = Math.Sqrt(normSquared);
             if (norm < DegenerateAxisNorm)
             {
                 // No variance along the current estimate; keep a fixed diagonal axis.
-                axis[0] = axis[1] = axis[2] = axis[3] = 0.5;
+                axis.Fill(0.5);
                 return;
             }
 

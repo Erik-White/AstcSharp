@@ -510,10 +510,10 @@ internal static class LdrBlockEncoder
 
     private static void StoreChannels(RgbaColor color, Span<int> channels)
     {
-        channels[0] = color.R;
-        channels[1] = color.G;
-        channels[2] = color.B;
-        channels[3] = color.A;
+        for (int channel = 0; channel < ChannelCount; channel++)
+        {
+            channels[channel] = color[channel];
+        }
     }
 
     /// <summary>
@@ -531,8 +531,6 @@ internal static class LdrBlockEncoder
     /// </summary>
     private static int ProjectWeightMasked(RgbaColor texel, ReadOnlySpan<int> low, ReadOnlySpan<int> high, int channelMask)
     {
-        ReadOnlySpan<int> pixel = [texel.R, texel.G, texel.B, texel.A];
-
         long dirDotDir = 0;
         long pixelDotDir = 0;
         for (int channel = 0; channel < ChannelCount; channel++)
@@ -544,7 +542,7 @@ internal static class LdrBlockEncoder
 
             int direction = high[channel] - low[channel];
             dirDotDir += (long)direction * direction;
-            pixelDotDir += (long)(pixel[channel] - low[channel]) * direction;
+            pixelDotDir += (long)(texel[channel] - low[channel]) * direction;
         }
 
         if (dirDotDir == 0)
@@ -572,13 +570,12 @@ internal static class LdrBlockEncoder
     private static long ReconstructionErrorDualPlane(
         RgbaColor texel, ReadOnlySpan<int> low, ReadOnlySpan<int> high, int weight, int dualPlaneChannel, int secondaryWeight)
     {
-        ReadOnlySpan<int> pixel = [texel.R, texel.G, texel.B, texel.A];
         long error = 0;
         for (int channel = 0; channel < ChannelCount; channel++)
         {
             int channelWeight = channel == dualPlaneChannel ? secondaryWeight : weight;
-            int reconstructed = (Interpolation.BlendLdrReplicated(low[channel], high[channel], channelWeight) >> 8) & 0xFF;
-            int diff = reconstructed - pixel[channel];
+            int reconstructed = (Interpolation.BlendLdrReplicated(low[channel], high[channel], channelWeight) >> 8) & byte.MaxValue;
+            int diff = reconstructed - texel[channel];
             error += (long)diff * diff;
         }
 
