@@ -3,6 +3,7 @@ using AstcSharp.BiseEncoding.Quantize;
 using AstcSharp.BlockDecoding;
 using AstcSharp.ColorEncoding;
 using AstcSharp.Core;
+using static AstcSharp.Encoding.BlockLayout;
 
 namespace AstcSharp.Encoding;
 
@@ -17,9 +18,6 @@ namespace AstcSharp.Encoding;
 /// </summary>
 internal static class LdrBlockEncoder
 {
-    // Total bits in an ASTC block (spec §C.2.7).
-    private const int BlockBits = 128;
-
     // RGBA channels per texel.
     private const int ChannelCount = BlockInfo.ChannelsPerPixel;
 
@@ -32,27 +30,9 @@ internal static class LdrBlockEncoder
     // Sizes the candidate-mode scratch span.
     private const int MaxCandidateModes = 8;
 
-    // Block-mode layout (spec §C.2.10): the 11-bit block mode, then the 2-bit partition-count
-    // field. Single-partition blocks store the colour endpoint mode at bit 13 and colour data at
-    // bit 17. Multi-partition blocks store a 10-bit partition seed at bit 13, a 2-bit shared-CEM
-    // marker (0) at bit 23, the shared CEM at bit 25, and colour data at bit 29.
-    private const int BlockModeStartBit = 0;
-    private const int BlockModeBits = 11;
-    private const int PartitionCountStartBit = 11;
-    private const int PartitionCountBits = 2;
-    private const int CemStartBit = 13;
-    private const int CemBits = 4;
-    private const int ColorStartBit = 17;
-    private const int SinglePartitionField = 0; // partition-count field value for 1 partition (count - 1)
-    private const int PartitionSeedStartBit = 13;
-    private const int PartitionSeedBits = 10;
-    private const int SharedCemMarkerStartBit = 23;
-    private const int SharedCemMarkerBits = 2;
-    private const int SharedCemStartBit = 25;
-    private const int MultiColorStartBit = 29;
-
     // Partition counts the encoder searches (spec §C.2.10 allows 1..4). The seed space is 10 bits
-    // (1024 patterns). MaxPartitions sizes the per-subset scratch buffers (the spec maximum).
+    // (1024 patterns). MaxPartitions sizes the per-subset scratch buffers (the spec maximum). The
+    // field bit positions live in BlockLayout.
     private const int MinMultiPartitions = 2;
     private const int MaxPartitions = 4;
     private const int PartitionSeedCount = 1 << PartitionSeedBits;
@@ -82,10 +62,9 @@ internal static class LdrBlockEncoder
     private const int AllChannelsMask = 0b1111;
 
     // Dual-plane blocks (spec §C.2.20) carry two interleaved weight planes, so the grid holds twice
-    // the weights and is capped at 32 points; the 2-bit colour-component selector (which channel the
-    // second plane drives) sits in the high bits just below the weight data.
+    // the weights and is capped at 32 points. The colour-component selector bit width lives in
+    // BlockLayout.
     private const int MaxDualPlaneGridWeights = MaxGridWeights / 2;
-    private const int DualPlaneSelectorBits = 2;
 
     // Grid dimensions range from 2 to 12 (spec §C.2.8); a single weight plane holds at most 64
     // weights (spec §C.2.11), and the weight bit total must fall in [24, 96].
@@ -176,7 +155,10 @@ internal static class LdrBlockEncoder
         }
 
         int bestGridCount = best.GridWidth * best.GridHeight;
-        return Assemble(best, scratch.BestColorValues[..best.ColorValueCount], scratch.BestGridWeights[..bestGridCount]);
+        ushort blockMode = BlockModeEncoder.Encode(best.GridWidth, best.GridHeight, best.WeightRange, isDualPlane: false);
+        return BlockAssembler.AssembleSinglePartition(
+            blockMode, best.Mode, best.ColorRange, scratch.BestColorValues[..best.ColorValueCount],
+            best.WeightRange, scratch.BestGridWeights[..bestGridCount]);
     }
 
     /// <summary>
@@ -777,9 +759,10 @@ internal static class LdrBlockEncoder
         }
 
         int bestGridCount = best.GridWidth * best.GridHeight;
-        return AssembleMultiPartition(
-            partitionCount, seed, best.Mode, best.GridWidth, best.GridHeight, best.WeightRange, best.ColorRange,
-            scratch.BestColorValues[..best.ColorValueCount], scratch.BestGridWeights[..bestGridCount]);
+        ushort blockMode = BlockModeEncoder.Encode(best.GridWidth, best.GridHeight, best.WeightRange, isDualPlane: false);
+        return BlockAssembler.AssembleMultiPartition(
+            blockMode, partitionCount, seed, best.Mode, best.ColorRange, scratch.BestColorValues[..best.ColorValueCount],
+            best.WeightRange, scratch.BestGridWeights[..bestGridCount]);
     }
 
     /// <summary>
@@ -883,10 +866,12 @@ internal static class LdrBlockEncoder
                 && error < bestErrorOut)
             {
                 bestErrorOut = error;
-                int gridCount = best.Config.GridWidth * best.Config.GridHeight;
-                bestBlock = AssembleDualPlane(
-                    best, scratch.BestColorValues[..best.Config.ColorValueCount],
-                    scratch.BestGridWeights0[..gridCount], scratch.BestGridWeights1[..gridCount]);
+                BestConfig c = best.Config;
+                int gridCount = c.GridWidth * c.GridHeight;
+                ushort blockMode = BlockModeEncoder.Encode(c.GridWidth, c.GridHeight, c.WeightRange, isDualPlane: true);
+                bestBlock = BlockAssembler.AssembleDualPlane(
+                    blockMode, c.Mode, c.ColorRange, scratch.BestColorValues[..c.ColorValueCount],
+                    c.WeightRange, best.DualPlaneChannel, scratch.BestGridWeights0[..gridCount], scratch.BestGridWeights1[..gridCount]);
             }
         }
 
@@ -1080,103 +1065,4 @@ internal static class LdrBlockEncoder
         }
     }
 
-    /// <summary>
-    /// Assembles a single-partition dual-plane block (spec §C.2.20): the dual-plane block mode, the
-    /// colour endpoint mode and values, the 2-bit colour-component selector in the high bits just
-    /// below the weights, and the two weight planes interleaved (plane 0 at even grid indices, plane 1
-    /// at odd) into the reversed weight region.
-    /// </summary>
-    private static UInt128 AssembleDualPlane(
-        in DualPlaneConfig config, ReadOnlySpan<int> colorValues, ReadOnlySpan<int> quantWeights0, ReadOnlySpan<int> quantWeights1)
-    {
-        BestConfig c = config.Config;
-        ushort blockMode = BlockModeEncoder.Encode(c.GridWidth, c.GridHeight, c.WeightRange, isDualPlane: true);
-
-        var builder = new AstcBlockBuilder();
-        builder.PlaceLowField(blockMode, BlockModeStartBit, BlockModeBits);
-        builder.PlaceLowField(SinglePartitionField, PartitionCountStartBit, PartitionCountBits);
-        builder.PlaceLowField((ulong)c.Mode, CemStartBit, CemBits);
-
-        var colorStream = new BitStream();
-        BoundedIntegerSequenceEncoder.Encode(c.ColorRange, colorValues, ref colorStream);
-        builder.PlaceColorData(colorStream, ColorStartBit);
-
-        // Interleave the two planes' grid weights (spec §C.2.20): even raw indices drive plane 0,
-        // odd plane 1 — the order the decoder de-interleaves.
-        int gridCount = quantWeights0.Length;
-        Span<int> interleaved = stackalloc int[gridCount * 2];
-        for (int i = 0; i < gridCount; i++)
-        {
-            interleaved[i * 2] = quantWeights0[i];
-            interleaved[(i * 2) + 1] = quantWeights1[i];
-        }
-
-        var weightStream = new BitStream();
-        BoundedIntegerSequenceEncoder.Encode(c.WeightRange, interleaved, ref weightStream);
-        int weightBitCount = (int)weightStream.Bits;
-
-        // The 2-bit colour-component selector sits just below the weight data (spec §C.2.20): at bit
-        // 128 - weightBitCount - 2. Single-partition only — the decoder's position also subtracts the
-        // per-partition extra-CEM bits, which are zero here; multi-partition dual-plane would need them.
-        builder.PlaceLowField((ulong)config.DualPlaneChannel, BlockBits - weightBitCount - DualPlaneSelectorBits, DualPlaneSelectorBits);
-        builder.PlaceWeightData(weightStream);
-
-        return builder.Build();
-    }
-
-    private static UInt128 Assemble(in BestConfig config, ReadOnlySpan<int> colorValues, ReadOnlySpan<int> quantWeights)
-    {
-        ushort blockMode = BlockModeEncoder.Encode(config.GridWidth, config.GridHeight, config.WeightRange, isDualPlane: false);
-
-        var builder = new AstcBlockBuilder();
-        builder.PlaceLowField(blockMode, BlockModeStartBit, BlockModeBits);
-        builder.PlaceLowField(SinglePartitionField, PartitionCountStartBit, PartitionCountBits);
-        builder.PlaceLowField((ulong)config.Mode, CemStartBit, CemBits);
-
-        var colorStream = new BitStream();
-        BoundedIntegerSequenceEncoder.Encode(config.ColorRange, colorValues, ref colorStream);
-        builder.PlaceColorData(colorStream, ColorStartBit);
-
-        var weightStream = new BitStream();
-        BoundedIntegerSequenceEncoder.Encode(config.WeightRange, quantWeights, ref weightStream);
-        builder.PlaceWeightData(weightStream);
-
-        return builder.Build();
-    }
-
-    /// <summary>
-    /// Assembles a multi-partition block (spec §C.2.10): partition count, 10-bit seed, a
-    /// shared-CEM marker of 0, the shared colour endpoint mode, the concatenated per-partition
-    /// colour values from bit 29, and the weight data at the top.
-    /// </summary>
-    private static UInt128 AssembleMultiPartition(
-        int partitionCount,
-        int seed,
-        ColorEndpointMode mode,
-        int gridWidth,
-        int gridHeight,
-        int weightRange,
-        int colorRange,
-        ReadOnlySpan<int> colorValues,
-        ReadOnlySpan<int> quantWeights)
-    {
-        ushort blockMode = BlockModeEncoder.Encode(gridWidth, gridHeight, weightRange, isDualPlane: false);
-
-        var builder = new AstcBlockBuilder();
-        builder.PlaceLowField(blockMode, BlockModeStartBit, BlockModeBits);
-        builder.PlaceLowField((ulong)(partitionCount - 1), PartitionCountStartBit, PartitionCountBits);
-        builder.PlaceLowField((ulong)seed, PartitionSeedStartBit, PartitionSeedBits);
-        builder.PlaceLowField(0, SharedCemMarkerStartBit, SharedCemMarkerBits);
-        builder.PlaceLowField((ulong)mode, SharedCemStartBit, CemBits);
-
-        var colorStream = new BitStream();
-        BoundedIntegerSequenceEncoder.Encode(colorRange, colorValues, ref colorStream);
-        builder.PlaceColorData(colorStream, MultiColorStartBit);
-
-        var weightStream = new BitStream();
-        BoundedIntegerSequenceEncoder.Encode(weightRange, quantWeights, ref weightStream);
-        builder.PlaceWeightData(weightStream);
-
-        return builder.Build();
-    }
 }
