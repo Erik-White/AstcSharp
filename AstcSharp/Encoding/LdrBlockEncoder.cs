@@ -57,10 +57,11 @@ internal static class LdrBlockEncoder
     private const int PartitionSeedCount = 1 << PartitionSeedBits;
 
     // A single-plane block may hold at most 18 colour endpoint values (spec §C.2.11); the decoder
-    // rejects any block exceeding this. The shared RGBA-direct multi-partition mode stores 8 values
-    // per partition, so only two partitions fit (2 x 8 = 16); three would need 24 and be illegal.
+    // rejects any block exceeding this. With a shared colour endpoint mode across partitions, the
+    // per-partition value count caps how many partitions fit: RGBA (8 values) allows 2, RGB (6)
+    // allows 3, luma+alpha (4) allows 4. SearchConfigs prunes any mode/partition-count combination
+    // that exceeds this budget.
     private const int MaxColorValuesPerBlock = 18;
-    private const int MaxSharedRgbaPartitions = MaxColorValuesPerBlock / 8; // = 2
 
     // Partitioning only helps when there are enough texels to host distinct colour regions; below
     // this, the per-partition endpoint and seed overhead outweighs any benefit.
@@ -545,9 +546,10 @@ internal static class LdrBlockEncoder
         Span<long> seedErrors = stackalloc long[SeedFinalists];
         Span<int> seedFinalists = stackalloc int[SeedFinalists];
 
-        // The shared RGBA-direct mode caps the partition count at two to stay within the 18-value
-        // colour budget (spec §C.2.11); higher counts would produce an illegal block.
-        int maxPartitions = Math.Min(MaxSharedRgbaPartitions, footprint.PixelCount);
+        // Search every legal partition count (2..4, spec §C.2.21). The shared colour endpoint mode
+        // for each count is chosen to fit the 18-value budget (in EncodeMultiPartitionSeed), so
+        // higher counts simply use a cheaper mode rather than being skipped.
+        int maxPartitions = Math.Min(MaxPartitions, footprint.PixelCount);
         for (int partitionCount = MinMultiPartitions; partitionCount <= maxPartitions; partitionCount++)
         {
             int finalistCount = SelectSeedFinalists(texels, footprint, partitionCount, seedFinalists, seedErrors);
@@ -693,12 +695,14 @@ internal static class LdrBlockEncoder
             effectiveGrid: stackalloc int[MaxGridWeights],
             perTexelWeights: stackalloc int[texelCount]);
 
-        // A shared RGBA-direct mode keeps the multi-partition colour layout simple. The
-        // partition-count cap (MaxSharedRgbaPartitions) keeps the concatenated colour values within
-        // the 18-value budget; SearchConfigs also re-checks it as defence in depth.
-        Span<ColorEndpointMode> candidateModes = [ColorEndpointMode.LdrRgbaDirect];
+        // All partitions share one colour endpoint mode (the simplest legal multi-partition layout).
+        // Candidate modes are chosen by block content; SearchConfigs prunes any whose concatenated
+        // colour values exceed the 18-value budget at this partition count (e.g. RGBA needs 8 values,
+        // so it is dropped at 3+ partitions, leaving RGB at 3 and luma/luma+alpha at 4).
+        Span<ColorEndpointMode> candidateModes = stackalloc ColorEndpointMode[MaxCandidateModes];
+        int modeCount = SelectCandidateModes(texels, candidateModes);
 
-        if (!SearchConfigs(in block, candidateModes, MultiColorStartBit, in scratch, out BestConfig best, out bestErrorOut))
+        if (!SearchConfigs(in block, candidateModes[..modeCount], MultiColorStartBit, in scratch, out BestConfig best, out bestErrorOut))
         {
             return default;
         }

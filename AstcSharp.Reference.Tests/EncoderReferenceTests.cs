@@ -1,3 +1,4 @@
+using AstcSharp.BlockDecoding;
 using AstcSharp.Core;
 using AstcSharp.IO;
 using AstcSharp.Reference.Tests.Utils;
@@ -67,6 +68,31 @@ public class EncoderReferenceTests
         Span<byte> ourDecoded = AstcDecoder.DecompressImage(encoded, width, height, footprint);
 
         CompareRgba8(armDecoded, ourDecoded.ToArray(), $"TwoRegion_{footprintType}");
+    }
+
+    [Fact]
+    public void EncodedThreePartition_DecodesUnderArmReference()
+    {
+        // Four saturated quadrant colours drive the encoder to a 3-partition shared-RGB block (the
+        // path enabled by lifting the 2-partition cap). Its bitstream layout — shared-CEM marker,
+        // RGB colour values concatenated across three subsets — is what we must prove spec-legal:
+        // ARM's decoder reads it back in agreement with ours. We also assert it really is a
+        // 3-partition block, so the cross-check can't silently pass on a 1/2-partition fallback.
+        var footprintType = FootprintType.Footprint12x12;
+        var (blockX, blockY) = ReferenceDecoder.ToBlockDimensions(footprintType);
+        Footprint footprint = Footprint.FromFootprintType(footprintType);
+        byte[] pixels = FourQuadrantImage(blockX, blockY);
+
+        byte[] encoded = AstcEncoder.CompressImage(pixels, blockX, blockY, footprint);
+
+        UInt128 bits = System.Buffers.Binary.BinaryPrimitives.ReadUInt128LittleEndian(encoded.AsSpan(0, 16));
+        BlockInfo info = BlockModeDecoder.Decode(bits);
+        info.PartitionCount.Should().Be(3, because: "the four-quadrant block should encode as 3 partitions");
+
+        byte[] armDecoded = ReferenceDecoder.DecompressLdr(encoded, blockX, blockY, blockX, blockY);
+        Span<byte> ourDecoded = AstcDecoder.DecompressImage(encoded, blockX, blockY, footprint);
+
+        CompareRgba8(armDecoded, ourDecoded.ToArray(), "ThreePartition");
     }
 
     [Theory]
@@ -224,6 +250,30 @@ public class EncoderReferenceTests
                 }
 
                 pixels[idx + 3] = 255;
+            }
+        }
+
+        return pixels;
+    }
+
+    // Four saturated solid colours, one per quadrant — four well-separated points in RGB space that
+    // drive the encoder to a 3-partition shared-RGB fit.
+    private static byte[] FourQuadrantImage(int width, int height)
+    {
+        (byte R, byte G, byte B)[] quadrant =
+        [
+            (240, 20, 20), (20, 240, 20), (20, 20, 240), (240, 240, 20),
+        ];
+
+        byte[] pixels = new byte[width * height * 4];
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                int idx = ((y * width) + x) * 4;
+                int cell = ((y < height / 2) ? 0 : 2) + ((x < width / 2) ? 0 : 1);
+                (byte r, byte g, byte b) = quadrant[cell];
+                pixels[idx] = r; pixels[idx + 1] = g; pixels[idx + 2] = b; pixels[idx + 3] = 255;
             }
         }
 

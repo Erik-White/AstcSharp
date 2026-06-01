@@ -69,6 +69,31 @@ public class LdrBlockEncoderTests
         Assert.True(info.PartitionCount > 1, $"expected a multi-partition block, got {info.PartitionCount} partition(s)");
     }
 
+    [Fact]
+    public void Compress_FourColorRegionBlock_SelectsThreePartitions()
+    {
+        // Four saturated quadrant colours need more than two endpoint lines. A shared RGB mode fits
+        // three partitions (3 x 6 = 18 colour values) within budget, so the encoder should pick a
+        // 3-partition encoding.
+        Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint12x12);
+        byte[] pixels = FourQuadrantImage(footprint.Width, footprint.Height);
+
+        byte[] encoded = AstcEncoder.CompressImage(pixels, footprint.Width, footprint.Height, footprint);
+
+        UInt128 bits = System.Buffers.Binary.BinaryPrimitives.ReadUInt128LittleEndian(encoded.AsSpan(0, 16));
+        BlockInfo info = BlockModeDecoder.Decode(bits);
+        Assert.Equal(3, info.PartitionCount);
+
+        // Selecting 3 partitions is not enough; the endpoints and partition assignment must also be
+        // sound. Four flat colours mapped onto three partitions can't be exact (one partition spans
+        // two quadrants), but the reconstruction should still be close. The bound is loose — well
+        // above the natural error of this content (~490) yet far below what a mis-assigned partition
+        // or corrupted endpoints would produce (a 2-partition fit of the same image exceeds 1200) —
+        // so it is a regression tripwire for the 3-partition path, not a tight quality claim.
+        Span<byte> decoded = AstcDecoder.DecompressImage(encoded, footprint.Width, footprint.Height, footprint);
+        AssertMeanSquaredErrorAtMost(pixels, decoded, maxMeanSquaredError: 700.0, footprint);
+    }
+
     [Theory]
     [InlineData(FootprintType.Footprint6x6)]
     [InlineData(FootprintType.Footprint8x8)]
@@ -76,11 +101,11 @@ public class LdrBlockEncoderTests
     [InlineData(FootprintType.Footprint12x12)]
     public void Compress_ManyRandomMultiRegionBlocks_StayWithinColorValueBudget(FootprintType footprintType)
     {
-        // A shared RGBA-direct multi-partition block stores 8 colour values per partition, so three
-        // partitions would need 24 — over the 18-value budget (spec §C.2.11) and rejected by the
-        // decoder as an illegal block. Fuzz many multi-region blocks (the kind that could tempt a
-        // 3+ partition fit) and assert every emitted block is legal: at most two partitions, within
-        // the colour-value budget, and decoding without any error-colour (magenta) texels.
+        // A shared colour endpoint mode stores 8 values per partition for RGBA, 6 for RGB, 4 for
+        // luma+alpha; the encoder picks one that fits the 18-value budget (spec §C.2.11) at the
+        // chosen partition count (up to 4). Fuzz many multi-region blocks and assert every emitted
+        // block is legal: within the colour-value budget and decoding without any error-colour
+        // (magenta) texels.
         Footprint footprint = Footprint.FromFootprintType(footprintType);
         var rng = new Random(1234);
 
@@ -305,6 +330,30 @@ public class LdrBlockEncoderTests
                 }
 
                 pixels[idx + 3] = 255;
+            }
+        }
+
+        return pixels;
+    }
+
+    // Four saturated solid colours, one per quadrant — four well-separated points in RGB space that
+    // no two endpoint lines cover, eliciting a 3-partition fit (a shared RGB mode fits three).
+    private static byte[] FourQuadrantImage(int width, int height)
+    {
+        (byte R, byte G, byte B)[] quadrant =
+        [
+            (240, 20, 20), (20, 240, 20), (20, 20, 240), (240, 240, 20),
+        ];
+
+        byte[] pixels = new byte[width * height * 4];
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                int idx = ((y * width) + x) * 4;
+                int cell = ((y < height / 2) ? 0 : 2) + ((x < width / 2) ? 0 : 1);
+                (byte r, byte g, byte b) = quadrant[cell];
+                pixels[idx] = r; pixels[idx + 1] = g; pixels[idx + 2] = b; pixels[idx + 3] = 255;
             }
         }
 

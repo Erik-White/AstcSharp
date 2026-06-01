@@ -18,8 +18,9 @@ namespace AstcSharp;
 /// <para>
 /// Constant-colour blocks are encoded as void-extent blocks (spec §C.2.23). Other blocks are fit
 /// per block: the endpoint colour mode (luminance, RGB, or RGBA — direct or base+offset) and the
-/// partition count (1 or 2, spec §C.2.21) are chosen by search, with a weight grid (decimated below
-/// the footprint size as needed, spec §C.2.18) fitted to the texels. Every 2D footprint is supported.
+/// partition count (1 to 4, spec §C.2.21, all partitions sharing one colour mode) are chosen by
+/// search, with a weight grid (decimated below the footprint size as needed, spec §C.2.18) fitted
+/// to the texels. Every 2D footprint is supported.
 /// </para>
 /// </remarks>
 public static class AstcEncoder
