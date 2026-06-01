@@ -148,12 +148,14 @@ internal static class LdrBlockEncoder
         Span<ColorEndpointMode> candidateModes = stackalloc ColorEndpointMode[MaxCandidateModes];
         int modeCount = SelectCandidateModes(texels, candidateModes);
 
-        if (!SearchConfigs(in block, candidateModes[..modeCount], ColorStartBit, in scratch, out BestConfig best, out bestErrorOut))
+        if (SearchConfigs(in block, candidateModes[..modeCount], ColorStartBit, in scratch) is not { } result)
         {
             throw new InvalidOperationException(
                 $"No legal single-partition encoding fits footprint {footprint.Width}x{footprint.Height}.");
         }
 
+        BestConfig best = result.Config;
+        bestErrorOut = result.Error;
         int bestGridCount = best.GridWidth * best.GridHeight;
         ushort blockMode = BlockModeEncoder.Encode(best.GridWidth, best.GridHeight, best.WeightRange, isDualPlane: false);
         return BlockAssembler.AssembleSinglePartition(
@@ -166,6 +168,12 @@ internal static class LdrBlockEncoder
     /// </summary>
     private readonly record struct BestConfig(
         ColorEndpointMode Mode, int GridWidth, int GridHeight, int WeightRange, int ColorRange, int ColorValueCount);
+
+    /// <summary>
+    /// A winning configuration of type <typeparamref name="TConfig"/> and its reconstruction error.
+    /// Returned by the config searches - <c>null</c> means nothing legal fit.
+    /// </summary>
+    private readonly record struct SearchResult<TConfig>(TConfig Config, long Error);
 
     /// <summary>
     /// The fixed inputs of a per-block configuration search: the block's texels and footprint, the
@@ -362,19 +370,17 @@ internal static class LdrBlockEncoder
     /// <paramref name="colorStartBit"/> is the block layout's first colour-data bit (17
     /// single-partition, 29 multi-partition), which sets the colour bit budget. The winning colour
     /// values and quantised grid weights are left in <see cref="ConfigScratch.BestColorValues"/> /
-    /// <see cref="ConfigScratch.BestGridWeights"/>. Returns the winning configuration, or false if
-    /// nothing legal fits.
+    /// <see cref="ConfigScratch.BestGridWeights"/>. Returns the winning configuration and its error,
+    /// or <c>null</c> if nothing legal fits.
     /// </summary>
-    private static bool SearchConfigs(
+    private static SearchResult<BestConfig>? SearchConfigs(
         in BlockInput block,
         ReadOnlySpan<ColorEndpointMode> candidateModes,
         int colorStartBit,
-        in ConfigScratch scratch,
-        out BestConfig best,
-        out long bestError)
+        in ConfigScratch scratch)
     {
-        bestError = long.MaxValue;
-        best = default;
+        long bestError = long.MaxValue;
+        BestConfig best = default;
 
         int maxGridWidth = Math.Min(block.Footprint.Width, MaxGridDim);
         int maxGridHeight = Math.Min(block.Footprint.Height, MaxGridDim);
@@ -430,7 +436,7 @@ internal static class LdrBlockEncoder
             }
         }
 
-        return best.WeightRange != 0;
+        return best.WeightRange != 0 ? new SearchResult<BestConfig>(best, bestError) : null;
     }
 
     /// <summary>
@@ -607,11 +613,11 @@ internal static class LdrBlockEncoder
                 continue;
             }
 
-            int finalistCount = SelectSeedFinalists(texels, footprint, partitionCount, seedFinalists, seedErrors);
+            var finalists = new FinalistSelector(seedFinalists, seedErrors);
+            SelectSeedFinalists(texels, footprint, partitionCount, ref finalists);
 
-            for (int f = 0; f < finalistCount; f++)
+            foreach (int seed in finalists.Finalists)
             {
-                int seed = seedFinalists[f];
                 UInt128 block = EncodeMultiPartitionSeed(texels, footprint, partitionCount, seed, candidateModes, out long error);
                 if (error < bestErrorOut)
                 {
@@ -626,16 +632,13 @@ internal static class LdrBlockEncoder
 
     /// <summary>
     /// Scores every partition seed by the summed per-subset endpoint-line fit error (a cheap proxy
-    /// for final quality that ignores weight quantisation) and returns the indices of the
-    /// <see cref="SeedFinalists"/> lowest-error seeds. Seeds whose hash leaves a subset empty are
-    /// skipped — an empty subset wastes endpoint budget.
+    /// for final quality that ignores weight quantisation) and records the lowest-error seeds in
+    /// <paramref name="finalists"/>. Seeds whose hash leaves a subset empty are skipped — an empty
+    /// subset wastes endpoint budget.
     /// </summary>
-    private static int SelectSeedFinalists(
-        ReadOnlySpan<RgbaColor> texels, Footprint footprint, int partitionCount, Span<int> finalists, Span<long> finalistErrors)
+    private static void SelectSeedFinalists(
+        ReadOnlySpan<RgbaColor> texels, Footprint footprint, int partitionCount, ref FinalistSelector finalists)
     {
-        finalistErrors.Fill(long.MaxValue);
-        int count = 0;
-
         for (int seed = 0; seed < PartitionSeedCount; seed++)
         {
             ReadOnlySpan<int> assignment = Partition.GetASTCPartition(footprint, partitionCount, seed).Assignment;
@@ -645,38 +648,8 @@ internal static class LdrBlockEncoder
                 continue; // an empty subset; skip this seed.
             }
 
-            if (TryInsertFinalist(finalists, finalistErrors, seed, error))
-            {
-                count = Math.Min(count + 1, SeedFinalists);
-            }
+            finalists.TryInsert(seed, error);
         }
-
-        return count;
-    }
-
-    /// <summary>
-    /// Inserts <paramref name="seed"/>/<paramref name="error"/> into the fixed-size sorted finalist
-    /// lists (ascending by error), evicting the current worst if the list is full. Returns false if
-    /// the error does not beat the worst finalist.
-    /// </summary>
-    private static bool TryInsertFinalist(Span<int> finalists, Span<long> finalistErrors, int seed, long error)
-    {
-        if (error >= finalistErrors[SeedFinalists - 1])
-        {
-            return false;
-        }
-
-        int pos = SeedFinalists - 1;
-        while (pos > 0 && finalistErrors[pos - 1] > error)
-        {
-            finalistErrors[pos] = finalistErrors[pos - 1];
-            finalists[pos] = finalists[pos - 1];
-            pos--;
-        }
-
-        finalistErrors[pos] = error;
-        finalists[pos] = seed;
-        return true;
     }
 
     /// <summary>
@@ -753,11 +726,13 @@ internal static class LdrBlockEncoder
 
         // All partitions share one colour endpoint mode (the simplest legal multi-partition layout);
         // SearchConfigs keeps only those that fit the colour-value budget (see MaxColorValuesPerBlock).
-        if (!SearchConfigs(in block, candidateModes, MultiColorStartBit, in scratch, out BestConfig best, out bestErrorOut))
+        if (SearchConfigs(in block, candidateModes, MultiColorStartBit, in scratch) is not { } result)
         {
             return default;
         }
 
+        BestConfig best = result.Config;
+        bestErrorOut = result.Error;
         int bestGridCount = best.GridWidth * best.GridHeight;
         ushort blockMode = BlockModeEncoder.Encode(best.GridWidth, best.GridHeight, best.WeightRange, isDualPlane: false);
         return BlockAssembler.AssembleMultiPartition(
@@ -861,17 +836,16 @@ internal static class LdrBlockEncoder
 
         for (int dualPlaneChannel = 0; dualPlaneChannel < ChannelCount; dualPlaneChannel++)
         {
-            if (SearchDualPlaneConfigs(
-                    in block, candidateModes[..modeCount], dualPlaneChannel, in scratch, out DualPlaneConfig best, out long error)
-                && error < bestErrorOut)
+            if (SearchDualPlaneConfigs(in block, candidateModes[..modeCount], dualPlaneChannel, in scratch) is { } result
+                && result.Error < bestErrorOut)
             {
-                bestErrorOut = error;
-                BestConfig c = best.Config;
+                bestErrorOut = result.Error;
+                BestConfig c = result.Config.Config;
                 int gridCount = c.GridWidth * c.GridHeight;
                 ushort blockMode = BlockModeEncoder.Encode(c.GridWidth, c.GridHeight, c.WeightRange, isDualPlane: true);
                 bestBlock = BlockAssembler.AssembleDualPlane(
                     blockMode, c.Mode, c.ColorRange, scratch.BestColorValues[..c.ColorValueCount],
-                    c.WeightRange, best.DualPlaneChannel, scratch.BestGridWeights0[..gridCount], scratch.BestGridWeights1[..gridCount]);
+                    c.WeightRange, result.Config.DualPlaneChannel, scratch.BestGridWeights0[..gridCount], scratch.BestGridWeights1[..gridCount]);
             }
         }
 
@@ -883,18 +857,17 @@ internal static class LdrBlockEncoder
     /// configuration with <paramref name="dualPlaneChannel"/> driven by the second plane. Plane 0 is
     /// fitted over the other three channels and plane 1 over the selected channel alone; both grids
     /// reconstruct through the decoder's infill and the dual-plane blend. Leaves the winning colour
-    /// values and both grids in <paramref name="scratch"/>. Returns false if nothing legal fits.
+    /// values and both grids in <paramref name="scratch"/>. Returns the winning configuration and its
+    /// error, or <c>null</c> if nothing legal fits.
     /// </summary>
-    private static bool SearchDualPlaneConfigs(
+    private static SearchResult<DualPlaneConfig>? SearchDualPlaneConfigs(
         in BlockInput block,
         ReadOnlySpan<ColorEndpointMode> candidateModes,
         int dualPlaneChannel,
-        in DualPlaneScratch scratch,
-        out DualPlaneConfig best,
-        out long bestError)
+        in DualPlaneScratch scratch)
     {
-        bestError = long.MaxValue;
-        best = default;
+        long bestError = long.MaxValue;
+        DualPlaneConfig best = default;
 
         int maxGridWidth = Math.Min(block.Footprint.Width, MaxGridDim);
         int maxGridHeight = Math.Min(block.Footprint.Height, MaxGridDim);
@@ -949,7 +922,7 @@ internal static class LdrBlockEncoder
             }
         }
 
-        return best.Config.WeightRange != 0;
+        return best.Config.WeightRange != 0 ? new SearchResult<DualPlaneConfig>(best, bestError) : null;
     }
 
     /// <summary>
