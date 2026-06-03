@@ -1,11 +1,12 @@
 # AstcSharp
 
-A pure C# library for decoding ASTC (Adaptive Scalable Texture Compression) textures, supporting both LDR and HDR content.
+A pure C# library for decoding and encoding ASTC (Adaptive Scalable Texture Compression) textures, supporting both LDR and HDR content.
 
 ## Features
 
 - Managed C#, no native dependencies
 - Decode ASTC textures to RGBA32 (LDR) or RGBA float / FP16 (HDR)
+- Encode RGBA32 LDR images to ASTC blocks or `.astc` files
 - Linear and sRGB LDR decode modes
 - All standard block footprints (4x4 to 12x12)
 
@@ -17,6 +18,7 @@ dotnet add package AstcSharp
 
 ## Usage
 
+### Decoding
 ```csharp
 using AstcSharp;
 using AstcSharp.Core;
@@ -32,6 +34,15 @@ Span<byte> srgbPixels = AstcDecoder.DecompressImage(astcData, width, height, foo
 
 // HDR: decode to RGBA float
 Span<float> hdrPixels = AstcDecoder.DecompressHdrImage(astcData, width, height, footprint);
+```
+
+### Encoding
+```
+// Encode an RGBA8888 LDR image to ASTC blocks
+byte[] blocks = AstcEncoder.CompressImage(rgbaPixels, width, height, footprint);
+
+// Encode to a complete .astc file (16-byte header + blocks)
+byte[] astcFile = AstcEncoder.CompressToAstcFile(rgbaPixels, width, height, footprint);
 ```
 
 ## Performance
@@ -63,7 +74,7 @@ LDR
 ## Future improvements
 
 - 3D block types
-- Encoding
+- HDR encoding (encoding currently supports LDR only)
 
 ## References
 
