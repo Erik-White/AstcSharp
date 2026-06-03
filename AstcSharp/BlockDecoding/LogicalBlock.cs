@@ -294,6 +294,66 @@ internal static class LogicalBlock
     }
 
     /// <summary>
+    /// Writes a block's LDR pixels from components that were decoded by a different front end
+    /// (e.g. the UASTC decoder), reusing the standard ASTC pixel-write loop and interpolation.
+    /// Endpoints are per subset, <paramref name="weights"/> and <paramref name="partitionAssignment"/>
+    /// are per texel ([0,64] and subset index respectively). This is the seam that lets non-ASTC
+    /// block formats produce identical RGBA output without duplicating the write loop.
+    /// </summary>
+    public static void WriteDecodedLdr<TMode>(
+        Footprint footprint,
+        ReadOnlySpan<ColorEndpointPair> endpoints,
+        ReadOnlySpan<int> partitionAssignment,
+        Span<int> weights,
+        Span<byte> pixels)
+        where TMode : struct, ILdrColorMode
+    {
+        DecodedBlockState state = BuildState(endpoints, partitionAssignment, weights);
+        WriteAllPixels<LdrPixelWriter<TMode>, byte>(footprint, pixels, in state);
+    }
+
+    /// <summary>
+    /// Dual-plane variant of <see cref="WriteDecodedLdr{TMode}"/> (ASTC spec §C.2.20): the channel
+    /// named by <paramref name="dualPlaneChannel"/> uses <paramref name="secondaryWeights"/>.
+    /// </summary>
+    public static void WriteDecodedLdrDualPlane<TMode>(
+        Footprint footprint,
+        ReadOnlySpan<ColorEndpointPair> endpoints,
+        ReadOnlySpan<int> partitionAssignment,
+        Span<int> weights,
+        Span<int> secondaryWeights,
+        int dualPlaneChannel,
+        Span<byte> pixels)
+        where TMode : struct, ILdrColorMode
+    {
+        DecodedBlockState state = BuildState(endpoints, partitionAssignment, weights);
+        DualPlane dualPlane = new() { Weights = secondaryWeights, Channel = dualPlaneChannel };
+
+        WriteAllPixelsDualPlane<LdrPixelWriter<TMode>, byte>(footprint, pixels, in state, in dualPlane);
+    }
+
+    /// <summary>
+    /// Assembles a <see cref="DecodedBlockState"/> from externally decoded per-subset endpoints,
+    /// per-texel partition assignment, and per-texel weights — the shared preamble for the
+    /// <see cref="WriteDecodedLdr{TMode}"/> seam entry points.
+    /// </summary>
+    private static DecodedBlockState BuildState(
+        ReadOnlySpan<ColorEndpointPair> endpoints,
+        ReadOnlySpan<int> partitionAssignment,
+        Span<int> weights)
+    {
+        DecodedBlockState state = default;
+        for (int i = 0; i < endpoints.Length; i++)
+        {
+            state.Endpoints[i] = endpoints[i];
+        }
+
+        state.Weights = weights;
+        state.PartitionAssignment = partitionAssignment;
+        return state;
+    }
+
+    /// <summary>
     /// Inline storage for up to 4 per-partition <see cref="ColorEndpointPair"/> values
     /// (spec §C.2.10 caps partition count at 4). Used as a stack-local buffer to hold the
     /// decoded endpoints during a single <see cref="DecodeToBytes"/>/<see cref="DecodeToFloats"/> call.

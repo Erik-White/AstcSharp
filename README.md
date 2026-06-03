@@ -8,6 +8,7 @@ A pure C# library for decoding ASTC (Adaptive Scalable Texture Compression) text
 - Decode ASTC textures to RGBA32 (LDR) or RGBA float / FP16 (HDR)
 - Linear and sRGB LDR decode modes
 - All standard block footprints (4x4 to 12x12)
+- UASTC LDR decode (Basis Universal), via `UastcDecoder` — all 19 LDR modes (single/multi-subset, dual-plane, RGB/RGBA/LA, solid)
 
 ## Installation
 
@@ -32,6 +33,9 @@ Span<byte> srgbPixels = AstcDecoder.DecompressImage(astcData, width, height, foo
 
 // HDR: decode to RGBA float
 Span<float> hdrPixels = AstcDecoder.DecompressHdrImage(astcData, width, height, footprint);
+
+// UASTC (Basis Universal, always 4x4): decode raw UASTC block data to RGBA8888
+Span<byte> uastcPixels = UastcDecoder.DecompressImage(uastcData, width, height);
 ```
 
 ## Performance
