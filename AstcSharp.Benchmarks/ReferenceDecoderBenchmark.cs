@@ -10,14 +10,6 @@ public class ReferenceDecoderBenchmark
 {
     private AstcFile? _astcFile;
 
-    private static readonly AstcencSwizzle IdentitySwizzle = new()
-    {
-        r = AstcencSwz.AstcencSwzR,
-        g = AstcencSwz.AstcencSwzG,
-        b = AstcencSwz.AstcencSwzB,
-        a = AstcencSwz.AstcencSwzA,
-    };
-
     private AstcencContext _armLdrContext;
     private AstcencContext _armHdrContext;
     private byte[]? _armLdrOutput;
@@ -48,29 +40,10 @@ public class ReferenceDecoderBenchmark
         _astcSharpLdrOutput = new byte[pixelCount * 4];
         _astcSharpHdrOutput = new float[pixelCount * 4];
 
-        // Pre-allocate LDR context
-        var error = Astcenc.AstcencConfigInit(
-            AstcencProfile.AstcencPrfLdr,
-            (uint)footprint.Width, (uint)footprint.Height, blockZ: 1,
-            Astcenc.AstcencPreFastest,
-            AstcencFlags.DecompressOnly,
-            out var ldrConfig);
-        ThrowOnError(error, "ConfigInit(LDR)");
-
-        error = Astcenc.AstcencContextAlloc(ref ldrConfig, threadCount: 1, out _armLdrContext);
-        ThrowOnError(error, "ContextAlloc(LDR)");
-
-        // Pre-allocate HDR context
-        error = Astcenc.AstcencConfigInit(
-            AstcencProfile.AstcencPrfHdr,
-            (uint)footprint.Width, (uint)footprint.Height, blockZ: 1,
-            Astcenc.AstcencPreFastest,
-            AstcencFlags.DecompressOnly,
-            out var hdrConfig);
-        ThrowOnError(error, "ConfigInit(HDR)");
-
-        error = Astcenc.AstcencContextAlloc(ref hdrConfig, threadCount: 1, out _armHdrContext);
-        ThrowOnError(error, "ContextAlloc(HDR)");
+        _armLdrContext = ArmCodec.CreateContext(
+            footprint, AstcencProfile.AstcencPrfLdr, Astcenc.AstcencPreFastest, AstcencFlags.DecompressOnly);
+        _armHdrContext = ArmCodec.CreateContext(
+            footprint, AstcencProfile.AstcencPrfHdr, Astcenc.AstcencPreFastest, AstcencFlags.DecompressOnly);
     }
 
     [GlobalCleanup]
@@ -107,11 +80,11 @@ public class ReferenceDecoderBenchmark
             data = _armLdrOutput!,
         };
 
-        var error = Astcenc.AstcencDecompressImage(_armLdrContext, _armBlocksCopy!, ref image, IdentitySwizzle, 0);
-        ThrowOnError(error, "DecompressImage(LDR)");
+        var error = Astcenc.AstcencDecompressImage(_armLdrContext, _armBlocksCopy!, ref image, ArmCodec.IdentitySwizzle, 0);
+        ArmCodec.ThrowOnError(error, "DecompressImage(LDR)");
 
         error = Astcenc.AstcencDecompressReset(_armLdrContext);
-        ThrowOnError(error, "DecompressReset(LDR)");
+        ArmCodec.ThrowOnError(error, "DecompressReset(LDR)");
 
         return _armLdrOutput!;
     }
@@ -129,21 +102,12 @@ public class ReferenceDecoderBenchmark
             data = _armHdrOutput!,
         };
 
-        var error = Astcenc.AstcencDecompressImage(_armHdrContext, _armBlocksCopy!, ref image, IdentitySwizzle, 0);
-        ThrowOnError(error, "DecompressImage(HDR)");
+        var error = Astcenc.AstcencDecompressImage(_armHdrContext, _armBlocksCopy!, ref image, ArmCodec.IdentitySwizzle, 0);
+        ArmCodec.ThrowOnError(error, "DecompressImage(HDR)");
 
         error = Astcenc.AstcencDecompressReset(_armHdrContext);
-        ThrowOnError(error, "DecompressReset(HDR)");
+        ArmCodec.ThrowOnError(error, "DecompressReset(HDR)");
 
         return _armHdrOutput!;
-    }
-
-    private static void ThrowOnError(AstcencError error, string operation)
-    {
-        if (error != AstcencError.AstcencSuccess)
-        {
-            var message = Astcenc.GetErrorString(error) ?? error.ToString();
-            throw new InvalidOperationException($"ARM ASTC encoder {operation} failed: {message}");
-        }
     }
 }

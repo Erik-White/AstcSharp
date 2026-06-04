@@ -33,24 +33,10 @@ public class AstcFullImageEncodeBenchmark
         this.footprint = file.Footprint;
 
         byte[] full = AstcDecoder.DecompressImage(file.Blocks, file.Width, file.Height, file.Footprint).ToArray();
-        this.pixels = CropTopLeft(full, file.Width, TileSize, TileSize);
+        this.pixels = BenchmarkImage.CropTopLeft(full, file.Width, TileSize, TileSize);
     }
 
     [Benchmark]
     public int CompressImage()
         => AstcEncoder.CompressImage(this.pixels, TileSize, TileSize, this.footprint).Length;
-
-    private static byte[] CropTopLeft(byte[] source, int sourceWidth, int cropWidth, int cropHeight)
-    {
-        const int bpp = 4;
-        byte[] crop = new byte[cropWidth * cropHeight * bpp];
-        for (int y = 0; y < cropHeight; y++)
-        {
-            int srcRow = y * sourceWidth * bpp;
-            int dstRow = y * cropWidth * bpp;
-            source.AsSpan(srcRow, cropWidth * bpp).CopyTo(crop.AsSpan(dstRow, cropWidth * bpp));
-        }
-
-        return crop;
-    }
 }

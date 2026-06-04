@@ -28,14 +28,6 @@ public class CodecComparisonBenchmark
 
     private static readonly string[] Fixtures = ["rgb-4x4", "rgba-4x4", "rgba-8x8", "rgb-12x12"];
 
-    private static readonly AstcencSwizzle IdentitySwizzle = new()
-    {
-        r = AstcencSwz.AstcencSwzR,
-        g = AstcencSwz.AstcencSwzG,
-        b = AstcencSwz.AstcencSwzB,
-        a = AstcencSwz.AstcencSwzA,
-    };
-
     // One entry per fixture, holding everything both codecs need for that tile.
     private sealed class Image
     {
@@ -65,10 +57,10 @@ public class CodecComparisonBenchmark
             var image = new Image
             {
                 Footprint = footprint,
-                Pixels = CropTopLeft(full, file.Width, TileSize, TileSize),
+                Pixels = BenchmarkImage.CropTopLeft(full, file.Width, TileSize, TileSize),
                 Blocks = new byte[blocksWide * blocksHigh * BlockInfo.SizeInBytes],
                 DecodeOutput = new byte[TileSize * TileSize * 4],
-                ArmContext = CreateArmContext(footprint),
+                ArmContext = ArmCodec.CreateContext(footprint, AstcencProfile.AstcencPrfLdr, Astcenc.AstcencPreMedium, flags: 0),
             };
 
             // Encode the tile with ARM once to get spec-legal blocks for the decode benchmarks to read.
@@ -93,8 +85,8 @@ public class CodecComparisonBenchmark
         foreach (Image image in this.images)
         {
             var output = new AstcencImage { dimX = TileSize, dimY = TileSize, dimZ = 1, dataType = AstcencType.AstcencTypeU8, data = image.DecodeOutput };
-            ThrowOnError(Astcenc.AstcencDecompressImage(image.ArmContext, image.Blocks, ref output, IdentitySwizzle, 0), "Decompress");
-            ThrowOnError(Astcenc.AstcencDecompressReset(image.ArmContext), "DecompressReset");
+            ArmCodec.ThrowOnError(Astcenc.AstcencDecompressImage(image.ArmContext, image.Blocks, ref output, ArmCodec.IdentitySwizzle, 0), "Decompress");
+            ArmCodec.ThrowOnError(Astcenc.AstcencDecompressReset(image.ArmContext), "DecompressReset");
         }
     }
 
@@ -113,7 +105,7 @@ public class CodecComparisonBenchmark
         foreach (Image image in this.images)
         {
             ArmEncode(image);
-            ThrowOnError(Astcenc.AstcencCompressReset(image.ArmContext), "CompressReset");
+            ArmCodec.ThrowOnError(Astcenc.AstcencCompressReset(image.ArmContext), "CompressReset");
         }
     }
 
@@ -126,41 +118,9 @@ public class CodecComparisonBenchmark
         }
     }
 
-    private static AstcencContext CreateArmContext(Footprint footprint)
-    {
-        AstcencError error = Astcenc.AstcencConfigInit(
-            AstcencProfile.AstcencPrfLdr,
-            (uint)footprint.Width, (uint)footprint.Height, blockZ: 1,
-            Astcenc.AstcencPreMedium, flags: 0, out AstcencConfig config);
-        ThrowOnError(error, "ConfigInit");
-        error = Astcenc.AstcencContextAlloc(ref config, threadCount: 1, out AstcencContext context);
-        ThrowOnError(error, "ContextAlloc");
-        return context;
-    }
-
     private static void ArmEncode(Image image)
     {
         var input = new AstcencImage { dimX = TileSize, dimY = TileSize, dimZ = 1, dataType = AstcencType.AstcencTypeU8, data = image.Pixels };
-        ThrowOnError(Astcenc.AstcencCompressImage(image.ArmContext, ref input, IdentitySwizzle, image.Blocks, 0), "Compress");
-    }
-
-    private static byte[] CropTopLeft(byte[] source, int sourceWidth, int cropWidth, int cropHeight)
-    {
-        const int bpp = 4;
-        byte[] crop = new byte[cropWidth * cropHeight * bpp];
-        for (int y = 0; y < cropHeight; y++)
-        {
-            source.AsSpan(y * sourceWidth * bpp, cropWidth * bpp).CopyTo(crop.AsSpan(y * cropWidth * bpp, cropWidth * bpp));
-        }
-
-        return crop;
-    }
-
-    private static void ThrowOnError(AstcencError error, string operation)
-    {
-        if (error != AstcencError.AstcencSuccess)
-        {
-            throw new InvalidOperationException($"ARM ASTC {operation} failed: {Astcenc.GetErrorString(error) ?? error.ToString()}");
-        }
+        ArmCodec.ThrowOnError(Astcenc.AstcencCompressImage(image.ArmContext, ref input, ArmCodec.IdentitySwizzle, image.Blocks, 0), "Compress");
     }
 }

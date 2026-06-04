@@ -12,7 +12,6 @@ namespace AstcSharp.Benchmarks
                 typeof(AstcFullImageDecodeBenchmark),
                 typeof(EncodingBenchmark),
                 typeof(AstcFullImageEncodeBenchmark),
-                typeof(EncoderComparisonBenchmark),
                 typeof(CodecComparisonBenchmark),
                 typeof(ReferenceDecoderBenchmark)
             ]);
