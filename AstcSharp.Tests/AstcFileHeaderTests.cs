@@ -122,4 +122,29 @@ public class AstcFileHeaderTests
 
         Assert.Throws<ArgumentOutOfRangeException>(() => AstcFileHeader.FromMemory(data));
     }
+
+    [Fact]
+    public void WriteTo_RoundTripsThroughFromMemory()
+    {
+        var header = new AstcFileHeader(BlockWidth: 6, BlockHeight: 6, BlockDepth: 1, ImageWidth: 1920, ImageHeight: 1080, ImageDepth: 1);
+
+        byte[] data = new byte[AstcFileHeader.SizeInBytes];
+        header.WriteTo(data);
+
+        Assert.Equal(header, AstcFileHeader.FromMemory(data));
+    }
+
+    [Theory]
+    [InlineData(0x1000000, 16, 1)]
+    [InlineData(16, 0x1000000, 1)]
+    [InlineData(16, 16, 0x1000000)]
+    public void WriteTo_DimensionExceeds24Bits_ThrowsRatherThanTruncate(int width, int height, int depth)
+    {
+        // The header stores each dimension in a 24-bit field; a larger value must throw, not silently
+        // wrap (FromMemory masks to 24 bits, so truncation here would be invisible corruption).
+        var header = new AstcFileHeader(BlockWidth: 4, BlockHeight: 4, BlockDepth: 1, ImageWidth: width, ImageHeight: height, ImageDepth: depth);
+        byte[] data = new byte[AstcFileHeader.SizeInBytes];
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => header.WriteTo(data));
+    }
 }

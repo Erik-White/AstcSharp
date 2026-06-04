@@ -1,6 +1,6 @@
-# ASTC decoder
+# ASTC codec
 
-A managed C# decoder for [ASTC](https://registry.khronos.org/DataFormat/specs/1.3/dataformat.1.3.html#ASTC) (Adaptive Scalable Texture Compression) textures. Supports LDR and HDR content, all 14 two-dimensional block footprints from 4×4 to 12×12, and decodes to RGBA8 (LDR, `Span<byte>`) or RGBA float / FP16 (HDR, `Span<float>` or `Span<Half>`).
+A managed C# codec for [ASTC](https://registry.khronos.org/DataFormat/specs/1.3/dataformat.1.3.html#ASTC) (Adaptive Scalable Texture Compression) textures. The decoder supports LDR and HDR content, all 14 two-dimensional block footprints from 4×4 to 12×12, and decodes to RGBA8 (LDR, `Span<byte>`) or RGBA float / FP16 (HDR, `Span<float>` or `Span<Half>`). The encoder compresses RGBA8 LDR images to ASTC blocks for any of those footprints.
 
 ## Format overview
 
@@ -15,9 +15,9 @@ ASTC was designed by ARM and standardised by Khronos as a single replacement for
 
 ## Code organisation
 
-The code is organised by decoder concern rather than by spec chapter. `AstcDecoder` is the public entry point. Below it, `BlockDecoding` holds every per-block decode pipeline — the fused fast paths plus the general-purpose `LogicalBlock` pipeline — and the `IBlockPipeline<T>` dispatch strategy that routes LDR and HDR blocks through a shared loop. `ColorEncoding` and `BiseEncoding` isolate the two tricky encodings the spec defines for endpoint and weight values respectively, and `BiseEncoding` also owns the `BitStream` primitive used by the BISE codecs. `Core` holds the shared block-structure primitives — `BlockInfo` (the single-pass block-mode parser), footprints, decimation tables, partition, `UInt128` helpers, SIMD primitives, and scalar blend/FP16 helpers. `IO` covers `.astc` file parsing only.
+The code is organised by codec concern rather than by spec chapter. `AstcDecoder` and `AstcEncoder` are the public entry points. Below the decoder, `BlockDecoding` holds every per-block decode pipeline — the fused fast paths plus the general-purpose `LogicalBlock` pipeline — and the `IBlockPipeline<T>` dispatch strategy that routes LDR and HDR blocks through a shared loop. `Encoding` holds the LDR encoder and its per-block search (see [Encoding](#encoding) below). `ColorEncoding` and `BiseEncoding` isolate the two tricky encodings the spec defines for endpoint and weight values respectively; each carries both the decode and encode side (`BiseEncoding` owns `BoundedIntegerSequenceEncoder` alongside the decoders, plus the `BitStream` primitive). `Core` holds the shared block-structure primitives — `BlockInfo` (the single-pass block-mode parser), footprints, decimation tables, partition, `UInt128` helpers, SIMD primitives, and scalar blend/FP16 helpers. `IO` covers `.astc` file parsing and writing.
 
-This grouping makes it easier to change one decoder feature at a time: BISE changes stay inside `BiseEncoding`, endpoint-mode additions stay inside `ColorEncoding`, and the fused paths can be tuned without touching the general pipeline.
+This grouping makes it easier to change one feature at a time: BISE changes stay inside `BiseEncoding`, endpoint-mode additions stay inside `ColorEncoding`, the fused paths can be tuned without touching the general pipeline, and the encoder's search lives entirely in `Encoding`.
 
 ## Decoding pipelines
 
@@ -75,6 +75,33 @@ This path still decodes BISE, unquantises, computes partition assignments, and u
 
 `BlockInfo.IsValid == false` means the block is reserved or illegal per spec. The decoder writes the spec-mandated error colour (magenta) into the corresponding image region rather than throwing or leaving zeros. `BlockInfo.IsHdr` covers both HDR endpoint modes (§C.2.14) and HDR void-extent blocks (§C.2.23, dynamic-range flag set); `IBlockPipeline.IsBlockLegal` returns false for HDR-mode blocks in the LDR pipeline so they get the same magenta treatment per §C.2.25.
 
+## Encoding
+
+`AstcEncoder` compresses an RGBA8 LDR image into ASTC blocks (`CompressImage`) or into a complete `.astc` file with a 16-byte header (`CompressToAstcFile`). It is **correctness-first**: it emits spec-legal blocks that this library's decoder and conformant decoders (ARM's `astcenc`) read back to the original image within ASTC's lossy tolerance. It does not target the rate-distortion quality or speed of a production encoder. Encoding is LDR-only; HDR endpoint modes are not produced.
+
+The encoder works one block at a time. `AstcEncoder` gathers each footprint-sized texel block (clamping the nearest in-image texel into any edge padding, since the decoder discards those positions) and dispatches:
+
+- **Constant blocks** become void-extent blocks (`Encoding/VoidExtentEncoder.cs`, spec §C.2.23) — a single UNORM16 colour, no weights.
+- **Everything else** goes to `Encoding/LdrBlockEncoder.cs`, which searches for the lowest-error legal encoding that fits the 128-bit budget.
+
+### Per-block search — `Encoding/LdrBlockEncoder.cs`
+
+For a given partitioning, the encoder fits endpoints, projects each texel onto its endpoint line to get ideal weights, fits a (possibly decimated) weight grid to those weights, then searches the quantisation choices that fit the bit budget and keeps the configuration with the lowest reconstruction error. The pieces:
+
+1. **Endpoint fitting — `Encoding/EndpointFitter.cs`.** Endpoints are fitted by least squares: they lie on the texel cloud's principal axis (direction of greatest variance, found by power iteration on the 4×4 covariance) through its mean, extended to span the texels' projections. This tracks correlated and anti-correlated channel variation a per-channel bounding box would mis-orient. Endpoints are ordered so the decoder's blue-contract swap never fires.
+2. **Weight derivation.** Each texel's ideal weight is its projection onto its subset's endpoint line, in [0, 64] (spec §C.2.19).
+3. **Decimation fitting — `Encoding/DecimationFit.cs`.** When the weight grid is smaller than the footprint (spec §C.2.18), the per-texel ideal weights are fitted back to the smaller grid using the same `Core/DecimationTable` index/factor tables the decoder upsamples with. Decimation is what makes footprints over 64 texels encodable and lets large blocks spend more bits per weight.
+4. **Endpoint-mode and quantisation search.** Cheaper endpoint modes (luminance, RGB, RGBA — direct or base+offset/scale; `Encoding/EndpointEncoder.cs`) leave more of the budget for weight precision, so the encoder tries several modes against the block's content. For each, it searches weight-grid sizes (footprint down to 2×2) and weight ranges (spec §C.2.7 Table 23, richest first), pruning any combination that exceeds the colour-value budget or the [24, 96] weight-bit window, and keeps the lowest-error result.
+
+On top of the single-partition path, `LdrBlockEncoder` also tries, and keeps only if it reconstructs better:
+
+- **Multi-partition** (2–4 partitions, spec §C.2.21) for footprints with enough texels. All partitions share one colour endpoint mode. The 10-bit partition seed space is searched cheaply by endpoint-fit error first; a few finalists (`Encoding/FinalistSelector.cs`) go through the full quantisation search.
+- **Dual plane** (spec §C.2.20), letting one channel vary independently of the other three — a large win when, say, alpha is uncorrelated with RGB.
+
+### Block assembly
+
+The winning configuration is packed into the 128-bit block by `Encoding/BlockAssembler.cs`, using `Encoding/BlockModeEncoder.cs` for the block-mode field, `BiseEncoding/BoundedIntegerSequenceEncoder.cs` to BISE-pack the quantised colour values and weights (the inverse of the decoder's BISE read, spec §C.2.12), and `Encoding/BlockLayout.cs` for the field bit positions. `Encoding/AstcBlockBuilder.cs` assembles the raw bit fields; `IO/AstcFileHeader.cs` writes the `.astc` header for `CompressToAstcFile`.
+
 ## Design decisions
 
 ### Illegal blocks emit the spec-mandated error colour
@@ -124,6 +151,7 @@ A weight grid can be smaller than the texel grid (e.g. a 4×4 weight grid drivin
 
 - **2D only.** 3D ASTC footprints (`VK_FORMAT_ASTC_3x3x3_*_BLOCK` and relatives) are rejected at `AstcFileHeader.FromMemory`. The decoder's arithmetic and tables are 2D-only; adding 3D support would be a substantial rework of the decimation and partition paths.
 - **`.astc` container only.** Other container formats (KTX, KTX2, DDS) are not parsed. Callers using those containers extract the raw block payload and pass it to `AstcDecoder.DecompressImage` directly.
+- **LDR encoding only.** `AstcEncoder` produces LDR blocks; it does not emit HDR endpoint modes. It is correctness-first, not tuned for production rate-distortion quality or speed.
 
 ## Useful links
 

@@ -10,6 +10,9 @@ namespace AstcSharp.Benchmarks
             [
                 typeof(DecodingBenchmark),
                 typeof(AstcFullImageDecodeBenchmark),
+                typeof(EncodingBenchmark),
+                typeof(AstcFullImageEncodeBenchmark),
+                typeof(CodecComparisonBenchmark),
                 typeof(ReferenceDecoderBenchmark)
             ]);
             switcher.Run(args);

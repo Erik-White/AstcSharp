@@ -18,6 +18,9 @@ internal readonly record struct AstcFileHeader(byte BlockWidth, byte BlockHeight
     public const uint Magic = 0x5CA1AB13;
     public const int SizeInBytes = 16;
 
+    // Image dimensions are stored as 24-bit little-endian fields (spec), so each must fit in 24 bits.
+    private const int MaxImageDimension = 0xFFFFFF;
+
     // 2D footprints from the ASTC spec. 3D footprints are not supported.
     private static readonly (byte Width, byte Height)[] Valid2DFootprints =
     [
@@ -82,6 +85,42 @@ internal readonly record struct AstcFileHeader(byte BlockWidth, byte BlockHeight
             ImageWidth: imageWidth,
             ImageHeight: imageHeight,
             ImageDepth: imageDepth);
+    }
+
+    /// <summary>
+    /// Serialises this header into the first <see cref="SizeInBytes"/> bytes of
+    /// <paramref name="data"/> in the ASTC layout — the inverse of <see cref="FromMemory"/>:
+    /// magic (4 bytes, little-endian), block width/height/depth (1 byte each), then image
+    /// width/height/depth (3 little-endian bytes each).
+    /// </summary>
+    public void WriteTo(Span<byte> data)
+    {
+        if (data.Length < SizeInBytes)
+        {
+            throw new ArgumentException($"ASTC header buffer must be at least {SizeInBytes} bytes.", nameof(data));
+        }
+
+        BinaryPrimitives.WriteUInt32LittleEndian(data, Magic);
+        data[4] = this.BlockWidth;
+        data[5] = this.BlockHeight;
+        data[6] = this.BlockDepth;
+        WriteUInt24LittleEndian(data[7..], this.ImageWidth);
+        WriteUInt24LittleEndian(data[10..], this.ImageHeight);
+        WriteUInt24LittleEndian(data[13..], this.ImageDepth);
+    }
+
+    /// <summary>
+    /// Writes <paramref name="value"/> as a 24-bit little-endian field. Throws rather than silently
+    /// truncate a dimension that does not fit, since the readback (<see cref="FromMemory"/>) masks to
+    /// 24 bits and the corruption would otherwise be invisible.
+    /// </summary>
+    private static void WriteUInt24LittleEndian(Span<byte> data, int value)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(value);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(value, MaxImageDimension);
+        data[0] = (byte)value;
+        data[1] = (byte)(value >> 8);
+        data[2] = (byte)(value >> 16);
     }
 
     private static bool IsValid2DFootprint(byte width, byte height)
