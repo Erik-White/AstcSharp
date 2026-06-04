@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Runtime.ExceptionServices;
 using AstcSharp.Core;
 using AstcSharp.Encoding;
 using AstcSharp.IO;
@@ -67,14 +68,23 @@ public static class AstcEncoder
             // Each block is encoded independently and writes a disjoint 16-byte slot, and the encode
             // path holds no mutable shared state (the partition and decimation caches are concurrent),
             // so the block grid parallelises without coordination.
-            Parallel.For(0, (int)blockCount, i =>
+            try
             {
-                int blockX = i % blocksWide;
-                int blockY = i / blocksWide;
-                UInt128 block = EncodeLdrBlock(rgba.Span, width, height, footprint, blockX, blockY);
-                BinaryPrimitives.WriteUInt128LittleEndian(
-                    output.AsSpan(i * BlockInfo.SizeInBytes, BlockInfo.SizeInBytes), block);
-            });
+                Parallel.For(0, (int)blockCount, i =>
+                {
+                    int blockX = i % blocksWide;
+                    int blockY = i / blocksWide;
+                    UInt128 block = EncodeLdrBlock(rgba.Span, width, height, footprint, blockX, blockY);
+                    BinaryPrimitives.WriteUInt128LittleEndian(
+                        output.AsSpan(i * BlockInfo.SizeInBytes, BlockInfo.SizeInBytes), block);
+                });
+            }
+            catch (AggregateException ex) when (ex.InnerExceptions.Count == 1)
+            {
+                // Surface a per-block encode failure as the same exception type the serial path (and
+                // the documented contract) throws, rather than the AggregateException Parallel.For wraps.
+                ExceptionDispatchInfo.Throw(ex.InnerException!);
+            }
 
             return output;
         }
