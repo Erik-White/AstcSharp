@@ -61,6 +61,11 @@ internal static class LdrBlockEncoder
     // Channel-mask covering all four RGBA channels, used for whole-line weight projection.
     private const int AllChannelsMask = 0b1111;
 
+    // Quality early-out: once the single-partition (or multi-partition) fit reconstructs the block to
+    // within this mean squared error per channel sample, the costlier multi-partition and dual-plane
+    // searches cannot meaningfully improve it, so they are skipped.
+    private const long MaxPerSampleSquaredErrorForEarlyOut = 4;
+
     // Dual-plane blocks (spec §C.2.20) carry two interleaved weight planes, so the grid holds twice
     // the weights and is capped at 32 points. The colour-component selector bit width lives in
     // BlockLayout.
@@ -84,7 +89,16 @@ internal static class LdrBlockEncoder
     {
         UInt128 bestBlock = EncodeSinglePartition(texels, footprint, out long bestError);
 
-        if (bestError > 0 && footprint.PixelCount >= MinTexelsForPartitioning)
+        // The costlier multi-partition and dual-plane searches can only help while there is error
+        // worth chasing; once the block reconstructs below the early-out target, skip them. This is
+        // where most of the encoder's time is saved on the smooth blocks typical of natural images.
+        long earlyOutError = MaxPerSampleSquaredErrorForEarlyOut * texels.Length * ChannelCount;
+        if (bestError <= earlyOutError)
+        {
+            return bestBlock;
+        }
+
+        if (footprint.PixelCount >= MinTexelsForPartitioning)
         {
             UInt128 multiBlock = TryEncodeMultiPartition(texels, footprint, out long multiError);
             if (multiError < bestError)
@@ -92,18 +106,20 @@ internal static class LdrBlockEncoder
                 bestError = multiError;
                 bestBlock = multiBlock;
             }
+
+            if (bestError <= earlyOutError)
+            {
+                return bestBlock;
+            }
         }
 
         // A second weight plane lets one channel vary independently of the other three (spec §C.2.20)
         // — a large win for content where, say, alpha is uncorrelated with RGB. Tried as an additive
         // single-partition candidate; kept only if it reconstructs better than the plane-1 result.
-        if (bestError > 0)
+        UInt128 dualPlaneBlock = TryEncodeDualPlane(texels, footprint, earlyOutError, out long dualPlaneError);
+        if (dualPlaneError < bestError)
         {
-            UInt128 dualPlaneBlock = TryEncodeDualPlane(texels, footprint, out long dualPlaneError);
-            if (dualPlaneError < bestError)
-            {
-                bestBlock = dualPlaneBlock;
-            }
+            bestBlock = dualPlaneBlock;
         }
 
         return bestBlock;
@@ -798,7 +814,7 @@ internal static class LdrBlockEncoder
     /// Single-partition only: the colour/selector bit-budget arithmetic below assumes one partition
     /// (no per-partition extra-CEM bits); supporting multi-partition would require accounting for them.
     /// </summary>
-    private static UInt128 TryEncodeDualPlane(ReadOnlySpan<RgbaColor> texels, Footprint footprint, out long bestErrorOut)
+    private static UInt128 TryEncodeDualPlane(ReadOnlySpan<RgbaColor> texels, Footprint footprint, long earlyOutError, out long bestErrorOut)
     {
         bestErrorOut = long.MaxValue;
         UInt128 bestBlock = default;
@@ -846,6 +862,13 @@ internal static class LdrBlockEncoder
                 bestBlock = BlockAssembler.AssembleDualPlane(
                     blockMode, c.Mode, c.ColorRange, scratch.BestColorValues[..c.ColorValueCount],
                     c.WeightRange, result.Config.DualPlaneChannel, scratch.BestGridWeights0[..gridCount], scratch.BestGridWeights1[..gridCount]);
+
+                // Once one second-plane channel reconstructs below the target, the remaining channels
+                // cannot meaningfully improve it; stop searching them.
+                if (bestErrorOut <= earlyOutError)
+                {
+                    break;
+                }
             }
         }
 

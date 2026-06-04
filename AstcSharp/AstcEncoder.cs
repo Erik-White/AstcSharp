@@ -25,6 +25,11 @@ namespace AstcSharp;
 /// </remarks>
 public static class AstcEncoder
 {
+    // At or above this block count, CompressImage encodes blocks in parallel. Each block costs
+    // roughly a millisecond of search, so the threshold is low — it exists only to avoid the
+    // thread-pool overhead on trivial single-/few-block images.
+    private const int ParallelBlockThreshold = 16;
+
     /// <summary>
     /// Compresses an RGBA32 LDR image into ASTC blocks for the given footprint.
     /// </summary>
@@ -42,7 +47,7 @@ public static class AstcEncoder
     /// input — every supported 2D footprint admits a legal single-partition encoding — and should not
     /// occur in practice.
     /// </exception>
-    public static byte[] CompressImage(ReadOnlySpan<byte> rgba, int width, int height, Footprint footprint)
+    public static byte[] CompressImage(ReadOnlyMemory<byte> rgba, int width, int height, Footprint footprint)
     {
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(width, 0);
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(height, 0);
@@ -57,12 +62,30 @@ public static class AstcEncoder
         ArgumentOutOfRangeException.ThrowIfGreaterThan(blockCount, int.MaxValue / BlockInfo.SizeInBytes);
         byte[] output = new byte[blockCount * BlockInfo.SizeInBytes];
 
+        if (blockCount >= ParallelBlockThreshold)
+        {
+            // Each block is encoded independently and writes a disjoint 16-byte slot, and the encode
+            // path holds no mutable shared state (the partition and decimation caches are concurrent),
+            // so the block grid parallelises without coordination.
+            Parallel.For(0, (int)blockCount, i =>
+            {
+                int blockX = i % blocksWide;
+                int blockY = i / blocksWide;
+                UInt128 block = EncodeLdrBlock(rgba.Span, width, height, footprint, blockX, blockY);
+                BinaryPrimitives.WriteUInt128LittleEndian(
+                    output.AsSpan(i * BlockInfo.SizeInBytes, BlockInfo.SizeInBytes), block);
+            });
+
+            return output;
+        }
+
+        ReadOnlySpan<byte> pixels = rgba.Span;
         int blockIndex = 0;
         for (int blockY = 0; blockY < blocksHigh; blockY++)
         {
             for (int blockX = 0; blockX < blocksWide; blockX++)
             {
-                UInt128 block = EncodeLdrBlock(rgba, width, height, footprint, blockX, blockY);
+                UInt128 block = EncodeLdrBlock(pixels, width, height, footprint, blockX, blockY);
                 BinaryPrimitives.WriteUInt128LittleEndian(
                     output.AsSpan(blockIndex * BlockInfo.SizeInBytes, BlockInfo.SizeInBytes), block);
                 blockIndex++;
@@ -85,7 +108,7 @@ public static class AstcEncoder
     /// Any condition <see cref="CompressImage"/> rejects, or <paramref name="width"/>/<paramref name="height"/>
     /// exceeds the header's 24-bit dimension field.
     /// </exception>
-    public static byte[] CompressToAstcFile(ReadOnlySpan<byte> rgba, int width, int height, Footprint footprint)
+    public static byte[] CompressToAstcFile(ReadOnlyMemory<byte> rgba, int width, int height, Footprint footprint)
     {
         byte[] blocks = CompressImage(rgba, width, height, footprint);
 
