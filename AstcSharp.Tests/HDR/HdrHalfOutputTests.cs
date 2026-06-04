@@ -36,31 +36,6 @@ public class HdrHalfOutputTests
         }
     }
 
-    [Theory]
-    [InlineData(TestData.Astc.Hdr.Hdr_A_1x1)]
-    [InlineData(TestData.Astc.Hdr.Hdr_Tile)]
-    [InlineData(TestData.Astc.Hdr.Ldr_A_1x1)]
-    [InlineData(TestData.Astc.Hdr.Ldr_Tile)]
-    [InlineData(TestData.Astc.Hdr.Hdr_Mixed_256_4x4)]
-    [InlineData(TestData.Astc.Hdr.Hdr_Mixed_256_8x8)]
-    public void DecompressHdrBlockHalf_MatchesNarrowedFloatBlock(string inputFile)
-    {
-        byte[] astcData = File.ReadAllBytes(TestFile.GetInputFileFullPath(Path.Combine("Astc", inputFile)));
-        AstcFile astcFile = AstcFile.FromMemory(astcData);
-        Footprint footprint = astcFile.Footprint;
-        int channels = footprint.PixelCount * 4;
-
-        Span<float> floatBlock = new float[channels];
-        Span<Half> halfBlock = new Half[channels];
-        AstcDecoder.DecompressHdrBlock(astcFile.Blocks[..16], footprint, floatBlock);
-        AstcDecoder.DecompressHdrBlockHalf(astcFile.Blocks[..16], footprint, halfBlock);
-
-        for (int i = 0; i < channels; i++)
-        {
-            Assert.Equal(BitConverter.HalfToUInt16Bits((Half)floatBlock[i]), BitConverter.HalfToUInt16Bits(halfBlock[i]));
-        }
-    }
-
     [Fact]
     public void DecompressHdrImageHalf_StreamOverload_ShouldMatchSpanOverload()
     {

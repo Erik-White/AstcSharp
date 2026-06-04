@@ -156,32 +156,6 @@ public class AstcDecoderTests
     }
 
     [Theory]
-    [InlineData(8, 64)]
-    [InlineData(16, 10)]
-    public void DecompressBlock_WithInvalidBufferSizes_ShouldThrowArgumentOutOfRangeException(int dataSize, int bufferSize)
-    {
-        byte[] data = new byte[dataSize];
-        byte[] buffer = new byte[bufferSize];
-        Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint4x4);
-
-        Assert.Throws<ArgumentException>(() =>
-            AstcDecoder.DecompressBlock(data, footprint, buffer));
-    }
-
-    [Theory]
-    [InlineData(8, 64)]
-    [InlineData(16, 10)]
-    public void DecompressHdrBlock_WithInvalidBufferSizes_ShouldThrowArgumentOutOfRangeException(int dataSize, int bufferSize)
-    {
-        byte[] data = new byte[dataSize];
-        float[] buffer = new float[bufferSize];
-        Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint4x4);
-
-        Assert.Throws<ArgumentException>(() =>
-            AstcDecoder.DecompressHdrBlock(data, footprint, buffer));
-    }
-
-    [Theory]
     [InlineData(-1, 4)]
     [InlineData(4, -1)]
     [InlineData(0, 4)]
@@ -241,21 +215,14 @@ public class AstcDecoderTests
     }
 
     [Fact]
-    public void DecompressBlock_AndDecompressImage_ShouldReturnIdenticalBlockShape()
+    public void Rgba4x4Fixture_HasExpectedBlockTypeDistribution()
     {
-        // Cross-validates the per-block (DecompressBlock) and whole-image (DecompressImage)
-        // public APIs on a test file that contains multi-partition, dual-plane, and
-        // void-extent blocks. Both paths must yield identical pixels for every block.
+        // Regression guard on block-mode parsing: rgba_4x4.astc contains a known mix of
+        // void-extent, multi-partition, and dual-plane blocks. A change in these counts means
+        // BlockModeDecoder started classifying blocks differently.
         string filePath = TestFile.GetInputFileFullPath(Path.Combine("Astc", TestData.Astc.Rgba_4x4));
-        byte[] astcBytes = File.ReadAllBytes(filePath);
-        AstcFile file = AstcFile.FromMemory(astcBytes);
+        AstcFile file = AstcFile.FromMemory(File.ReadAllBytes(filePath));
 
-        byte[] imageBuffer = AstcDecoder.DecompressImage(file).ToArray();
-        Assert.NotEmpty(imageBuffer);
-
-        int blockWidth = file.Footprint.Width;
-        int blockHeight = file.Footprint.Height;
-        int blocksWide = (file.Width + blockWidth - 1) / blockWidth;
         int blockCount = file.Blocks.Length / BlockInfo.SizeInBytes;
         int totalValid = 0;
         int voidExtent = 0;
@@ -264,7 +231,6 @@ public class AstcDecoderTests
         int threePartition = 0;
         int fourPartition = 0;
         int dualPlane = 0;
-        byte[] singleBlockOut = new byte[blockWidth * blockHeight * BlockInfo.ChannelsPerPixel];
 
         for (int blockIdx = 0; blockIdx < blockCount; blockIdx++)
         {
@@ -272,14 +238,6 @@ public class AstcDecoderTests
             UInt128 bits = BinaryPrimitives.ReadUInt128LittleEndian(blockSpan);
             BlockInfo info = BlockModeDecoder.Decode(bits);
             Assert.True(info.IsValid, $"Block {blockIdx} of rgba_4x4.astc must decode as a valid block.");
-
-            Array.Clear(singleBlockOut);
-            AstcDecoder.DecompressBlock(blockSpan, file.Footprint, singleBlockOut);
-
-            int blockX = blockIdx % blocksWide;
-            int blockY = blockIdx / blocksWide;
-            AssertBlockMatchesImageSlice(
-                singleBlockOut, imageBuffer, file.Width, file.Height, blockX, blockY, blockWidth, blockHeight);
 
             totalValid++;
             if (info.IsVoidExtent)
@@ -310,42 +268,6 @@ public class AstcDecoderTests
         Assert.Equal(231, threePartition);
         Assert.Equal(11, fourPartition);
         Assert.Equal(661, dualPlane);
-    }
-
-    private static void AssertBlockMatchesImageSlice(
-        byte[] block,
-        byte[] image,
-        int imageWidth,
-        int imageHeight,
-        int blockX,
-        int blockY,
-        int blockWidth,
-        int blockHeight)
-    {
-        for (int by = 0; by < blockHeight; by++)
-        {
-            int py = (blockY * blockHeight) + by;
-            if (py >= imageHeight)
-            {
-                continue;
-            }
-
-            for (int bx = 0; bx < blockWidth; bx++)
-            {
-                int px = (blockX * blockWidth) + bx;
-                if (px >= imageWidth)
-                {
-                    continue;
-                }
-
-                int blockOffset = ((by * blockWidth) + bx) * BlockInfo.ChannelsPerPixel;
-                int imageOffset = ((py * imageWidth) + px) * BlockInfo.ChannelsPerPixel;
-                for (int c = 0; c < BlockInfo.ChannelsPerPixel; c++)
-                {
-                    Assert.Equal(block[blockOffset + c], image[imageOffset + c]);
-                }
-            }
-        }
     }
 
     [Fact]

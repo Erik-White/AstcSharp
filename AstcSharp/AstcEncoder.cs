@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Runtime.ExceptionServices;
 using AstcSharp.Core;
@@ -115,8 +116,8 @@ public static class AstcEncoder
     /// <param name="footprint">The ASTC block footprint to encode with.</param>
     /// <returns>The <c>.astc</c> file bytes: the 16-byte header followed by the block stream.</returns>
     /// <exception cref="ArgumentOutOfRangeException">
-    /// Any condition <see cref="CompressImage"/> rejects, or <paramref name="width"/>/<paramref name="height"/>
-    /// exceeds the header's 24-bit dimension field.
+    /// Any condition <see cref="CompressImage(ReadOnlyMemory{byte}, int, int, Footprint)"/> rejects, or
+    /// <paramref name="width"/>/<paramref name="height"/> exceeds the header's 24-bit dimension field.
     /// </exception>
     public static byte[] CompressToAstcFile(ReadOnlyMemory<byte> rgba, int width, int height, Footprint footprint)
     {
@@ -132,6 +133,149 @@ public static class AstcEncoder
     }
 
     /// <summary>
+    /// Streams an LDR encode from <paramref name="source"/> to <paramref name="destination"/> one
+    /// block-row band at a time: reads <c>footprint.Height</c> pixel rows of RGBA32, encodes that
+    /// band's <c>ceil(width / footprint.Width)</c> blocks, and writes them out before reading the
+    /// next band. Peak memory is one band of source pixels plus one band of output blocks,
+    /// independent of the image height.
+    /// </summary>
+    /// <param name="source">Source RGBA32 pixels, 4 bytes per pixel in R, G, B, A order, row-major.</param>
+    /// <param name="destination">The stream to write the ASTC block stream to (16 bytes per block, row-major block order).</param>
+    /// <param name="width">Image width in pixels.</param>
+    /// <param name="height">Image height in pixels.</param>
+    /// <param name="footprint">The ASTC block footprint to encode with.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="source"/> or <paramref name="destination"/> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="width"/> or <paramref name="height"/> is not positive.</exception>
+    /// <exception cref="EndOfStreamException">
+    /// Thrown if <paramref name="source"/> contains fewer than <c>width * height * 4</c> bytes.
+    /// </exception>
+    public static void CompressImage(Stream source, Stream destination, int width, int height, Footprint footprint)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(destination);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(width, 0);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(height, 0);
+
+        int blocksWide = (width + footprint.Width - 1) / footprint.Width;
+        int bandPixelBytes = footprint.Height * width * BlockInfo.ChannelsPerPixel;
+        int bandBlockBytes = blocksWide * BlockInfo.SizeInBytes;
+
+        byte[] sourceBand = ArrayPool<byte>.Shared.Rent(bandPixelBytes);
+        byte[] outputBand = ArrayPool<byte>.Shared.Rent(bandBlockBytes);
+        try
+        {
+            Span<byte> sourceSpan = sourceBand.AsSpan(0, bandPixelBytes);
+            Span<byte> outputSpan = outputBand.AsSpan(0, bandBlockBytes);
+
+            for (int baseY = 0; baseY < height; baseY += footprint.Height)
+            {
+                int bandHeight = Math.Min(footprint.Height, height - baseY);
+                int validBytes = bandHeight * width * BlockInfo.ChannelsPerPixel;
+                source.ReadExactly(sourceSpan[..validBytes]);
+
+                EncodeBand(sourceSpan, bandHeight, width, footprint, blocksWide, outputSpan);
+                destination.Write(outputBand, 0, bandBlockBytes);
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(sourceBand);
+            ArrayPool<byte>.Shared.Return(outputBand);
+        }
+    }
+
+    /// <summary>
+    /// Asynchronously streams an LDR encode from <paramref name="source"/> to
+    /// <paramref name="destination"/> one block-row band at a time. The per-block search is
+    /// synchronous (CPU-bound); only the source read and destination write are awaited, so the
+    /// rented buffers persist across awaits.
+    /// </summary>
+    /// <param name="source">Source RGBA32 pixels, 4 bytes per pixel in R, G, B, A order, row-major.</param>
+    /// <param name="destination">The stream to write the ASTC block stream to (16 bytes per block, row-major block order).</param>
+    /// <param name="width">Image width in pixels.</param>
+    /// <param name="height">Image height in pixels.</param>
+    /// <param name="footprint">The ASTC block footprint to encode with.</param>
+    /// <param name="cancellationToken">Token to cancel the operation.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="source"/> or <paramref name="destination"/> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="width"/> or <paramref name="height"/> is not positive.</exception>
+    /// <exception cref="EndOfStreamException">
+    /// Thrown if <paramref name="source"/> contains fewer than <c>width * height * 4</c> bytes.
+    /// </exception>
+    public static async Task CompressImageAsync(
+        Stream source, Stream destination, int width, int height, Footprint footprint, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(destination);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(width, 0);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(height, 0);
+
+        int blocksWide = (width + footprint.Width - 1) / footprint.Width;
+        int bandPixelBytes = footprint.Height * width * BlockInfo.ChannelsPerPixel;
+        int bandBlockBytes = blocksWide * BlockInfo.SizeInBytes;
+
+        byte[] sourceBand = ArrayPool<byte>.Shared.Rent(bandPixelBytes);
+        byte[] outputBand = ArrayPool<byte>.Shared.Rent(bandBlockBytes);
+        try
+        {
+            for (int baseY = 0; baseY < height; baseY += footprint.Height)
+            {
+                int bandHeight = Math.Min(footprint.Height, height - baseY);
+                int validBytes = bandHeight * width * BlockInfo.ChannelsPerPixel;
+                await source.ReadExactlyAsync(sourceBand.AsMemory(0, validBytes), cancellationToken).ConfigureAwait(false);
+
+                EncodeBand(sourceBand.AsSpan(0, bandPixelBytes), bandHeight, width, footprint, blocksWide, outputBand.AsSpan(0, bandBlockBytes));
+                await destination.WriteAsync(outputBand.AsMemory(0, bandBlockBytes), cancellationToken).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(sourceBand);
+            ArrayPool<byte>.Shared.Return(outputBand);
+        }
+    }
+
+    /// <summary>
+    /// Encodes one block-row band — <paramref name="blocksWide"/> blocks fitted to the
+    /// <paramref name="bandHeight"/> pixel rows held in <paramref name="bandPixels"/> — into
+    /// <paramref name="output"/> as 16-byte little-endian blocks. Right-edge overhang clamps to
+    /// the nearest in-image texel; bottom overhang on the final band repeats the last band row.
+    /// </summary>
+    private static void EncodeBand(
+        ReadOnlySpan<byte> bandPixels, int bandHeight, int width, Footprint footprint, int blocksWide, Span<byte> output)
+    {
+        Span<RgbaColor> texels = stackalloc RgbaColor[footprint.PixelCount];
+
+        for (int blockX = 0; blockX < blocksWide; blockX++)
+        {
+            GatherBandTexels(bandPixels, bandHeight, width, footprint, blockX, texels);
+            UInt128 block = EncodeTexels(texels, footprint);
+            BinaryPrimitives.WriteUInt128LittleEndian(output.Slice(blockX * BlockInfo.SizeInBytes, BlockInfo.SizeInBytes), block);
+        }
+    }
+
+    /// <summary>
+    /// Gathers the footprint-sized texel block at column <paramref name="blockX"/> from a band of
+    /// <paramref name="bandHeight"/> pixel rows. Mirrors <see cref="GatherBlockTexels"/>'s edge
+    /// clamping, but row indices are relative to the band (top row 0) rather than the whole image.
+    /// </summary>
+    private static void GatherBandTexels(
+        ReadOnlySpan<byte> bandPixels, int bandHeight, int width, Footprint footprint, int blockX, Span<RgbaColor> texels)
+    {
+        int baseX = blockX * footprint.Width;
+
+        for (int y = 0; y < footprint.Height; y++)
+        {
+            int srcY = Math.Min(y, bandHeight - 1);
+            for (int x = 0; x < footprint.Width; x++)
+            {
+                int srcX = Math.Min(baseX + x, width - 1);
+                int offset = ((srcY * width) + srcX) * BlockInfo.ChannelsPerPixel;
+                texels[(y * footprint.Width) + x] = new RgbaColor(bandPixels[offset], bandPixels[offset + 1], bandPixels[offset + 2], bandPixels[offset + 3]);
+            }
+        }
+    }
+
+    /// <summary>
     /// Encodes a single LDR block at (<paramref name="blockX"/>, <paramref name="blockY"/>):
     /// a void-extent block when all texels are identical, otherwise a single-partition,
     /// RGBA-direct block whose weight grid is fitted (with decimation as needed) to the texels.
@@ -140,7 +284,15 @@ public static class AstcEncoder
     {
         Span<RgbaColor> texels = stackalloc RgbaColor[footprint.PixelCount];
         GatherBlockTexels(rgba, width, height, footprint, blockX, blockY, texels);
+        return EncodeTexels(texels, footprint);
+    }
 
+    /// <summary>
+    /// Encodes one block's gathered texels: a void-extent block when all texels are identical,
+    /// otherwise a single-partition, RGBA-direct block whose weight grid is fitted to the texels.
+    /// </summary>
+    private static UInt128 EncodeTexels(ReadOnlySpan<RgbaColor> texels, Footprint footprint)
+    {
         if (IsConstant(texels, out RgbaColor constant))
         {
             return VoidExtentEncoder.EncodeLdr(constant.R, constant.G, constant.B, constant.A);
