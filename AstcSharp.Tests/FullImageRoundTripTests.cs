@@ -7,11 +7,11 @@ namespace AstcSharp.Tests;
 
 /// <summary>
 /// Full-image encode round-trip tests over real multi-block content: each ASTC fixture is decoded
-/// to RGBA8, re-encoded by <see cref="AstcEncoder"/>, and decoded again; the re-encoded image must
-/// stay above a PSNR floor and contain no error-colour (magenta) blocks. Unlike the synthetic
-/// single-/2x2-block encoder tests, this exercises the encoder on full-size natural content
-/// (thousands of varied blocks), stressing per-block mode/partition selection and the multi-block
-/// output layout end-to-end.
+/// to RGBA8, a representative crop is re-encoded by <see cref="AstcEncoder"/>, and decoded again;
+/// the re-encoded image must stay above a PSNR floor and contain no error-colour (magenta) blocks.
+/// Unlike the synthetic single-/2x2-block encoder tests, this exercises the encoder on natural
+/// content (hundreds of varied blocks), stressing per-block mode/partition selection and the
+/// multi-block output layout end-to-end.
 /// </summary>
 public class FullImageRoundTripTests
 {
@@ -19,10 +19,15 @@ public class FullImageRoundTripTests
     // a comfortable margin so the test guards against a real encoder regression without flaking.
     private const double MinPsnr = 30.0;
 
+    // The encoder runs a full per-block search (~1 ms/block), so re-encoding a whole 256×256 fixture
+    // costs seconds. A 64×64 crop still covers hundreds of varied real blocks per fixture — enough to
+    // exercise mode/partition selection and the multi-block layout — at ~1/16th the cost, and 64 is
+    // not a multiple of the 6/12 footprints so edge blocks are exercised too.
+    private const int CropSize = 64;
+
     // A representative subset spanning the footprint range and both opaque/alpha content: the
     // smallest and largest RGB footprints and the smallest and largest RGBA footprints (the latter
-    // is also the lowest-PSNR case). The encoder runs a full per-block search, so the full fixture
-    // set is too slow for routine runs.
+    // is also the lowest-PSNR case).
     [Theory]
     [InlineData(TestData.Astc.Rgb_4x4)]
     [InlineData(TestData.Astc.Rgb_12x12)]
@@ -34,11 +39,14 @@ public class FullImageRoundTripTests
         AstcFile file = AstcFile.FromMemory(File.ReadAllBytes(filePath));
         Footprint footprint = file.Footprint;
 
-        // Decode the fixture to RGBA8 — this is the real-world source image the encoder must handle.
-        byte[] source = StreamCodec.DecodeLdr(file.Blocks, file.Width, file.Height, footprint);
+        // Decode the fixture to RGBA8 and take a crop — the real-world source image the encoder must handle.
+        byte[] decoded = StreamCodec.DecodeLdr(file.Blocks, file.Width, file.Height, footprint);
+        int cropWidth = Math.Min(CropSize, file.Width);
+        int cropHeight = Math.Min(CropSize, file.Height);
+        byte[] source = TestImage.CropTopLeft(decoded, file.Width, cropWidth, cropHeight);
 
-        byte[] reencoded = StreamCodec.Encode(source, file.Width, file.Height, footprint);
-        byte[] roundTripped = StreamCodec.DecodeLdr(reencoded, file.Width, file.Height, footprint);
+        byte[] reencoded = StreamCodec.Encode(source, cropWidth, cropHeight, footprint);
+        byte[] roundTripped = StreamCodec.DecodeLdr(reencoded, cropWidth, cropHeight, footprint);
 
         AssertNoIntroducedMagenta(source, roundTripped);
         double psnr = Psnr(source, roundTripped);

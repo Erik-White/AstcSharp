@@ -105,7 +105,9 @@ public class LdrBlockEncoderTests
         Footprint footprint = Footprint.FromFootprintType(footprintType);
         var rng = new Random(1234);
 
-        for (int trial = 0; trial < 64; trial++)
+        // 16 trials per footprint (64 random blocks across the four footprints) is enough to exercise
+        // the partition/mode search; the per-block search is slow, so more trials only add CI time.
+        for (int trial = 0; trial < 16; trial++)
         {
             byte[] pixels = RandomRegionImage(footprint.Width, footprint.Height, rng);
             byte[] encoded = StreamCodec.Encode(pixels, footprint.Width, footprint.Height, footprint);

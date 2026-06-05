@@ -24,6 +24,7 @@
 
   <ItemGroup>
     <Compile Include="..\AstcSharp.Tests\Utils\StreamCodec.cs" Link="Utils\StreamCodec.cs" />
+    <Compile Include="..\AstcSharp.Tests\Utils\TestImage.cs" Link="Utils\TestImage.cs" />
   </ItemGroup>
 
   <ItemGroup>
