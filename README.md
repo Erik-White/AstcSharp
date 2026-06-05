@@ -10,7 +10,7 @@ A pure C# library for decoding and encoding ASTC (Adaptive Scalable Texture Comp
 - Encode RGBA32 LDR images to ASTC blocks
 - Linear and sRGB LDR decode modes
 - All standard block footprints (4x4 to 12x12)
-- UASTC LDR decode (Basis Universal), via `UastcDecoder` — all 19 LDR modes (single/multi-subset, dual-plane, RGB/RGBA/LA, solid)
+- UASTC LDR decoding (Basis Universal)
 
 ## Installation
 
@@ -23,8 +23,7 @@ dotnet add package AstcSharp
 The API is **stream-to-stream**: decode and encode read ASTC blocks / pixels from a source `Stream`
 and write the result to a destination `Stream`, processing one block-row band at a time so peak
 memory is bounded to a single band rather than the whole image. You pass the image dimensions and
-footprint explicitly — the source holds raw block/pixel data, not an `.astc` file header. Each
-method has a synchronous form and an `Async` form taking a `CancellationToken`.
+footprint explicitly and the source should hold raw block/pixel data.
 
 ### Decoding
 ```csharp
@@ -48,7 +47,7 @@ AstcDecoder.DecompressHdrImageHalf(source, destination, width, height, footprint
 // Async (e.g. file/network streams)
 await AstcDecoder.DecompressImageAsync(source, destination, width, height, footprint, cancellationToken: token);
 
-// UASTC (Basis Universal, always 4x4): decode raw UASTC block data to RGBA8888
+// UASTC (Basis Universal, always 4x4): decode raw UASTC block data to RGBA32
 UastcDecoder.DecompressImage(uastcSource, destination, width, height);
 ```
 
@@ -79,7 +78,7 @@ AstcSharp's decoding performance is competitive with ARM's C++ implementation, w
 ## Future improvements
 
 - 3D block types
-- HDR encoding (encoding currently supports LDR only)
+- HDR encoding (encoding currently LDR only)
 
 ## References
 
