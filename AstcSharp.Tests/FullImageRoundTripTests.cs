@@ -15,8 +15,8 @@ namespace AstcSharp.Tests;
 /// </summary>
 public class FullImageRoundTripTests
 {
-    // The lowest observed re-encode PSNR across these fixtures is ~34 dB (rgba-6x6); 30 dB leaves
-    // a comfortable margin so the test guards against a real encoder regression without flaking.
+    // The re-encode PSNR across these crops stays comfortably above 30 dB, so this floor guards
+    // against a real encoder regression (or an illegal-block magenta blowout) without flaking.
     private const double MinPsnr = 30.0;
 
     // The encoder runs a full per-block search (~1 ms/block), so re-encoding a whole 256×256 fixture
@@ -41,12 +41,10 @@ public class FullImageRoundTripTests
 
         // Decode the fixture to RGBA8 and take a crop — the real-world source image the encoder must handle.
         byte[] decoded = StreamCodec.DecodeLdr(file.Blocks, file.Width, file.Height, footprint);
-        int cropWidth = Math.Min(CropSize, file.Width);
-        int cropHeight = Math.Min(CropSize, file.Height);
-        byte[] source = TestImage.CropTopLeft(decoded, file.Width, cropWidth, cropHeight);
+        byte[] source = TestImage.CropTopLeft(decoded, file.Width, CropSize, CropSize);
 
-        byte[] reencoded = StreamCodec.Encode(source, cropWidth, cropHeight, footprint);
-        byte[] roundTripped = StreamCodec.DecodeLdr(reencoded, cropWidth, cropHeight, footprint);
+        byte[] reencoded = StreamCodec.Encode(source, CropSize, CropSize, footprint);
+        byte[] roundTripped = StreamCodec.DecodeLdr(reencoded, CropSize, CropSize, footprint);
 
         AssertNoIntroducedMagenta(source, roundTripped);
         double psnr = Psnr(source, roundTripped);

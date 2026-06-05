@@ -34,7 +34,7 @@ public class AstcFullImageEncodeBenchmark
         this.footprint = file.Footprint;
 
         byte[] full = StreamCodec.DecodeLdr(file.Blocks, file.Width, file.Height, file.Footprint);
-        this.pixels = BenchmarkImage.CropTopLeft(full, file.Width, TileSize, TileSize);
+        this.pixels = TestImage.CropTopLeft(full, file.Width, TileSize, TileSize);
     }
 
     [Benchmark]

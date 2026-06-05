@@ -60,7 +60,7 @@ public class CodecComparisonBenchmark
             int blocksWide = (TileSize + footprint.Width - 1) / footprint.Width;
             int blocksHigh = (TileSize + footprint.Height - 1) / footprint.Height;
 
-            byte[] pixels = BenchmarkImage.CropTopLeft(full, file.Width, TileSize, TileSize);
+            byte[] pixels = TestImage.CropTopLeft(full, file.Width, TileSize, TileSize);
             var image = new Image
             {
                 Footprint = footprint,
