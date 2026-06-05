@@ -285,61 +285,6 @@ public static class AstcDecoder
     }
 
     /// <summary>
-    /// Serialises a decoded pixel band of element type <typeparamref name="TElement"/> into a
-    /// destination byte buffer. Used by the stream-to-stream decode paths to choose the output
-    /// byte layout (raw bytes, little-endian float, or little-endian <see cref="Half"/>) while
-    /// the band loop stays generic.
-    /// </summary>
-    private interface IBandSerializer<TElement>
-        where TElement : unmanaged
-    {
-        /// <summary>
-        /// Bytes emitted per decoded element (RGBA channel).
-        /// </summary>
-        static abstract int BytesPerElement { get; }
-
-        /// <summary>
-        /// Writes <paramref name="source"/> (<paramref name="elementCount"/> decoded elements)
-        /// into <paramref name="destination"/> as little-endian bytes.
-        /// </summary>
-        static abstract void Serialize(ReadOnlySpan<TElement> source, int elementCount, Span<byte> destination);
-    }
-
-    private readonly struct ByteBandSerializer : IBandSerializer<byte>
-    {
-        public static int BytesPerElement => sizeof(byte);
-
-        public static void Serialize(ReadOnlySpan<byte> source, int elementCount, Span<byte> destination)
-            => source[..elementCount].CopyTo(destination);
-    }
-
-    private readonly struct FloatBandSerializer : IBandSerializer<float>
-    {
-        public static int BytesPerElement => sizeof(float);
-
-        public static void Serialize(ReadOnlySpan<float> source, int elementCount, Span<byte> destination)
-        {
-            for (int i = 0; i < elementCount; i++)
-            {
-                BinaryPrimitives.WriteSingleLittleEndian(destination.Slice(i * sizeof(float), sizeof(float)), source[i]);
-            }
-        }
-    }
-
-    private readonly struct HalfBandSerializer : IBandSerializer<float>
-    {
-        public static int BytesPerElement => sizeof(ushort);
-
-        public static void Serialize(ReadOnlySpan<float> source, int elementCount, Span<byte> destination)
-        {
-            for (int i = 0; i < elementCount; i++)
-            {
-                BinaryPrimitives.WriteHalfLittleEndian(destination.Slice(i * sizeof(ushort), sizeof(ushort)), (Half)source[i]);
-            }
-        }
-    }
-
-    /// <summary>
     /// Streams a decode from <paramref name="source"/> to <paramref name="destination"/> one
     /// block-row band at a time, serialising each band with <typeparamref name="TSerializer"/>.
     /// Peak memory is one band of compressed blocks, one band of decoded pixels, one per-block
@@ -357,10 +302,11 @@ public static class AstcDecoder
         int bandPixelElements = footprint.Height * width * BlockInfo.ChannelsPerPixel;
         int scratchSize = footprint.PixelCount * BlockInfo.ChannelsPerPixel;
 
+        TSerializer serializer = default;
         byte[] bandBlocks = ArrayPool<byte>.Shared.Rent(bandBlockBytes);
         TElement[] bandPixels = ArrayPool<TElement>.Shared.Rent(bandPixelElements);
         TElement[] scratch = ArrayPool<TElement>.Shared.Rent(scratchSize);
-        byte[] outputBand = ArrayPool<byte>.Shared.Rent(bandPixelElements * TSerializer.BytesPerElement);
+        byte[] outputBand = ArrayPool<byte>.Shared.Rent(bandPixelElements * serializer.BytesPerElement);
         try
         {
             Span<byte> bandSpan = bandBlocks.AsSpan(0, bandBlockBytes);
@@ -374,8 +320,8 @@ public static class AstcDecoder
                 DecodeBlockRow<TPipeline, TElement>(bandSpan, blocksWide, footprint, width, bandHeight, bandPixelSpan, scratchSpan);
 
                 int validElements = bandHeight * width * BlockInfo.ChannelsPerPixel;
-                int outputBytes = validElements * TSerializer.BytesPerElement;
-                TSerializer.Serialize(bandPixelSpan, validElements, outputBand);
+                int outputBytes = validElements * serializer.BytesPerElement;
+                serializer.Serialize(bandPixelSpan, validElements, outputBand);
                 destination.Write(outputBand, 0, outputBytes);
             }
         }
@@ -406,10 +352,11 @@ public static class AstcDecoder
         int bandPixelElements = footprint.Height * width * BlockInfo.ChannelsPerPixel;
         int scratchSize = footprint.PixelCount * BlockInfo.ChannelsPerPixel;
 
+        TSerializer serializer = default;
         byte[] bandBlocks = ArrayPool<byte>.Shared.Rent(bandBlockBytes);
         TElement[] bandPixels = ArrayPool<TElement>.Shared.Rent(bandPixelElements);
         TElement[] scratch = ArrayPool<TElement>.Shared.Rent(scratchSize);
-        byte[] outputBand = ArrayPool<byte>.Shared.Rent(bandPixelElements * TSerializer.BytesPerElement);
+        byte[] outputBand = ArrayPool<byte>.Shared.Rent(bandPixelElements * serializer.BytesPerElement);
         try
         {
             for (int blockY = 0; blockY < blocksHigh; blockY++)
@@ -422,8 +369,8 @@ public static class AstcDecoder
                     bandPixels.AsSpan(0, bandPixelElements), scratch.AsSpan(0, scratchSize));
 
                 int validElements = bandHeight * width * BlockInfo.ChannelsPerPixel;
-                int outputBytes = validElements * TSerializer.BytesPerElement;
-                TSerializer.Serialize(bandPixels.AsSpan(0, bandPixelElements), validElements, outputBand);
+                int outputBytes = validElements * serializer.BytesPerElement;
+                serializer.Serialize(bandPixels.AsSpan(0, bandPixelElements), validElements, outputBand);
                 await destination.WriteAsync(outputBand.AsMemory(0, outputBytes), cancellationToken).ConfigureAwait(false);
             }
         }
@@ -433,6 +380,62 @@ public static class AstcDecoder
             ArrayPool<TElement>.Shared.Return(bandPixels);
             ArrayPool<TElement>.Shared.Return(scratch);
             ArrayPool<byte>.Shared.Return(outputBand);
+        }
+    }
+
+
+    /// <summary>
+    /// Serialises a decoded pixel band of element type <typeparamref name="TElement"/> into a
+    /// destination byte buffer. Used by the stream-to-stream decode paths to choose the output
+    /// byte layout (raw bytes, little-endian float, or little-endian <see cref="Half"/>) while
+    /// the band loop stays generic.
+    /// </summary>
+    private interface IBandSerializer<TElement>
+        where TElement : unmanaged
+    {
+        /// <summary>
+        /// Bytes emitted per decoded element (RGBA channel).
+        /// </summary>
+        int BytesPerElement { get; }
+
+        /// <summary>
+        /// Writes <paramref name="source"/> (<paramref name="elementCount"/> decoded elements)
+        /// into <paramref name="destination"/> as little-endian bytes.
+        /// </summary>
+        void Serialize(ReadOnlySpan<TElement> source, int elementCount, Span<byte> destination);
+    }
+
+    private readonly struct ByteBandSerializer : IBandSerializer<byte>
+    {
+        public int BytesPerElement => sizeof(byte);
+
+        public void Serialize(ReadOnlySpan<byte> source, int elementCount, Span<byte> destination)
+            => source[..elementCount].CopyTo(destination);
+    }
+
+    private readonly struct FloatBandSerializer : IBandSerializer<float>
+    {
+        public int BytesPerElement => sizeof(float);
+
+        public void Serialize(ReadOnlySpan<float> source, int elementCount, Span<byte> destination)
+        {
+            for (int i = 0; i < elementCount; i++)
+            {
+                BinaryPrimitives.WriteSingleLittleEndian(destination.Slice(i * sizeof(float), sizeof(float)), source[i]);
+            }
+        }
+    }
+
+    private readonly struct HalfBandSerializer : IBandSerializer<float>
+    {
+        public int BytesPerElement => sizeof(ushort);
+
+        public void Serialize(ReadOnlySpan<float> source, int elementCount, Span<byte> destination)
+        {
+            for (int i = 0; i < elementCount; i++)
+            {
+                BinaryPrimitives.WriteHalfLittleEndian(destination.Slice(i * sizeof(ushort), sizeof(ushort)), (Half)source[i]);
+            }
         }
     }
 }
