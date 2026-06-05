@@ -6,14 +6,14 @@ using AwesomeAssertions;
 namespace AstcSharp.Tests;
 
 /// <summary>
-/// Full-image encode round-trip tests over real multi-block content: each ASTC fixture is decoded
+/// Real-image encode round-trip tests over real multi-block content: each ASTC fixture is decoded
 /// to RGBA8, a representative crop is re-encoded by <see cref="AstcEncoder"/>, and decoded again;
 /// the re-encoded image must stay above a PSNR floor and contain no error-colour (magenta) blocks.
 /// Unlike the synthetic single-/2x2-block encoder tests, this exercises the encoder on natural
 /// content (hundreds of varied blocks), stressing per-block mode/partition selection and the
 /// multi-block output layout end-to-end.
 /// </summary>
-public class FullImageRoundTripTests
+public class RealImageRoundTripTests
 {
     // The re-encode PSNR across these crops stays comfortably above 30 dB, so this floor guards
     // against a real encoder regression (or an illegal-block magenta blowout) without flaking.
