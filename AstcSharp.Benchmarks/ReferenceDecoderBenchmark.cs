@@ -15,8 +15,10 @@ public class ReferenceDecoderBenchmark
     private byte[]? _armLdrOutput;
     private byte[]? _armHdrOutput;
     private byte[]? _armBlocksCopy;
-    private byte[]? _astcSharpLdrOutput;
-    private float[]? _astcSharpHdrOutput;
+
+    // Reused streams so the AstcSharp benchmarks measure decode work, not allocation.
+    private MemoryStream _astcSharpSource = null!;
+    private MemoryStream _astcSharpSink = null!;
 
     [Params("rgba-4x4", "rgba-8x8", "footprint-4x4", "footprint-12x12")]
     public string FileName { get; set; } = string.Empty;
@@ -37,8 +39,8 @@ public class ReferenceDecoderBenchmark
         _armLdrOutput = new byte[pixelCount * 4];
         _armHdrOutput = new byte[pixelCount * 4 * sizeof(ushort)]; // FP16 = 2 bytes per channel
         _armBlocksCopy = _astcFile.Blocks.ToArray();
-        _astcSharpLdrOutput = new byte[pixelCount * 4];
-        _astcSharpHdrOutput = new float[pixelCount * 4];
+        _astcSharpSource = new MemoryStream(_armBlocksCopy);
+        _astcSharpSink = new MemoryStream(pixelCount * 4 * sizeof(float));
 
         _armLdrContext = ArmCodec.CreateContext(
             footprint, AstcencProfile.AstcencPrfLdr, Astcenc.AstcencPreFastest, AstcencFlags.DecompressOnly);
@@ -54,17 +56,23 @@ public class ReferenceDecoderBenchmark
     }
 
     [Benchmark]
-    public bool AstcSharp_DecompressLdr()
+    public long AstcSharp_DecompressLdr()
     {
         var file = _astcFile!;
-        return AstcDecoder.DecompressImage(file.Blocks, file.Width, file.Height, file.Footprint, _astcSharpLdrOutput);
+        _astcSharpSource.Position = 0;
+        _astcSharpSink.SetLength(0);
+        AstcDecoder.DecompressImage(_astcSharpSource, _astcSharpSink, file.Width, file.Height, file.Footprint);
+        return _astcSharpSink.Length;
     }
 
     [Benchmark]
-    public bool AstcSharp_DecompressHdr()
+    public long AstcSharp_DecompressHdr()
     {
         var file = _astcFile!;
-        return AstcDecoder.DecompressHdrImage(file.Blocks, file.Width, file.Height, file.Footprint, _astcSharpHdrOutput);
+        _astcSharpSource.Position = 0;
+        _astcSharpSink.SetLength(0);
+        AstcDecoder.DecompressHdrImage(_astcSharpSource, _astcSharpSink, file.Width, file.Height, file.Footprint);
+        return _astcSharpSink.Length;
     }
 
     [Benchmark]

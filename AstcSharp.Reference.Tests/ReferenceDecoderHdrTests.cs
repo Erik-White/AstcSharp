@@ -2,6 +2,7 @@ using System.ComponentModel;
 using AstcSharp.Core;
 using AstcSharp.IO;
 using AstcSharp.Reference.Tests.Utils;
+using AstcSharp.Tests.Utils;
 using AwesomeAssertions;
 
 namespace AstcSharp.Reference.Tests;
@@ -45,7 +46,7 @@ public class ReferenceDecoderHdrTests
 
         var expected = ReferenceDecoder.DecompressHdr(
             astcFile.Blocks, astcFile.Width, astcFile.Height, blockX, blockY);
-        var actual = AstcDecoder.DecompressHdrImage(
+        var actual = StreamCodec.DecodeHdr(
             astcFile.Blocks, astcFile.Width, astcFile.Height, astcFile.Footprint);
 
         CompareF16(actual, expected, astcFile.Width, astcFile.Height, basename);
@@ -65,7 +66,7 @@ public class ReferenceDecoderHdrTests
 
         var expected = ReferenceDecoder.DecompressHdr(
             astcFile.Blocks, astcFile.Width, astcFile.Height, blockX, blockY);
-        var actual = AstcDecoder.DecompressHdrImage(
+        var actual = StreamCodec.DecodeHdr(
             astcFile.Blocks, astcFile.Width, astcFile.Height, astcFile.Footprint);
 
         CompareF16(actual, expected, astcFile.Width, astcFile.Height, basename);
@@ -93,7 +94,7 @@ public class ReferenceDecoderHdrTests
         var footprint = Footprint.FromFootprintType(footprintType);
 
         var expected = ReferenceDecoder.DecompressHdr(compressed, width, height, blockX, blockY);
-        var actual = AstcDecoder.DecompressHdrImage(compressed, width, height, footprint);
+        var actual = StreamCodec.DecodeHdr(compressed, width, height, footprint);
 
         CompareF16(actual, expected, width, height, $"BrightSolid_{footprintType}");
     }
@@ -127,7 +128,7 @@ public class ReferenceDecoderHdrTests
         var footprint = Footprint.FromFootprintType(footprintType);
 
         var expected = ReferenceDecoder.DecompressHdr(compressed, width, height, blockX, blockY);
-        var actual = AstcDecoder.DecompressHdrImage(compressed, width, height, footprint);
+        var actual = StreamCodec.DecodeHdr(compressed, width, height, footprint);
 
         CompareF16(actual, expected, width, height, $"HdrGradient_{footprintType}");
     }
@@ -174,7 +175,7 @@ public class ReferenceDecoderHdrTests
         var footprint = Footprint.FromFootprintType(footprintType);
 
         var expected = ReferenceDecoder.DecompressHdr(compressed, width, height, blockX, blockY);
-        var actual = AstcDecoder.DecompressHdrImage(compressed, width, height, footprint);
+        var actual = StreamCodec.DecodeHdr(compressed, width, height, footprint);
 
         CompareF16(actual, expected, width, height, $"MixedLdrHdr_{footprintType}");
     }
@@ -194,7 +195,7 @@ public class ReferenceDecoderHdrTests
 
         var expected = ReferenceDecoder.DecompressHdr(
             astcFile.Blocks, astcFile.Width, astcFile.Height, blockX, blockY);
-        var actual = AstcDecoder.DecompressHdrImageHalf(
+        var actual = StreamCodec.DecodeHdrHalf(
             astcFile.Blocks, astcFile.Width, astcFile.Height, astcFile.Footprint);
 
         CompareF16Half(actual, expected, astcFile.Width, astcFile.Height, basename);
@@ -227,7 +228,7 @@ public class ReferenceDecoderHdrTests
         var footprint = Footprint.FromFootprintType(footprintType);
 
         var expected = ReferenceDecoder.DecompressHdr(compressed, width, height, blockX, blockY);
-        var actual = AstcDecoder.DecompressHdrImageHalf(compressed, width, height, footprint);
+        var actual = StreamCodec.DecodeHdrHalf(compressed, width, height, footprint);
 
         CompareF16Half(actual, expected, width, height, $"HdrHalfGradient_{footprintType}");
     }

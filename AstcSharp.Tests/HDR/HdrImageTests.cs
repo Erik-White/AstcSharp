@@ -36,7 +36,7 @@ public class HdrImageTests
         byte[] astcData = File.ReadAllBytes(TestFile.GetInputFileFullPath(Path.Combine("Astc", inputFile)));
         AstcFile astcFile = AstcFile.FromMemory(astcData);
 
-        Span<float> hdrResult = AstcDecoder.DecompressHdrImage(
+        float[] hdrResult = StreamCodec.DecodeHdr(
             astcFile.Blocks,
             astcFile.Width,
             astcFile.Height,
@@ -58,7 +58,7 @@ public class HdrImageTests
         byte[] astcData = File.ReadAllBytes(TestFile.GetInputFileFullPath(Path.Combine("Astc", inputFile)));
         AstcFile astcFile = AstcFile.FromMemory(astcData);
 
-        Span<float> hdrResult = AstcDecoder.DecompressHdrImage(
+        float[] hdrResult = StreamCodec.DecodeHdr(
             astcFile.Blocks,
             astcFile.Width,
             astcFile.Height,
@@ -88,7 +88,7 @@ public class HdrImageTests
         byte[] astcData = File.ReadAllBytes(TestFile.GetInputFileFullPath(Path.Combine("Astc", inputFile)));
         AstcFile astcFile = AstcFile.FromMemory(astcData);
 
-        Span<byte> ldrResult = AstcDecoder.DecompressImage(astcFile);
+        byte[] ldrResult = StreamCodec.DecodeLdr(astcFile.Blocks, astcFile.Width, astcFile.Height, astcFile.Footprint);
 
         // Spec §C.2.19 error colour: opaque magenta (0xFF, 0x00, 0xFF, 0xFF) per texel.
         for (int i = 0; i < ldrResult.Length; i += 4)
@@ -108,7 +108,7 @@ public class HdrImageTests
         byte[] astcData = File.ReadAllBytes(TestFile.GetInputFileFullPath(Path.Combine("Astc", inputFile)));
         AstcFile astcFile = AstcFile.FromMemory(astcData);
 
-        Span<float> hdrResult = AstcDecoder.DecompressHdrImage(
+        float[] hdrResult = StreamCodec.DecodeHdr(
             astcFile.Blocks, astcFile.Width, astcFile.Height, astcFile.Footprint);
 
         // HDR values exceed 1.0; R < G < B ordering is preserved.
@@ -119,7 +119,7 @@ public class HdrImageTests
         Assert.True(hdrResult[1] < hdrResult[2]);
 
         // LDR API emits the spec-mandated error colour for the same HDR content.
-        Span<byte> ldrResult = AstcDecoder.DecompressImage(astcFile);
+        byte[] ldrResult = StreamCodec.DecodeLdr(astcFile.Blocks, astcFile.Width, astcFile.Height, astcFile.Footprint);
         Assert.Equal(0xFF, ldrResult[0]);
         Assert.Equal(0x00, ldrResult[1]);
         Assert.Equal(0xFF, ldrResult[2]);

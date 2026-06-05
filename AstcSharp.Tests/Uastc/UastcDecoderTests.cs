@@ -24,62 +24,21 @@ public class UastcDecoderTests
         (byte[] levelData, int width, int height) = LoadFixture(name);
         byte[] expected = LoadExpected(name);
 
-        byte[] actual = UastcDecoder.DecompressImage(levelData, width, height).ToArray();
+        byte[] actual = StreamCodec.DecodeUastc(levelData, width, height);
 
         Assert.Equal(expected, actual);
     }
 
     [Fact]
-    public void DecompressBlock_AndDecompressImage_AgreeForEveryBlock()
-    {
-        (byte[] levelData, int width, int height) = LoadFixture("uastc-rgb-m1");
-        byte[] image = UastcDecoder.DecompressImage(levelData, width, height).ToArray();
-
-        int blocksWide = (width + 3) / 4;
-        byte[] blockOut = new byte[4 * 4 * 4];
-
-        for (int b = 0; b < levelData.Length / 16; b++)
-        {
-            Array.Clear(blockOut);
-            UastcDecoder.DecompressBlock(levelData.AsSpan(b * 16, 16), blockOut);
-
-            int bx = b % blocksWide;
-            int by = b / blocksWide;
-            for (int py = 0; py < 4; py++)
-            {
-                for (int px = 0; px < 4; px++)
-                {
-                    int imgOffset = (((by * 4 + py) * width) + (bx * 4 + px)) * 4;
-                    int blkOffset = ((py * 4) + px) * 4;
-                    for (int c = 0; c < 4; c++)
-                    {
-                        Assert.Equal(image[imgOffset + c], blockOut[blkOffset + c]);
-                    }
-                }
-            }
-        }
-    }
-
-    [Fact]
-    public void DecompressBlock_ReservedMode_EmitsMagenta()
+    public void DecompressImage_ReservedMode_EmitsMagenta()
     {
         // Byte 0 = 0x45 (7-bit reserved mode 19 huff code) -> error colour for the whole block.
         byte[] block = new byte[16];
         block[0] = 0x45;
-        byte[] buffer = new byte[64];
 
-        UastcDecoder.DecompressBlock(block, buffer);
+        byte[] decoded = StreamCodec.DecodeUastc(block, 4, 4);
 
-        AssertAllMagenta(buffer);
-    }
-
-    [Theory]
-    [InlineData(8, 64)]   // data too short
-    [InlineData(16, 32)]  // buffer too small
-    public void DecompressBlock_InvalidSizes_Throws(int dataSize, int bufferSize)
-    {
-        Assert.Throws<ArgumentException>(() =>
-            UastcDecoder.DecompressBlock(new byte[dataSize], new byte[bufferSize]));
+        AssertAllMagenta(decoded);
     }
 
     [Theory]
@@ -87,17 +46,22 @@ public class UastcDecoderTests
     [InlineData(4, -1)]
     public void DecompressImage_InvalidDimensions_Throws(int width, int height)
     {
+        using MemoryStream source = new(new byte[16]);
+        using MemoryStream destination = new();
+
         Assert.Throws<ArgumentOutOfRangeException>(() =>
-            UastcDecoder.DecompressImage(new byte[16], width, height).ToArray());
+            UastcDecoder.DecompressImage(source, destination, width, height));
     }
 
     [Fact]
-    public void DecompressImage_InsufficientData_ReturnsEmpty()
+    public void DecompressImage_InsufficientData_Throws()
     {
         // 16x16 needs 16 blocks (256 bytes); provide one block.
-        Span<byte> result = UastcDecoder.DecompressImage(new byte[16], 16, 16);
+        using MemoryStream source = new(new byte[16]);
+        using MemoryStream destination = new();
 
-        Assert.True(result.IsEmpty);
+        Assert.Throws<EndOfStreamException>(() =>
+            UastcDecoder.DecompressImage(source, destination, 16, 16));
     }
 
     // The .uastc fixtures use the ARM .astc file header (magic + footprint + dimensions) wrapping

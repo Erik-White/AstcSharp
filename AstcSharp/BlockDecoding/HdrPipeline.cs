@@ -16,11 +16,6 @@ internal readonly struct HdrPipeline : IBlockPipeline<float>
     public bool IsBlockLegal(in BlockInfo info) => true;
 
     /// <inheritdoc />
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void WriteErrorColor(Footprint footprint, Span<float> buffer)
-        => FillMagenta(buffer[..(footprint.PixelCount * BlockInfo.ChannelsPerPixel)]);
-
-    /// <inheritdoc />
     public void WriteErrorColorClipped(
         Footprint footprint,
         int dstBaseX,

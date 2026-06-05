@@ -17,11 +17,6 @@ internal readonly struct LdrPipeline<TMode> : IBlockPipeline<byte>
     public bool IsBlockLegal(in BlockInfo info) => !info.IsHdr;
 
     /// <inheritdoc />
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void WriteErrorColor(Footprint footprint, Span<byte> buffer)
-        => BlockImageWriter.FillErrorColor(buffer[..(footprint.PixelCount * BlockInfo.ChannelsPerPixel)]);
-
-    /// <inheritdoc />
     public void WriteErrorColorClipped(
         Footprint footprint,
         int dstBaseX,

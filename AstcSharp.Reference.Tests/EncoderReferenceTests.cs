@@ -2,6 +2,7 @@ using AstcSharp.BlockDecoding;
 using AstcSharp.Core;
 using AstcSharp.IO;
 using AstcSharp.Reference.Tests.Utils;
+using AstcSharp.Tests.Utils;
 using AwesomeAssertions;
 
 namespace AstcSharp.Reference.Tests;
@@ -15,6 +16,11 @@ namespace AstcSharp.Reference.Tests;
 public class EncoderReferenceTests
 {
     private const int Ldr8BitTolerance = 1;
+
+    // The encoder runs a full per-block search (~1 ms/block), so re-encoding a whole 256×256 fixture
+    // costs seconds. A 64×64 crop still covers hundreds of varied real blocks per fixture, and 64 is
+    // not a multiple of the 6/12 footprints so edge blocks are exercised too.
+    private const int CropSize = 64;
 
     public static TheoryData<FootprintType> AllFootprintTypes =>
     [
@@ -35,7 +41,7 @@ public class EncoderReferenceTests
         int height = blockY;
 
         byte[] pixels = SolidImage(width, height, 0x80, 0x40, 0xC0, 0xFF);
-        byte[] encoded = AstcEncoder.CompressImage(pixels, width, height, footprint);
+        byte[] encoded = StreamCodec.Encode(pixels, width, height, footprint);
 
         byte[] armDecoded = ReferenceDecoder.DecompressLdr(encoded, width, height, blockX, blockY);
 
@@ -63,9 +69,9 @@ public class EncoderReferenceTests
         int height = blockY * 2;
         byte[] pixels = TwoRegionImage(width, height);
 
-        byte[] encoded = AstcEncoder.CompressImage(pixels, width, height, footprint);
+        byte[] encoded = StreamCodec.Encode(pixels, width, height, footprint);
         byte[] armDecoded = ReferenceDecoder.DecompressLdr(encoded, width, height, blockX, blockY);
-        Span<byte> ourDecoded = AstcDecoder.DecompressImage(encoded, width, height, footprint);
+        Span<byte> ourDecoded = StreamCodec.DecodeLdr(encoded, width, height, footprint);
 
         CompareRgba8(armDecoded, ourDecoded.ToArray(), $"TwoRegion_{footprintType}");
     }
@@ -84,14 +90,14 @@ public class EncoderReferenceTests
         Footprint footprint = Footprint.FromFootprintType(footprintType);
         byte[] pixels = FourQuadrantImage(blockX, blockY);
 
-        byte[] encoded = AstcEncoder.CompressImage(pixels, blockX, blockY, footprint);
+        byte[] encoded = StreamCodec.Encode(pixels, blockX, blockY, footprint);
 
         UInt128 bits = System.Buffers.Binary.BinaryPrimitives.ReadUInt128LittleEndian(encoded.AsSpan(0, 16));
         BlockInfo info = BlockModeDecoder.Decode(bits);
         info.PartitionCount.Should().BeGreaterThan(1, because: "the four-quadrant block should encode with multiple partitions");
 
         byte[] armDecoded = ReferenceDecoder.DecompressLdr(encoded, blockX, blockY, blockX, blockY);
-        Span<byte> ourDecoded = AstcDecoder.DecompressImage(encoded, blockX, blockY, footprint);
+        Span<byte> ourDecoded = StreamCodec.DecodeLdr(encoded, blockX, blockY, footprint);
 
         CompareRgba8(armDecoded, ourDecoded.ToArray(), "MultiPartition");
     }
@@ -108,14 +114,14 @@ public class EncoderReferenceTests
         Footprint footprint = Footprint.FromFootprintType(footprintType);
         byte[] pixels = DecorrelatedAlphaRamp(blockX, blockY);
 
-        byte[] encoded = AstcEncoder.CompressImage(pixels, blockX, blockY, footprint);
+        byte[] encoded = StreamCodec.Encode(pixels, blockX, blockY, footprint);
 
         UInt128 bits = System.Buffers.Binary.BinaryPrimitives.ReadUInt128LittleEndian(encoded.AsSpan(0, 16));
         BlockInfo info = BlockModeDecoder.Decode(bits);
         info.DualPlane.Enabled.Should().BeTrue(because: "anti-correlated RGB/alpha should encode as a dual-plane block");
 
         byte[] armDecoded = ReferenceDecoder.DecompressLdr(encoded, blockX, blockY, blockX, blockY);
-        Span<byte> ourDecoded = AstcDecoder.DecompressImage(encoded, blockX, blockY, footprint);
+        Span<byte> ourDecoded = StreamCodec.DecodeLdr(encoded, blockX, blockY, footprint);
 
         CompareRgba8(armDecoded, ourDecoded.ToArray(), "DualPlane");
     }
@@ -131,7 +137,7 @@ public class EncoderReferenceTests
         int height = footprint.Height;
 
         byte[] pixels = SolidImage(width, height, r, g, b, a);
-        byte[] encoded = AstcEncoder.CompressImage(pixels, width, height, footprint);
+        byte[] encoded = StreamCodec.Encode(pixels, width, height, footprint);
 
         byte[] armDecoded = ReferenceDecoder.DecompressLdr(encoded, width, height, 6, 6);
 
@@ -179,12 +185,12 @@ public class EncoderReferenceTests
         int height = blockY * 2;
         byte[] pixels = ContentImage(content, width, height);
 
-        byte[] encoded = AstcEncoder.CompressImage(pixels, width, height, footprint);
+        byte[] encoded = StreamCodec.Encode(pixels, width, height, footprint);
 
         // Our blocks must be spec-legal: ARM's decoder reads them, and its reconstruction must
         // agree with ours (both decode the same legal bitstream).
         byte[] armDecoded = ReferenceDecoder.DecompressLdr(encoded, width, height, blockX, blockY);
-        Span<byte> ourDecoded = AstcDecoder.DecompressImage(encoded, width, height, footprint);
+        Span<byte> ourDecoded = StreamCodec.DecodeLdr(encoded, width, height, footprint);
 
         CompareRgba8(armDecoded, ourDecoded.ToArray(), $"{content}_{footprintType}");
     }
@@ -200,8 +206,8 @@ public class EncoderReferenceTests
         byte[] pixels = GradientImage(width, height);
 
         // Our encoder, decoded by our decoder.
-        byte[] ourEncoded = AstcEncoder.CompressImage(pixels, width, height, footprint);
-        Span<byte> ourDecoded = AstcDecoder.DecompressImage(ourEncoded, width, height, footprint);
+        byte[] ourEncoded = StreamCodec.Encode(pixels, width, height, footprint);
+        Span<byte> ourDecoded = StreamCodec.DecodeLdr(ourEncoded, width, height, footprint);
         double ourPsnr = Psnr(pixels, ourDecoded);
 
         // ARM's encoder, decoded by ARM's decoder.
@@ -216,8 +222,7 @@ public class EncoderReferenceTests
     }
 
     // A representative subset spanning the footprint range and both opaque/alpha content: the
-    // smallest and largest RGB footprints and the smallest and largest RGBA footprints. The encoder
-    // runs a full per-block search, so the full fixture set is too slow for routine runs.
+    // smallest and largest RGB footprints and the smallest and largest RGBA footprints.
     [Theory]
     [InlineData("rgb-4x4")]
     [InlineData("rgb-12x12")]
@@ -225,20 +230,21 @@ public class EncoderReferenceTests
     [InlineData("rgba-8x8")]
     public void ReencodedRealImage_DecodesUnderArmReference(string basename)
     {
-        // Decode a real multi-block fixture to RGBA8, re-encode the whole image with our encoder,
-        // and confirm the re-encoded bitstream is spec-legal: ARM's decoder must read every block
-        // back in agreement with ours (±1 UNORM8). This is the full-image counterpart to the
-        // synthetic single-/two-region cases above.
+        // Decode a real multi-block fixture to RGBA8, re-encode a crop with our encoder, and confirm
+        // the re-encoded bitstream is spec-legal: ARM's decoder must read every block back in
+        // agreement with ours (±1 UNORM8). This is the real-content counterpart to the synthetic
+        // single-/two-region cases above.
         var filePath = Path.Combine("TestData", "Input", "Astc", basename + ".astc");
         AstcFile file = AstcFile.FromMemory(File.ReadAllBytes(filePath));
         Footprint footprint = file.Footprint;
         var (blockX, blockY) = ReferenceDecoder.ToBlockDimensions(footprint.Type);
 
-        byte[] source = AstcDecoder.DecompressImage(file.Blocks, file.Width, file.Height, footprint).ToArray();
+        byte[] decoded = StreamCodec.DecodeLdr(file.Blocks, file.Width, file.Height, footprint);
+        byte[] source = TestImage.CropTopLeft(decoded, file.Width, CropSize, CropSize);
 
-        byte[] reencoded = AstcEncoder.CompressImage(source, file.Width, file.Height, footprint);
-        byte[] armDecoded = ReferenceDecoder.DecompressLdr(reencoded, file.Width, file.Height, blockX, blockY);
-        Span<byte> ourDecoded = AstcDecoder.DecompressImage(reencoded, file.Width, file.Height, footprint);
+        byte[] reencoded = StreamCodec.Encode(source, CropSize, CropSize, footprint);
+        byte[] armDecoded = ReferenceDecoder.DecompressLdr(reencoded, CropSize, CropSize, blockX, blockY);
+        Span<byte> ourDecoded = StreamCodec.DecodeLdr(reencoded, CropSize, CropSize, footprint);
 
         CompareRgba8(armDecoded, ourDecoded.ToArray(), $"Reencode_{basename}");
     }

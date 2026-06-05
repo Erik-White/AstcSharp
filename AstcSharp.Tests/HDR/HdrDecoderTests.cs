@@ -1,41 +1,37 @@
-
-
 using AstcSharp;
 using AstcSharp.Core;
+using AstcSharp.Tests.Utils;
 
 namespace AstcSharp.Tests.HDR;
 
 public class HdrDecoderTests
 {
     [Fact]
-    public void DecompressToFloat16_WithValidBlock_ShouldProduceCorrectOutputSize()
+    public void DecompressHdr_WithValidBlock_ShouldProduceCorrectOutputSize()
     {
-        // Create a simple 4x4 block (16 bytes)
+        // A single 4x4 block of zeros (a valid void-extent block).
         byte[] astcData = new byte[16];
-
         Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint4x4);
 
-        // Decompress using HDR API
-        Span<float> hdrResult = AstcDecoder.DecompressHdrImage(astcData, 4, 4, footprint);
+        float[] hdrResult = StreamCodec.DecodeHdr(astcData, 4, 4, footprint);
 
-        // Verify output size: 4x4 pixels, 4 Half values (RGBA) per pixel
-        Assert.Equal(4 * 4 * 4, hdrResult.Length); // 64 Half values total
+        // 4x4 pixels, 4 float values (RGBA) per pixel.
+        Assert.Equal(4 * 4 * 4, hdrResult.Length);
 
         foreach (float value in hdrResult)
         {
             Assert.False(float.IsNaN(value));
             Assert.False(float.IsInfinity(value));
 
-            // Values should be in reasonable range for normalized colors
+            // Values should be in reasonable range for normalized colors.
             Assert.True(value >= 0.0f);
             Assert.True(value <= 1.1f); // Allow slight overshoot for HDR
         }
     }
 
     [Fact]
-    public void DecompressToFloat16_WithDifferentFootprints_ShouldWork()
+    public void DecompressHdr_WithDifferentFootprints_ShouldWork()
     {
-        // Test that HDR API works with various footprint types
         FootprintType[] footprints =
         [
             FootprintType.Footprint4x4,
@@ -46,35 +42,37 @@ public class HdrDecoderTests
 
         foreach (FootprintType footprint in footprints)
         {
-            // Create a simple test: 1 block (footprint size) of zeros
+            // One ASTC block (all zeros = void-extent block).
             Footprint fp = Footprint.FromFootprintType(footprint);
-            byte[] astcData = new byte[16]; // One ASTC block (all zeros = void extent block)
+            byte[] astcData = new byte[16];
 
-            Span<float> result = AstcDecoder.DecompressHdrImage(astcData, fp.Width, fp.Height, footprint);
+            float[] result = StreamCodec.DecodeHdr(astcData, fp.Width, fp.Height, fp);
 
-            // Should produce footprint.Width * footprint.Height pixels, each with 4 Half values
+            // footprint.Width * footprint.Height pixels, each with 4 float values.
             Assert.Equal(fp.Width * fp.Height * 4, result.Length);
         }
     }
 
     [Fact]
-    public void ASTCDecompressToFloat16_WithInvalidData_ShouldReturnEmpty()
+    public void DecompressHdr_WithTruncatedData_ShouldThrow()
     {
-        byte[] emptyData = [];
+        // 64x64 at a 4x4 footprint needs 256 blocks; an empty source is far too short.
+        using MemoryStream source = new([]);
+        using MemoryStream destination = new();
+        Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint4x4);
 
-        Span<float> result = AstcDecoder.DecompressHdrImage(emptyData, 64, 64, FootprintType.Footprint4x4);
-
-        Assert.Equal(0, result.Length);
+        Assert.Throws<EndOfStreamException>(() =>
+            AstcDecoder.DecompressHdrImage(source, destination, 64, 64, footprint));
     }
 
     [Fact]
-    public void DecompressToFloat16_WithZeroDimensions_ShouldThrowArgumentOutOfRangeException()
+    public void DecompressHdr_WithZeroDimensions_ShouldThrowArgumentOutOfRangeException()
     {
-        byte[] astcData = new byte[16];
+        using MemoryStream source = new(new byte[16]);
+        using MemoryStream destination = new();
         Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint4x4);
 
         Assert.Throws<ArgumentOutOfRangeException>(() =>
-            AstcDecoder.DecompressHdrImage(astcData, 0, 0, footprint).ToArray());
+            AstcDecoder.DecompressHdrImage(source, destination, 0, 0, footprint));
     }
-
 }

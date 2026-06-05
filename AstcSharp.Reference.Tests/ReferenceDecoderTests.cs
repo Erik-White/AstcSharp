@@ -1,6 +1,7 @@
 using AstcSharp.Core;
 using AstcSharp.IO;
 using AstcSharp.Reference.Tests.Utils;
+using AstcSharp.Tests.Utils;
 using AwesomeAssertions;
 
 namespace AstcSharp.Reference.Tests;
@@ -76,7 +77,7 @@ public class ReferenceDecoderTests
 
         var expected = ReferenceDecoder.DecompressLdr(
             astcFile.Blocks, astcFile.Width, astcFile.Height, blockX, blockY);
-        var actual = AstcDecoder.DecompressImage(
+        var actual = StreamCodec.DecodeLdr(
             astcFile.Blocks, astcFile.Width, astcFile.Height, astcFile.Footprint);
 
         CompareRgba8(actual, expected, astcFile.Width, astcFile.Height, basename);
@@ -104,7 +105,7 @@ public class ReferenceDecoderTests
         var footprint = Footprint.FromFootprintType(footprintType);
 
         var expected = ReferenceDecoder.DecompressLdr(compressed, width, height, blockX, blockY);
-        var actual = AstcDecoder.DecompressImage(compressed, width, height, footprint);
+        var actual = StreamCodec.DecodeLdr(compressed, width, height, footprint);
 
         CompareRgba8(actual, expected, width, height, $"SolidColor_{footprintType}");
     }
@@ -135,7 +136,7 @@ public class ReferenceDecoderTests
         var footprint = Footprint.FromFootprintType(footprintType);
 
         var expected = ReferenceDecoder.DecompressLdr(compressed, width, height, blockX, blockY);
-        var actual = AstcDecoder.DecompressImage(compressed, width, height, footprint);
+        var actual = StreamCodec.DecodeLdr(compressed, width, height, footprint);
 
         CompareRgba8(actual, expected, width, height, $"Gradient_{footprintType}");
     }
@@ -160,7 +161,7 @@ public class ReferenceDecoderTests
         var footprint = Footprint.FromFootprintType(footprintType);
 
         var expected = ReferenceDecoder.DecompressLdr(compressed, width, height, blockX, blockY);
-        var actual = AstcDecoder.DecompressImage(compressed, width, height, footprint);
+        var actual = StreamCodec.DecodeLdr(compressed, width, height, footprint);
 
         CompareRgba8(actual, expected, width, height, $"RandomNoise_{footprintType}");
     }
@@ -185,7 +186,7 @@ public class ReferenceDecoderTests
         var footprint = Footprint.FromFootprintType(footprintType);
 
         var expected = ReferenceDecoder.DecompressLdr(compressed, width, height, blockX, blockY);
-        var actual = AstcDecoder.DecompressImage(compressed, width, height, footprint);
+        var actual = StreamCodec.DecodeLdr(compressed, width, height, footprint);
 
         CompareRgba8(actual, expected, width, height, $"NonAligned_{footprintType}");
     }
@@ -214,7 +215,7 @@ public class ReferenceDecoderTests
         var footprint = Footprint.FromFootprintType(FootprintType.Footprint4x4);
 
         var expected = ReferenceDecoder.DecompressLdr(block, blockX, blockY, blockX, blockY);
-        var actual = AstcDecoder.DecompressImage(block, blockX, blockY, footprint);
+        var actual = StreamCodec.DecodeLdr(block, blockX, blockY, footprint);
 
         CompareRgba8(actual, expected, blockX, blockY, "VoidExtent");
     }
@@ -239,7 +240,7 @@ public class ReferenceDecoderTests
 
         var expected = ReferenceDecoder.DecompressLdrSrgb(
             astcFile.Blocks, astcFile.Width, astcFile.Height, blockX, blockY);
-        var actual = AstcDecoder.DecompressImage(
+        var actual = StreamCodec.DecodeLdr(
             astcFile.Blocks, astcFile.Width, astcFile.Height, astcFile.Footprint, LdrDecodeMode.Srgb);
 
         CompareRgba8(actual, expected, astcFile.Width, astcFile.Height, $"Srgb_{basename}");
@@ -263,7 +264,7 @@ public class ReferenceDecoderTests
         var footprint = Footprint.FromFootprintType(footprintType);
 
         var expected = ReferenceDecoder.DecompressLdrSrgb(compressed, width, height, blockX, blockY);
-        var actual = AstcDecoder.DecompressImage(compressed, width, height, footprint, LdrDecodeMode.Srgb);
+        var actual = StreamCodec.DecodeLdr(compressed, width, height, footprint, LdrDecodeMode.Srgb);
 
         CompareRgba8(actual, expected, width, height, $"Srgb_RandomNoise_{footprintType}");
     }
@@ -279,9 +280,9 @@ public class ReferenceDecoderTests
         var bytes = File.ReadAllBytes(filePath);
         var astcFile = AstcFile.FromMemory(bytes);
 
-        var linear = AstcDecoder.DecompressImage(
+        var linear = StreamCodec.DecodeLdr(
             astcFile.Blocks, astcFile.Width, astcFile.Height, astcFile.Footprint, LdrDecodeMode.Linear);
-        var srgb = AstcDecoder.DecompressImage(
+        var srgb = StreamCodec.DecodeLdr(
             astcFile.Blocks, astcFile.Width, astcFile.Height, astcFile.Footprint, LdrDecodeMode.Srgb);
 
         bool anyRgbDiff = false;

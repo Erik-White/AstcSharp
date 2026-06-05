@@ -1,4 +1,5 @@
 using AstcSharp.Core;
+using AstcSharp.Tests.Utils;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Configs;
 
@@ -41,22 +42,22 @@ public class EncodingBenchmark
     // Constant block -> void-extent fast path (no search).
     [Benchmark(Baseline = true)]
     public int EncodeConstant()
-        => AstcEncoder.CompressImage(this.constant, this.footprint.Width, this.footprint.Height, this.footprint).Length;
+        => StreamCodec.Encode(this.constant, this.footprint.Width, this.footprint.Height, this.footprint).Length;
 
     // Smooth gradient -> single-partition path (one endpoint line fits well).
     [Benchmark]
     public int EncodeGradient()
-        => AstcEncoder.CompressImage(this.gradient, this.footprint.Width, this.footprint.Height, this.footprint).Length;
+        => StreamCodec.Encode(this.gradient, this.footprint.Width, this.footprint.Height, this.footprint).Length;
 
     // Four distinct colour regions -> exercises the multi-partition seed search.
     [Benchmark]
     public int EncodeFourQuadrant()
-        => AstcEncoder.CompressImage(this.fourQuadrant, this.footprint.Width, this.footprint.Height, this.footprint).Length;
+        => StreamCodec.Encode(this.fourQuadrant, this.footprint.Width, this.footprint.Height, this.footprint).Length;
 
     // Anti-correlated RGB/alpha -> exercises the dual-plane channel search.
     [Benchmark]
     public int EncodeDecorrelatedAlpha()
-        => AstcEncoder.CompressImage(this.decorrelatedAlpha, this.footprint.Width, this.footprint.Height, this.footprint).Length;
+        => StreamCodec.Encode(this.decorrelatedAlpha, this.footprint.Width, this.footprint.Height, this.footprint).Length;
 
     private static byte[] Solid(int width, int height)
     {

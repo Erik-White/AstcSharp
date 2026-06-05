@@ -1,4 +1,5 @@
 using AstcSharp.Core;
+using AstcSharp.Tests.Utils;
 
 namespace AstcSharp.Tests;
 
@@ -13,27 +14,26 @@ public class AstcEncoderTests
     [InlineData(4, -1)]
     public void CompressImage_NonPositiveDimension_Throws(int width, int height)
     {
-        // The dimension guard runs before any buffer-size check, so the buffer length is irrelevant.
-        byte[] pixels = new byte[Math.Max(1, width) * Math.Max(1, height) * 4];
+        using MemoryStream source = new(new byte[Math.Max(1, width) * Math.Max(1, height) * 4]);
+        using MemoryStream destination = new();
 
-        Assert.Throws<ArgumentOutOfRangeException>(() => AstcEncoder.CompressImage(pixels, width, height, Footprint4x4));
+        Assert.Throws<ArgumentOutOfRangeException>(() => AstcEncoder.CompressImage(source, destination, width, height, Footprint4x4));
     }
 
     [Fact]
-    public void CompressImage_BufferShorterThanImage_Throws()
+    public void CompressImage_SourceShorterThanImage_Throws()
     {
         // A 4x4 image needs 4 * 4 * 4 = 64 bytes; one byte short must be rejected.
-        byte[] pixels = new byte[63];
+        using MemoryStream source = new(new byte[63]);
+        using MemoryStream destination = new();
 
-        Assert.Throws<ArgumentOutOfRangeException>(() => AstcEncoder.CompressImage(pixels, 4, 4, Footprint4x4));
+        Assert.Throws<EndOfStreamException>(() => AstcEncoder.CompressImage(source, destination, 4, 4, Footprint4x4));
     }
 
     [Fact]
-    public void CompressImage_BufferExactlyImageSize_EncodesOneBlock()
+    public void CompressImage_SourceExactlyImageSize_EncodesOneBlock()
     {
-        byte[] pixels = new byte[4 * 4 * 4];
-
-        byte[] encoded = AstcEncoder.CompressImage(pixels, 4, 4, Footprint4x4);
+        byte[] encoded = StreamCodec.Encode(new byte[4 * 4 * 4], 4, 4, Footprint4x4);
 
         Assert.Equal(BlockInfo.SizeInBytes, encoded.Length);
     }

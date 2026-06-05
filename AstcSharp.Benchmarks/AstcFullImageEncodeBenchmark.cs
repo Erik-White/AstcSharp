@@ -1,5 +1,6 @@
 using AstcSharp.Core;
 using AstcSharp.IO;
+using AstcSharp.Tests.Utils;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Configs;
 
@@ -32,11 +33,11 @@ public class AstcFullImageEncodeBenchmark
         AstcFile file = AstcFile.FromMemory(File.ReadAllBytes(path));
         this.footprint = file.Footprint;
 
-        byte[] full = AstcDecoder.DecompressImage(file.Blocks, file.Width, file.Height, file.Footprint).ToArray();
-        this.pixels = BenchmarkImage.CropTopLeft(full, file.Width, TileSize, TileSize);
+        byte[] full = StreamCodec.DecodeLdr(file.Blocks, file.Width, file.Height, file.Footprint);
+        this.pixels = TestImage.CropTopLeft(full, file.Width, TileSize, TileSize);
     }
 
     [Benchmark]
     public int CompressImage()
-        => AstcEncoder.CompressImage(this.pixels, TileSize, TileSize, this.footprint).Length;
+        => StreamCodec.Encode(this.pixels, TileSize, TileSize, this.footprint).Length;
 }

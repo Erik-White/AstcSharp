@@ -21,16 +21,6 @@ internal interface IBlockPipeline<T>
     public bool IsBlockLegal(in BlockInfo info);
 
     /// <summary>
-    /// Writes the spec-mandated error colour (ASTC spec §C.2.19, §C.2.24) into a
-    /// footprint-sized region of <paramref name="buffer"/> starting at offset 0. Magenta
-    /// (R=1, G=0, B=1, A=1) in both profiles.
-    /// </summary>
-    /// <param name="footprint">Block footprint.</param>
-    /// <param name="buffer">Scratch or image buffer; the first <c>footprint.PixelCount</c>
-    /// pixels are overwritten.</param>
-    public void WriteErrorColor(Footprint footprint, Span<T> buffer);
-
-    /// <summary>
     /// Writes the spec-mandated error colour into the image buffer at
     /// (<paramref name="dstBaseX"/>, <paramref name="dstBaseY"/>) for a footprint-sized
     /// region, clipped to <paramref name="copyWidth"/> × <paramref name="copyHeight"/>.

@@ -1,3 +1,4 @@
+using System.Buffers;
 using AstcSharp.BlockDecoding;
 using AstcSharp.Core;
 using AstcSharp.Uastc;
@@ -5,9 +6,11 @@ using AstcSharp.Uastc;
 namespace AstcSharp;
 
 /// <summary>
-/// Decodes UASTC (Universal ASTC) LDR texture data to uncompressed RGBA32. UASTC is a Basis
-/// Universal encoding that is a constrained subset of LDR ASTC 4x4; blocks are always 4x4 and
-/// 16 bytes. Sibling to <see cref="AstcDecoder"/> — standard ASTC decoding is unaffected.
+/// Decodes UASTC (Universal ASTC) LDR texture data to uncompressed RGBA32, streaming from a source
+/// <see cref="Stream"/> of UASTC blocks to a destination <see cref="Stream"/> of pixels one
+/// block-row band at a time. UASTC is a Basis Universal encoding that is a constrained subset of
+/// LDR ASTC 4x4; blocks are always 4x4 and 16 bytes. Sibling to <see cref="AstcDecoder"/> —
+/// standard ASTC decoding is unaffected.
 /// </summary>
 /// <remarks>
 /// The decoder returns raw decoded values and does not apply an sRGB-to-linear transform; see
@@ -22,84 +25,133 @@ public static class UastcDecoder
     private const int DecodedBlockBytes = BlockDim * BlockDim * ChannelsPerPixel;
 
     /// <summary>
-    /// Decompresses a single 16-byte UASTC block to a 4x4 RGBA32 image (64 bytes).
+    /// Decodes UASTC blocks read from <paramref name="source"/> and writes the RGBA32 result to
+    /// <paramref name="destination"/>, one block-row band at a time (UASTC blocks are always 4x4).
+    /// Only a single band of compressed blocks and decoded pixels is held in memory, so peak usage
+    /// is independent of the image height.
     /// </summary>
-    /// <param name="blockData">The 16-byte UASTC block.</param>
-    /// <param name="buffer">Output buffer, at least 64 bytes.</param>
-    /// <param name="mode">LDR decode mode — linear (default) or sRGB endpoint expansion.</param>
-    public static void DecompressBlock(ReadOnlySpan<byte> blockData, Span<byte> buffer, LdrDecodeMode mode = LdrDecodeMode.Linear)
-    {
-        if (blockData.Length < BlockSizeBytes)
-        {
-            throw new ArgumentException($"UASTC block data must be at least {BlockSizeBytes} bytes.", nameof(blockData));
-        }
-
-        if (buffer.Length < DecodedBlockBytes)
-        {
-            throw new ArgumentException($"Output buffer must be at least {DecodedBlockBytes} bytes.", nameof(buffer));
-        }
-
-        DecodeBlock(blockData, buffer, mode);
-    }
-
-    /// <summary>
-    /// Decompresses UASTC data to RGBA32 (4 bytes per pixel) into a newly allocated array.
-    /// </summary>
-    /// <param name="uastcData">The UASTC block data (16 bytes per 4x4 block, row-major).</param>
+    /// <param name="source">The stream containing UASTC block data (16 bytes per 4x4 block, row-major).</param>
+    /// <param name="destination">The stream to write RGBA32 pixels to, row-major.</param>
     /// <param name="width">Image width in pixels.</param>
     /// <param name="height">Image height in pixels.</param>
     /// <param name="mode">LDR decode mode — linear (default) or sRGB endpoint expansion.</param>
-    /// <returns>RGBA32 bytes (width * height * 4), or an empty span if the input is too small.</returns>
-    public static Span<byte> DecompressImage(ReadOnlySpan<byte> uastcData, int width, int height, LdrDecodeMode mode = LdrDecodeMode.Linear)
+    /// <exception cref="ArgumentNullException"><paramref name="source"/> or <paramref name="destination"/> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="width"/> or <paramref name="height"/> is not positive.</exception>
+    /// <exception cref="EndOfStreamException">
+    /// Thrown if <paramref name="source"/> contains fewer blocks than the image requires.
+    /// </exception>
+    public static void DecompressImage(Stream source, Stream destination, int width, int height, LdrDecodeMode mode = LdrDecodeMode.Linear)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(destination);
+        ValidateArgs(width, height);
+
+        Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint4x4);
+        int blocksWide = footprint.BlocksWide(width);
+        int blocksHigh = footprint.BlocksHigh(height);
+        int bandBlockBytes = blocksWide * BlockSizeBytes;
+        int bandPixelBytes = BlockDim * width * ChannelsPerPixel;
+
+        byte[] bandBlocks = ArrayPool<byte>.Shared.Rent(bandBlockBytes);
+        byte[] bandPixels = ArrayPool<byte>.Shared.Rent(bandPixelBytes);
+        byte[] blockPixels = ArrayPool<byte>.Shared.Rent(DecodedBlockBytes);
+        try
+        {
+            for (int by = 0; by < blocksHigh; by++)
+            {
+                source.ReadExactly(bandBlocks.AsSpan(0, bandBlockBytes));
+
+                int bandHeight = Math.Min(BlockDim, height - (by * BlockDim));
+                DecodeBandRow(bandBlocks, blocksWide, width, bandHeight, mode, footprint, bandPixels, blockPixels);
+
+                int validBytes = bandHeight * width * ChannelsPerPixel;
+                destination.Write(bandPixels, 0, validBytes);
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(bandBlocks);
+            ArrayPool<byte>.Shared.Return(bandPixels);
+            ArrayPool<byte>.Shared.Return(blockPixels);
+        }
+    }
+
+    /// <summary>
+    /// Asynchronously decodes UASTC blocks read from <paramref name="source"/> and writes the
+    /// RGBA32 result to <paramref name="destination"/>, one block-row band at a time. Only a
+    /// single band is held in memory.
+    /// </summary>
+    /// <param name="source">The stream containing UASTC block data (16 bytes per 4x4 block, row-major).</param>
+    /// <param name="destination">The stream to write RGBA32 pixels to, row-major.</param>
+    /// <param name="width">Image width in pixels.</param>
+    /// <param name="height">Image height in pixels.</param>
+    /// <param name="mode">LDR decode mode — linear (default) or sRGB endpoint expansion.</param>
+    /// <param name="cancellationToken">Token to cancel the operation.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="source"/> or <paramref name="destination"/> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="width"/> or <paramref name="height"/> is not positive.</exception>
+    /// <exception cref="EndOfStreamException">
+    /// Thrown if <paramref name="source"/> contains fewer blocks than the image requires.
+    /// </exception>
+    public static async Task DecompressImageAsync(
+        Stream source, Stream destination, int width, int height, LdrDecodeMode mode = LdrDecodeMode.Linear, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(destination);
+        ValidateArgs(width, height);
+
+        Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint4x4);
+        int blocksWide = footprint.BlocksWide(width);
+        int blocksHigh = footprint.BlocksHigh(height);
+        int bandBlockBytes = blocksWide * BlockSizeBytes;
+        int bandPixelBytes = BlockDim * width * ChannelsPerPixel;
+
+        byte[] bandBlocks = ArrayPool<byte>.Shared.Rent(bandBlockBytes);
+        byte[] bandPixels = ArrayPool<byte>.Shared.Rent(bandPixelBytes);
+        byte[] blockPixels = ArrayPool<byte>.Shared.Rent(DecodedBlockBytes);
+        try
+        {
+            for (int by = 0; by < blocksHigh; by++)
+            {
+                await source.ReadExactlyAsync(bandBlocks.AsMemory(0, bandBlockBytes), cancellationToken).ConfigureAwait(false);
+
+                int bandHeight = Math.Min(BlockDim, height - (by * BlockDim));
+                DecodeBandRow(bandBlocks, blocksWide, width, bandHeight, mode, footprint, bandPixels, blockPixels);
+
+                int validBytes = bandHeight * width * ChannelsPerPixel;
+                await destination.WriteAsync(bandPixels.AsMemory(0, validBytes), cancellationToken).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(bandBlocks);
+            ArrayPool<byte>.Shared.Return(bandPixels);
+            ArrayPool<byte>.Shared.Return(blockPixels);
+        }
+    }
+
+    private static void ValidateArgs(int width, int height)
     {
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(width, 0);
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(height, 0);
 
         long totalPixels = (long)width * height;
         ArgumentOutOfRangeException.ThrowIfGreaterThan(totalPixels, (long)int.MaxValue / ChannelsPerPixel);
-
-        byte[] imageBuffer = new byte[(int)(totalPixels * ChannelsPerPixel)];
-        return DecompressImage(uastcData, width, height, imageBuffer, mode)
-            ? imageBuffer
-            : [];
     }
 
-    /// <summary>
-    /// Decompresses UASTC data to RGBA32 into a caller-provided buffer.
-    /// </summary>
-    /// <returns>True if the input was large enough and decoding ran; false otherwise.</returns>
-    public static bool DecompressImage(ReadOnlySpan<byte> uastcData, int width, int height, Span<byte> imageBuffer, LdrDecodeMode mode = LdrDecodeMode.Linear)
+    private static void DecodeBandRow(
+        byte[] bandBlocks, int blocksWide, int width, int bandHeight, LdrDecodeMode mode, Footprint footprint, byte[] bandPixels, byte[] blockPixels)
     {
-        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(width, 0);
-        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(height, 0);
+        Span<byte> blockPixelSpan = blockPixels.AsSpan(0, DecodedBlockBytes);
 
-        int blocksWide = (width + BlockDim - 1) / BlockDim;
-        int blocksHigh = (height + BlockDim - 1) / BlockDim;
-
-        long required = (long)blocksWide * blocksHigh * BlockSizeBytes;
-        if (uastcData.Length < required)
+        for (int bx = 0; bx < blocksWide; bx++)
         {
-            return false;
+            ReadOnlySpan<byte> block = bandBlocks.AsSpan(bx * BlockSizeBytes, BlockSizeBytes);
+            DecodeBlock(block, blockPixelSpan, mode);
+
+            BlockDestination dest = BlockImageWriter.ComputeBlockDestination(bx, 0, footprint, width, bandHeight);
+            BlockImageWriter.CopyBlockRect<byte>(
+                blockPixelSpan, bandPixels, BlockDim, dest.CopyWidth, dest.CopyHeight, dest.DstBaseX, dest.DstBaseY, width);
         }
-
-        Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint4x4);
-        Span<byte> blockPixels = stackalloc byte[DecodedBlockBytes];
-
-        for (int by = 0; by < blocksHigh; by++)
-        {
-            for (int bx = 0; bx < blocksWide; bx++)
-            {
-                int blockIndex = (by * blocksWide) + bx;
-                ReadOnlySpan<byte> block = uastcData.Slice(blockIndex * BlockSizeBytes, BlockSizeBytes);
-                DecodeBlock(block, blockPixels, mode);
-
-                BlockDestination dest = BlockImageWriter.ComputeBlockDestination(bx, by, footprint, width, height);
-                BlockImageWriter.CopyBlockRect<byte>(
-                    blockPixels, imageBuffer, BlockDim, dest.CopyWidth, dest.CopyHeight, dest.DstBaseX, dest.DstBaseY, width);
-            }
-        }
-
-        return true;
     }
 
     private static void DecodeBlock(ReadOnlySpan<byte> block, Span<byte> blockPixels, LdrDecodeMode mode)
