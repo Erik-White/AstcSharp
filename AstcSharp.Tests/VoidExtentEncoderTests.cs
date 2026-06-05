@@ -1,4 +1,5 @@
 using AstcSharp.Core;
+using AstcSharp.Tests.Utils;
 
 namespace AstcSharp.Tests;
 
@@ -28,10 +29,10 @@ public class VoidExtentEncoderTests
 
         byte[] pixels = SolidImage(width, height, 0x80, 0x40, 0xC0, 0xFF);
 
-        byte[] encoded = AstcEncoder.CompressImage(pixels, width, height, footprint);
-        Span<byte> decoded = AstcDecoder.DecompressImage(encoded, width, height, footprint);
+        byte[] encoded = StreamCodec.Encode(pixels, width, height, footprint);
+        byte[] decoded = StreamCodec.DecodeLdr(encoded, width, height, footprint);
 
-        Assert.Equal(pixels, decoded.ToArray());
+        Assert.Equal(pixels, decoded);
     }
 
     [Theory]
@@ -47,10 +48,10 @@ public class VoidExtentEncoderTests
 
         byte[] pixels = SolidImage(width, height, r, g, b, a);
 
-        byte[] encoded = AstcEncoder.CompressImage(pixels, width, height, footprint);
-        Span<byte> decoded = AstcDecoder.DecompressImage(encoded, width, height, footprint);
+        byte[] encoded = StreamCodec.Encode(pixels, width, height, footprint);
+        byte[] decoded = StreamCodec.DecodeLdr(encoded, width, height, footprint);
 
-        Assert.Equal(pixels, decoded.ToArray());
+        Assert.Equal(pixels, decoded);
     }
 
     [Fact]
@@ -62,8 +63,8 @@ public class VoidExtentEncoderTests
         byte[] pixels = SolidImage(4, 4, 10, 20, 30, 40);
         pixels[^4] = 99;
 
-        byte[] encoded = AstcEncoder.CompressImage(pixels, 4, 4, footprint);
-        Span<byte> decoded = AstcDecoder.DecompressImage(encoded, 4, 4, footprint);
+        byte[] encoded = StreamCodec.Encode(pixels, 4, 4, footprint);
+        byte[] decoded = StreamCodec.DecodeLdr(encoded, 4, 4, footprint);
 
         Assert.Equal(pixels.Length, decoded.Length);
         for (int i = 0; i < decoded.Length; i += 4)
@@ -71,25 +72,6 @@ public class VoidExtentEncoderTests
             bool isMagenta = decoded[i] == 255 && decoded[i + 1] == 0 && decoded[i + 2] == 255 && decoded[i + 3] == 255;
             Assert.False(isMagenta, "near-constant block should encode to a legal (non-magenta) block");
         }
-    }
-
-    [Fact]
-    public void CompressToAstcFile_RoundTripsThroughFileDecode()
-    {
-        Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint8x8);
-        int width = footprint.Width;
-        int height = footprint.Height;
-        byte[] pixels = SolidImage(width, height, 12, 34, 56, 78);
-
-        byte[] astcFile = AstcEncoder.CompressToAstcFile(pixels, width, height, footprint);
-        var file = IO.AstcFile.FromMemory(astcFile);
-
-        Assert.Equal(width, file.Width);
-        Assert.Equal(height, file.Height);
-        Assert.Equal(footprint.Type, file.Footprint.Type);
-
-        Span<byte> decoded = AstcDecoder.DecompressImage(file.Blocks, file.Width, file.Height, file.Footprint);
-        Assert.Equal(pixels, decoded.ToArray());
     }
 
     private static byte[] SolidImage(int width, int height, byte r, byte g, byte b, byte a)

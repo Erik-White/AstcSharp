@@ -2,6 +2,7 @@ using AstcSharp.BlockDecoding;
 using AstcSharp.Core;
 using AstcSharp.Encoding;
 using AstcSharp.IO;
+using AstcSharp.Tests.Utils;
 
 namespace AstcSharp.Tests;
 
@@ -58,7 +59,7 @@ public class AstcBlockBuilderTests
         // The full decode path must fill every texel with the constant colour (high byte of each
         // UNORM16 channel): R=0x80, G=0x40, B=0xC0, A=0xFF.
         var footprint = Footprint.FromFootprintType(FootprintType.Footprint4x4);
-        Span<byte> pixels = AstcDecoder.DecompressImage(blockBytes, 4, 4, footprint);
+        byte[] pixels = StreamCodec.DecodeLdr(blockBytes.ToArray(), 4, 4, footprint);
 
         Assert.Equal(4 * 4 * 4, pixels.Length);
         for (int i = 0; i < pixels.Length; i += 4)

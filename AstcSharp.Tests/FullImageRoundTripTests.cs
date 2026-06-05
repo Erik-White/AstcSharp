@@ -35,10 +35,10 @@ public class FullImageRoundTripTests
         Footprint footprint = file.Footprint;
 
         // Decode the fixture to RGBA8 — this is the real-world source image the encoder must handle.
-        byte[] source = AstcDecoder.DecompressImage(file.Blocks, file.Width, file.Height, footprint).ToArray();
+        byte[] source = StreamCodec.DecodeLdr(file.Blocks, file.Width, file.Height, footprint);
 
-        byte[] reencoded = AstcEncoder.CompressImage(source, file.Width, file.Height, footprint);
-        byte[] roundTripped = AstcDecoder.DecompressImage(reencoded, file.Width, file.Height, footprint).ToArray();
+        byte[] reencoded = StreamCodec.Encode(source, file.Width, file.Height, footprint);
+        byte[] roundTripped = StreamCodec.DecodeLdr(reencoded, file.Width, file.Height, footprint);
 
         AssertNoIntroducedMagenta(source, roundTripped);
         double psnr = Psnr(source, roundTripped);

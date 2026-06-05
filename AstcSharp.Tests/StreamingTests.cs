@@ -1,4 +1,3 @@
-using System.Buffers.Binary;
 using AstcSharp.Core;
 using AstcSharp.IO;
 using AstcSharp.Tests.Utils;
@@ -24,7 +23,7 @@ public class StreamingTests
     public void DecompressImage_StreamToStream_MatchesInMemory(string inputFile)
     {
         AstcFile file = LoadFixture(inputFile);
-        byte[] expected = AstcDecoder.DecompressImage(file.Blocks, file.Width, file.Height, file.Footprint).ToArray();
+        byte[] expected = StreamCodec.DecodeLdr(file.Blocks, file.Width, file.Height, file.Footprint);
 
         using var source = new MemoryStream(file.Blocks.ToArray());
         using var destination = new MemoryStream();
@@ -39,7 +38,7 @@ public class StreamingTests
     public void DecompressImage_StreamToStream_HonoursDecodeMode(LdrDecodeMode mode)
     {
         AstcFile file = LoadFixture(TestData.Astc.Rgba_4x4);
-        byte[] expected = AstcDecoder.DecompressImage(file.Blocks, file.Width, file.Height, file.Footprint, mode).ToArray();
+        byte[] expected = StreamCodec.DecodeLdr(file.Blocks, file.Width, file.Height, file.Footprint, mode);
 
         using var source = new MemoryStream(file.Blocks.ToArray());
         using var destination = new MemoryStream();
@@ -68,13 +67,14 @@ public class StreamingTests
     public void DecompressHdrImage_StreamToStream_MatchesInMemory()
     {
         AstcFile file = LoadFixture(TestData.Astc.Hdr.Hdr_Tile);
-        Span<float> expected = AstcDecoder.DecompressHdrImage(file.Blocks, file.Width, file.Height, file.Footprint);
+        float[] expected = StreamCodec.DecodeHdr(file.Blocks, file.Width, file.Height, file.Footprint);
 
         using var source = new MemoryStream(file.Blocks.ToArray());
         using var destination = new MemoryStream();
         AstcDecoder.DecompressHdrImage(source, destination, file.Width, file.Height, file.Footprint);
 
-        Assert.Equal(expected.ToArray(), ReadFloats(destination.ToArray()));
+        byte[] actual = destination.ToArray();
+        Assert.Equal(expected, StreamCodec.ToFloats(actual, actual.Length));
     }
 
     [Fact]
@@ -97,13 +97,14 @@ public class StreamingTests
     public void DecompressHdrImageHalf_StreamToStream_MatchesInMemory()
     {
         AstcFile file = LoadFixture(TestData.Astc.Hdr.Hdr_Tile);
-        Span<Half> expected = AstcDecoder.DecompressHdrImageHalf(file.Blocks, file.Width, file.Height, file.Footprint);
+        Half[] expected = StreamCodec.DecodeHdrHalf(file.Blocks, file.Width, file.Height, file.Footprint);
 
         using var source = new MemoryStream(file.Blocks.ToArray());
         using var destination = new MemoryStream();
         AstcDecoder.DecompressHdrImageHalf(source, destination, file.Width, file.Height, file.Footprint);
 
-        Assert.Equal(expected.ToArray(), ReadHalves(destination.ToArray()));
+        byte[] actual = destination.ToArray();
+        Assert.Equal(expected, StreamCodec.ToHalves(actual, actual.Length));
     }
 
     [Fact]
@@ -129,8 +130,8 @@ public class StreamingTests
     public void CompressImage_StreamToStream_MatchesInMemory(string inputFile)
     {
         AstcFile file = LoadFixture(inputFile);
-        byte[] pixels = AstcDecoder.DecompressImage(file.Blocks, file.Width, file.Height, file.Footprint).ToArray();
-        byte[] expected = AstcEncoder.CompressImage(pixels, file.Width, file.Height, file.Footprint);
+        byte[] pixels = StreamCodec.DecodeLdr(file.Blocks, file.Width, file.Height, file.Footprint);
+        byte[] expected = StreamCodec.Encode(pixels, file.Width, file.Height, file.Footprint);
 
         using var source = new MemoryStream(pixels);
         using var destination = new MemoryStream();
@@ -143,7 +144,7 @@ public class StreamingTests
     public async Task CompressImageAsync_StreamToStream_MatchesSync()
     {
         AstcFile file = LoadFixture(TestData.Astc.Rgb_5x4);
-        byte[] pixels = AstcDecoder.DecompressImage(file.Blocks, file.Width, file.Height, file.Footprint).ToArray();
+        byte[] pixels = StreamCodec.DecodeLdr(file.Blocks, file.Width, file.Height, file.Footprint);
 
         using var syncSource = new MemoryStream(pixels);
         using var syncDestination = new MemoryStream();
@@ -162,7 +163,7 @@ public class StreamingTests
         // Encoding to a stream then decoding that stream must reproduce what the in-memory
         // round-trip produces, confirming the two band loops agree on block layout end-to-end.
         AstcFile file = LoadFixture(TestData.Astc.Rgba_4x4);
-        byte[] pixels = AstcDecoder.DecompressImage(file.Blocks, file.Width, file.Height, file.Footprint).ToArray();
+        byte[] pixels = StreamCodec.DecodeLdr(file.Blocks, file.Width, file.Height, file.Footprint);
 
         using var blocks = new MemoryStream();
         using (var pixelSource = new MemoryStream(pixels))
@@ -174,9 +175,8 @@ public class StreamingTests
         using var decoded = new MemoryStream();
         AstcDecoder.DecompressImage(blocks, decoded, file.Width, file.Height, file.Footprint);
 
-        byte[] expected = AstcDecoder.DecompressImage(
-            AstcEncoder.CompressImage(pixels, file.Width, file.Height, file.Footprint),
-            file.Width, file.Height, file.Footprint).ToArray();
+        byte[] reencoded = StreamCodec.Encode(pixels, file.Width, file.Height, file.Footprint);
+        byte[] expected = StreamCodec.DecodeLdr(reencoded, file.Width, file.Height, file.Footprint);
         Assert.Equal(expected, decoded.ToArray());
     }
 
@@ -224,26 +224,4 @@ public class StreamingTests
 
     private static AstcFile LoadFixture(string inputFile)
         => AstcFile.FromMemory(File.ReadAllBytes(TestFile.GetInputFileFullPath(Path.Combine("Astc", inputFile))));
-
-    private static float[] ReadFloats(byte[] bytes)
-    {
-        float[] values = new float[bytes.Length / sizeof(float)];
-        for (int i = 0; i < values.Length; i++)
-        {
-            values[i] = BinaryPrimitives.ReadSingleLittleEndian(bytes.AsSpan(i * sizeof(float), sizeof(float)));
-        }
-
-        return values;
-    }
-
-    private static Half[] ReadHalves(byte[] bytes)
-    {
-        Half[] values = new Half[bytes.Length / sizeof(ushort)];
-        for (int i = 0; i < values.Length; i++)
-        {
-            values[i] = BinaryPrimitives.ReadHalfLittleEndian(bytes.AsSpan(i * sizeof(ushort), sizeof(ushort)));
-        }
-
-        return values;
-    }
 }

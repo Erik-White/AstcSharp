@@ -13,14 +13,17 @@ public class AstcFullImageDecodeBenchmark
     private int ldrWidth;
     private int ldrHeight;
     private Footprint ldrFootprint;
-    private byte[] ldrOutput = [];
 
     private byte[] hdrBlocks = [];
     private int hdrWidth;
     private int hdrHeight;
     private Footprint hdrFootprint;
-    private float[] hdrOutput = [];
-    private Half[] hdrHalfOutput = [];
+
+    // Reused across iterations so the benchmark measures decode work, not allocation. The source
+    // stream is rewound and the destination truncated before each decode.
+    private MemoryStream ldrSource = null!;
+    private MemoryStream hdrSource = null!;
+    private MemoryStream output = null!;
 
     [GlobalSetup]
     public void Setup()
@@ -31,7 +34,6 @@ public class AstcFullImageDecodeBenchmark
         this.ldrWidth = ldr.Width;
         this.ldrHeight = ldr.Height;
         this.ldrFootprint = ldr.Footprint;
-        this.ldrOutput = new byte[ldr.Width * ldr.Height * 4];
 
         string hdrPath = BenchmarkTestDataLocator.FindTestData(Path.Combine("Astc", "HdrPipeline", "hdr-tile.astc"));
         AstcFile hdr = AstcFile.FromMemory(File.ReadAllBytes(hdrPath));
@@ -39,23 +41,47 @@ public class AstcFullImageDecodeBenchmark
         this.hdrWidth = hdr.Width;
         this.hdrHeight = hdr.Height;
         this.hdrFootprint = hdr.Footprint;
-        this.hdrOutput = new float[hdr.Width * hdr.Height * 4];
-        this.hdrHalfOutput = new Half[hdr.Width * hdr.Height * 4];
+
+        this.ldrSource = new MemoryStream(this.ldrBlocks);
+        this.hdrSource = new MemoryStream(this.hdrBlocks);
+        this.output = new MemoryStream(Math.Max(this.ldrWidth * this.ldrHeight, this.hdrWidth * this.hdrHeight) * 4 * sizeof(float));
     }
 
     [Benchmark]
-    public bool DecompressLdrImage()
-        => AstcDecoder.DecompressImage(this.ldrBlocks, this.ldrWidth, this.ldrHeight, this.ldrFootprint, this.ldrOutput);
+    public long DecompressLdrImage()
+    {
+        Reset(this.ldrSource);
+        AstcDecoder.DecompressImage(this.ldrSource, this.output, this.ldrWidth, this.ldrHeight, this.ldrFootprint);
+        return this.output.Length;
+    }
 
     [Benchmark]
-    public bool DecompressLdrImageSrgb()
-        => AstcDecoder.DecompressImage(this.ldrBlocks, this.ldrWidth, this.ldrHeight, this.ldrFootprint, this.ldrOutput, LdrDecodeMode.Srgb);
+    public long DecompressLdrImageSrgb()
+    {
+        Reset(this.ldrSource);
+        AstcDecoder.DecompressImage(this.ldrSource, this.output, this.ldrWidth, this.ldrHeight, this.ldrFootprint, LdrDecodeMode.Srgb);
+        return this.output.Length;
+    }
 
     [Benchmark]
-    public bool DecompressHdrImage()
-        => AstcDecoder.DecompressHdrImage(this.hdrBlocks, this.hdrWidth, this.hdrHeight, this.hdrFootprint, this.hdrOutput);
+    public long DecompressHdrImage()
+    {
+        Reset(this.hdrSource);
+        AstcDecoder.DecompressHdrImage(this.hdrSource, this.output, this.hdrWidth, this.hdrHeight, this.hdrFootprint);
+        return this.output.Length;
+    }
 
     [Benchmark]
-    public bool DecompressHdrImageHalf()
-        => AstcDecoder.DecompressHdrImageHalf(this.hdrBlocks, this.hdrWidth, this.hdrHeight, this.hdrFootprint, this.hdrHalfOutput);
+    public long DecompressHdrImageHalf()
+    {
+        Reset(this.hdrSource);
+        AstcDecoder.DecompressHdrImageHalf(this.hdrSource, this.output, this.hdrWidth, this.hdrHeight, this.hdrFootprint);
+        return this.output.Length;
+    }
+
+    private void Reset(MemoryStream source)
+    {
+        source.Position = 0;
+        this.output.SetLength(0);
+    }
 }

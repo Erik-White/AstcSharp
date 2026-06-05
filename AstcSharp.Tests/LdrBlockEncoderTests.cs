@@ -1,6 +1,7 @@
 using AstcSharp.BlockDecoding;
 using AstcSharp.ColorEncoding;
 using AstcSharp.Core;
+using AstcSharp.Tests.Utils;
 
 namespace AstcSharp.Tests;
 
@@ -62,7 +63,7 @@ public class LdrBlockEncoderTests
         Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint8x8);
         byte[] pixels = TwoRegionImage(footprint.Width, footprint.Height);
 
-        byte[] encoded = AstcEncoder.CompressImage(pixels, footprint.Width, footprint.Height, footprint);
+        byte[] encoded = StreamCodec.Encode(pixels, footprint.Width, footprint.Height, footprint);
 
         UInt128 bits = System.Buffers.Binary.BinaryPrimitives.ReadUInt128LittleEndian(encoded.AsSpan(0, 16));
         BlockInfo info = BlockModeDecoder.Decode(bits);
@@ -80,13 +81,13 @@ public class LdrBlockEncoderTests
         Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint12x12);
         byte[] pixels = FourQuadrantImage(footprint.Width, footprint.Height);
 
-        byte[] encoded = AstcEncoder.CompressImage(pixels, footprint.Width, footprint.Height, footprint);
+        byte[] encoded = StreamCodec.Encode(pixels, footprint.Width, footprint.Height, footprint);
 
         UInt128 bits = System.Buffers.Binary.BinaryPrimitives.ReadUInt128LittleEndian(encoded.AsSpan(0, 16));
         BlockInfo info = BlockModeDecoder.Decode(bits);
         Assert.True(info.PartitionCount > 1, $"expected a multi-partition block, got {info.PartitionCount} partition(s)");
 
-        Span<byte> decoded = AstcDecoder.DecompressImage(encoded, footprint.Width, footprint.Height, footprint);
+        Span<byte> decoded = StreamCodec.DecodeLdr(encoded, footprint.Width, footprint.Height, footprint);
         AssertMeanSquaredErrorAtMost(pixels, decoded, maxMeanSquaredError: 700.0, footprint);
     }
 
@@ -107,14 +108,14 @@ public class LdrBlockEncoderTests
         for (int trial = 0; trial < 64; trial++)
         {
             byte[] pixels = RandomRegionImage(footprint.Width, footprint.Height, rng);
-            byte[] encoded = AstcEncoder.CompressImage(pixels, footprint.Width, footprint.Height, footprint);
+            byte[] encoded = StreamCodec.Encode(pixels, footprint.Width, footprint.Height, footprint);
 
             UInt128 bits = System.Buffers.Binary.BinaryPrimitives.ReadUInt128LittleEndian(encoded.AsSpan(0, 16));
             BlockInfo info = BlockModeDecoder.Decode(bits);
             Assert.True(info.IsValid, $"trial {trial}: encoded block must be legal");
             Assert.True(info.IsVoidExtent || info.Colors.Count <= 18, $"trial {trial}: colour value count {info.Colors.Count} exceeds the 18-value budget");
 
-            Span<byte> decoded = AstcDecoder.DecompressImage(encoded, footprint.Width, footprint.Height, footprint);
+            Span<byte> decoded = StreamCodec.DecodeLdr(encoded, footprint.Width, footprint.Height, footprint);
             AssertNoMagentaBlocks(decoded);
         }
     }
@@ -125,8 +126,8 @@ public class LdrBlockEncoderTests
         Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint8x8);
         byte[] pixels = TwoRegionImage(footprint.Width, footprint.Height);
 
-        byte[] encoded = AstcEncoder.CompressImage(pixels, footprint.Width, footprint.Height, footprint);
-        Span<byte> decoded = AstcDecoder.DecompressImage(encoded, footprint.Width, footprint.Height, footprint);
+        byte[] encoded = StreamCodec.Encode(pixels, footprint.Width, footprint.Height, footprint);
+        Span<byte> decoded = StreamCodec.DecodeLdr(encoded, footprint.Width, footprint.Height, footprint);
 
         // Two separate ramps reconstruct well once each region gets its own endpoint line.
         AssertMeanSquaredErrorAtMost(pixels, decoded, maxMeanSquaredError: 100.0, footprint);
@@ -140,7 +141,7 @@ public class LdrBlockEncoderTests
         Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint6x6);
         byte[] pixels = SingleChannelRamp(footprint.Width, footprint.Height);
 
-        byte[] encoded = AstcEncoder.CompressImage(pixels, footprint.Width, footprint.Height, footprint);
+        byte[] encoded = StreamCodec.Encode(pixels, footprint.Width, footprint.Height, footprint);
         ColorEndpointMode mode = DecodeEndpointMode(encoded);
 
         Assert.True(
@@ -155,7 +156,7 @@ public class LdrBlockEncoderTests
         Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint6x6);
         byte[] pixels = SingleColorLineRamp(footprint.Width, footprint.Height);
 
-        byte[] encoded = AstcEncoder.CompressImage(pixels, footprint.Width, footprint.Height, footprint);
+        byte[] encoded = StreamCodec.Encode(pixels, footprint.Width, footprint.Height, footprint);
         ColorEndpointMode mode = DecodeEndpointMode(encoded);
 
         Assert.True(
@@ -172,9 +173,9 @@ public class LdrBlockEncoderTests
         Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint6x6);
         byte[] pixels = VaryingAlphaRamp(footprint.Width, footprint.Height);
 
-        byte[] encoded = AstcEncoder.CompressImage(pixels, footprint.Width, footprint.Height, footprint);
+        byte[] encoded = StreamCodec.Encode(pixels, footprint.Width, footprint.Height, footprint);
         ColorEndpointMode mode = DecodeEndpointMode(encoded);
-        Span<byte> decoded = AstcDecoder.DecompressImage(encoded, footprint.Width, footprint.Height, footprint);
+        Span<byte> decoded = StreamCodec.DecodeLdr(encoded, footprint.Width, footprint.Height, footprint);
 
         Assert.True(
             mode is ColorEndpointMode.LdrRgbaDirect or ColorEndpointMode.LdrRgbaBaseOffset,
@@ -192,8 +193,8 @@ public class LdrBlockEncoderTests
         Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint6x6);
         byte[] pixels = DecorrelatedAlphaRamp(footprint.Width, footprint.Height);
 
-        byte[] encoded = AstcEncoder.CompressImage(pixels, footprint.Width, footprint.Height, footprint);
-        Span<byte> decoded = AstcDecoder.DecompressImage(encoded, footprint.Width, footprint.Height, footprint);
+        byte[] encoded = StreamCodec.Encode(pixels, footprint.Width, footprint.Height, footprint);
+        Span<byte> decoded = StreamCodec.DecodeLdr(encoded, footprint.Width, footprint.Height, footprint);
 
         UInt128 bits = System.Buffers.Binary.BinaryPrimitives.ReadUInt128LittleEndian(encoded.AsSpan(0, 16));
         BlockInfo info = BlockModeDecoder.Decode(bits);
@@ -209,8 +210,8 @@ public class LdrBlockEncoderTests
         Footprint footprint = Footprint.FromFootprintType(footprintType);
         byte[] pixels = SolidImage(footprint.Width, footprint.Height, 73, 140, 200, 255);
 
-        byte[] encoded = AstcEncoder.CompressImage(pixels, footprint.Width, footprint.Height, footprint);
-        Span<byte> decoded = AstcDecoder.DecompressImage(encoded, footprint.Width, footprint.Height, footprint);
+        byte[] encoded = StreamCodec.Encode(pixels, footprint.Width, footprint.Height, footprint);
+        Span<byte> decoded = StreamCodec.DecodeLdr(encoded, footprint.Width, footprint.Height, footprint);
 
         Assert.Equal(pixels, decoded.ToArray());
     }
@@ -225,8 +226,8 @@ public class LdrBlockEncoderTests
         int height = footprint.Height * 2;
         byte[] pixels = fill(width, height);
 
-        byte[] encoded = AstcEncoder.CompressImage(pixels, width, height, footprint);
-        byte[] decoded = AstcDecoder.DecompressImage(encoded, width, height, footprint).ToArray();
+        byte[] encoded = StreamCodec.Encode(pixels, width, height, footprint);
+        byte[] decoded = StreamCodec.DecodeLdr(encoded, width, height, footprint);
         return (pixels, decoded);
     }
 

@@ -1,4 +1,3 @@
-
 using System.Buffers.Binary;
 
 using AstcSharp;
@@ -13,32 +12,6 @@ namespace AstcSharp.Tests;
 
 public class AstcDecoderTests
 {
-    [Fact]
-    public void DecompressImage_WithDataSizeNotMultipleOfBlockSize_ShouldReturnEmpty()
-    {
-        byte[] data = new byte[256];
-        const int width = 16;
-        const int height = 16;
-        byte[] invalidData = data.AsSpan(0, data.Length - 1).ToArray();
-
-        Span<byte> result = AstcDecoder.DecompressImage(invalidData, width, height, FootprintType.Footprint4x4);
-
-        Assert.Empty(result.ToArray());
-    }
-
-    [Fact]
-    public void DecompressImage_WithMismatchedBlockCount_ShouldReturnEmpty()
-    {
-        byte[] data = new byte[256];
-        const int width = 16;
-        const int height = 16;
-        byte[] mismatchedData = data.AsSpan(0, data.Length - BlockInfo.SizeInBytes).ToArray();
-
-        Span<byte> result = AstcDecoder.DecompressImage(mismatchedData, width, height, FootprintType.Footprint4x4);
-
-        Assert.Empty(result.ToArray());
-    }
-
     [Theory]
     [InlineData(TestData.Astc.Rgba_4x4)]
     [InlineData(TestData.Astc.Rgba_5x5)]
@@ -76,10 +49,9 @@ public class AstcDecoderTests
     public void DecompressImage_WithTestdataFile_ShouldReturnExpectedByteCount(string inputFile)
     {
         string filePath = TestFile.GetInputFileFullPath(Path.Combine("Astc", inputFile));
-        byte[] bytes = File.ReadAllBytes(filePath);
-        AstcFile astc = AstcFile.FromMemory(bytes);
+        AstcFile astc = AstcFile.FromMemory(File.ReadAllBytes(filePath));
 
-        Span<byte> result = AstcDecoder.DecompressImage(astc);
+        byte[] result = StreamCodec.DecodeLdr(astc.Blocks, astc.Width, astc.Height, astc.Footprint);
 
         Assert.Equal(astc.Width * astc.Height * 4, result.Length);
     }
@@ -126,33 +98,12 @@ public class AstcDecoderTests
     [InlineData(int.MaxValue, int.MaxValue)]
     public void DecompressImage_WithInvalidDimensions_ShouldThrowArgumentOutOfRangeException(int width, int height)
     {
-        byte[] data = new byte[16];
-
-        Assert.Throws<ArgumentOutOfRangeException>(() =>
-            AstcDecoder.DecompressImage(data, width, height, FootprintType.Footprint4x4).ToArray());
-    }
-
-    [Fact]
-    public void DecompressImageToBuffer_WithNegativeWidth_ShouldThrowArgumentOutOfRangeException()
-    {
-        byte[] data = new byte[16];
-        byte[] buffer = new byte[64];
+        using MemoryStream source = new(new byte[16]);
+        using MemoryStream destination = new();
         Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint4x4);
 
         Assert.Throws<ArgumentOutOfRangeException>(() =>
-            AstcDecoder.DecompressImage(data, -1, 4, footprint, buffer));
-    }
-
-    [Fact]
-    public void DecompressImageToBuffer_WithTooSmallBuffer_ShouldThrowArgumentOutOfRangeException()
-    {
-        // 4x4 image with 4x4 blocks = 1 block = 16 bytes input, needs 4*4*4=64 bytes output
-        byte[] data = new byte[16];
-        byte[] buffer = new byte[32]; // too small
-        Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint4x4);
-
-        Assert.Throws<ArgumentOutOfRangeException>(() =>
-            AstcDecoder.DecompressImage(data, 4, 4, footprint, buffer));
+            AstcDecoder.DecompressImage(source, destination, width, height, footprint));
     }
 
     [Theory]
@@ -163,46 +114,37 @@ public class AstcDecoderTests
     [InlineData(int.MaxValue, int.MaxValue)]
     public void DecompressHdrImage_WithInvalidDimensions_ShouldThrowArgumentOutOfRangeException(int width, int height)
     {
-        byte[] data = new byte[16];
-
-        Assert.Throws<ArgumentOutOfRangeException>(() =>
-            AstcDecoder.DecompressHdrImage(data, width, height, FootprintType.Footprint4x4).ToArray());
-    }
-
-    [Fact]
-    public void DecompressHdrImageToBuffer_WithTooSmallBuffer_ShouldThrowArgumentOutOfRangeException()
-    {
-        byte[] data = new byte[16];
-        float[] buffer = new float[32]; // too small for 4x4 image (needs 64)
+        using MemoryStream source = new(new byte[16]);
+        using MemoryStream destination = new();
         Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint4x4);
 
         Assert.Throws<ArgumentOutOfRangeException>(() =>
-            AstcDecoder.DecompressHdrImage(data, 4, 4, footprint, buffer));
+            AstcDecoder.DecompressHdrImage(source, destination, width, height, footprint));
     }
 
     [Fact]
     public void DecompressImage_WhenCalledFromManyThreads_ShouldProduceIdenticalOutput()
     {
         // Smoke test for accidental shared mutable state in the decode pipeline. Each
-        // thread decodes the same input into its own buffer; every buffer must match the
+        // thread decodes the same input into its own streams; every result must match the
         // single-threaded reference byte-for-byte.
         string filePath = TestFile.GetInputFileFullPath(Path.Combine("Astc", TestData.Astc.Rgba_6x6));
-        byte[] astcBytes = File.ReadAllBytes(filePath);
-        AstcFile file = AstcFile.FromMemory(astcBytes);
+        AstcFile file = AstcFile.FromMemory(File.ReadAllBytes(filePath));
 
-        byte[] reference = AstcDecoder.DecompressImage(file).ToArray();
+        byte[] reference = StreamCodec.DecodeLdr(file.Blocks, file.Width, file.Height, file.Footprint);
         Assert.NotEmpty(reference);
 
         const int threadCount = 8;
         const int iterationsPerThread = 4;
         byte[][] results = new byte[threadCount][];
+        byte[] blocks = file.Blocks.ToArray();
 
         Parallel.For(0, threadCount, i =>
         {
             byte[]? last = null;
             for (int j = 0; j < iterationsPerThread; j++)
             {
-                last = AstcDecoder.DecompressImage(file).ToArray();
+                last = StreamCodec.DecodeLdr(blocks, file.Width, file.Height, file.Footprint);
             }
 
             results[i] = last!;
@@ -268,119 +210,5 @@ public class AstcDecoderTests
         Assert.Equal(231, threePartition);
         Assert.Equal(11, fourPartition);
         Assert.Equal(661, dualPlane);
-    }
-
-    [Fact]
-    public void DecompressImage_StreamOverload_ShouldMatchSpanOverload()
-    {
-        string filePath = TestFile.GetInputFileFullPath(Path.Combine("Astc", TestData.Astc.Rgba_4x4));
-        AstcFile file = AstcFile.FromMemory(File.ReadAllBytes(filePath));
-
-        byte[] expected = AstcDecoder.DecompressImage(file.Blocks, file.Width, file.Height, file.Footprint).ToArray();
-        Assert.NotEmpty(expected);
-
-        using MemoryStream stream = new(file.Blocks.ToArray());
-        Span<byte> actual = AstcDecoder.DecompressImage(stream, file.Width, file.Height, file.Footprint);
-
-        Assert.Equal(expected, actual.ToArray());
-        Assert.Equal(stream.Length, stream.Position);
-    }
-
-    [Fact]
-    public void DecompressImage_StreamOverloadIntoBuffer_ShouldMatchSpanOverload()
-    {
-        string filePath = TestFile.GetInputFileFullPath(Path.Combine("Astc", TestData.Astc.Rgba_4x4));
-        AstcFile file = AstcFile.FromMemory(File.ReadAllBytes(filePath));
-
-        byte[] expected = new byte[file.Width * file.Height * BlockInfo.ChannelsPerPixel];
-        Assert.True(AstcDecoder.DecompressImage(file.Blocks, file.Width, file.Height, file.Footprint, expected));
-
-        byte[] actual = new byte[expected.Length];
-        using MemoryStream stream = new(file.Blocks.ToArray());
-        Assert.True(AstcDecoder.DecompressImage(stream, file.Width, file.Height, file.Footprint, actual));
-
-        Assert.Equal(expected, actual);
-    }
-
-    [Fact]
-    public void DecompressHdrImage_StreamOverload_ShouldMatchSpanOverload()
-    {
-        string filePath = TestFile.GetInputFileFullPath(Path.Combine("Astc", TestData.Astc.Hdr.Hdr_Tile));
-        AstcFile file = AstcFile.FromMemory(File.ReadAllBytes(filePath));
-
-        Span<float> expected = AstcDecoder.DecompressHdrImage(file.Blocks, file.Width, file.Height, file.Footprint);
-        Assert.False(expected.IsEmpty);
-
-        using MemoryStream stream = new(file.Blocks.ToArray());
-        Span<float> actual = AstcDecoder.DecompressHdrImage(stream, file.Width, file.Height, file.Footprint);
-
-        Assert.Equal(expected.ToArray(), actual.ToArray());
-        Assert.Equal(stream.Length, stream.Position);
-    }
-
-    [Fact]
-    public void DecompressHdrImage_StreamOverloadIntoBuffer_ShouldMatchSpanOverload()
-    {
-        string filePath = TestFile.GetInputFileFullPath(Path.Combine("Astc", TestData.Astc.Hdr.Hdr_Tile));
-        AstcFile file = AstcFile.FromMemory(File.ReadAllBytes(filePath));
-
-        float[] expected = new float[file.Width * file.Height * BlockInfo.ChannelsPerPixel];
-        Assert.True(AstcDecoder.DecompressHdrImage(file.Blocks, file.Width, file.Height, file.Footprint, expected));
-
-        float[] actual = new float[expected.Length];
-        using MemoryStream stream = new(file.Blocks.ToArray());
-        Assert.True(AstcDecoder.DecompressHdrImage(stream, file.Width, file.Height, file.Footprint, actual));
-
-        Assert.Equal(expected, actual);
-    }
-
-    [Fact]
-    public void DecompressImage_StreamOverload_WithNullStream_ShouldThrow()
-    {
-        Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint4x4);
-
-        Assert.Throws<ArgumentNullException>(() =>
-            AstcDecoder.DecompressImage((Stream)null!, 4, 4, footprint).ToArray());
-    }
-
-    [Fact]
-    public void DecompressHdrImage_StreamOverload_WithNullStream_ShouldThrow()
-    {
-        Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint4x4);
-
-        Assert.Throws<ArgumentNullException>(() =>
-            AstcDecoder.DecompressHdrImage((Stream)null!, 4, 4, footprint).ToArray());
-    }
-
-    [Fact]
-    public void DecompressImage_StreamOverload_WithTruncatedStream_ShouldThrow()
-    {
-        // 4×4 image with 4×4 footprint expects 16 bytes; provide 8.
-        using MemoryStream stream = new(new byte[8]);
-        Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint4x4);
-
-        Assert.Throws<EndOfStreamException>(() =>
-            AstcDecoder.DecompressImage(stream, 4, 4, footprint).ToArray());
-    }
-
-    [Fact]
-    public void DecompressHdrImage_StreamOverload_WithTruncatedStream_ShouldThrow()
-    {
-        using MemoryStream stream = new(new byte[8]);
-        Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint4x4);
-
-        Assert.Throws<EndOfStreamException>(() =>
-            AstcDecoder.DecompressHdrImage(stream, 4, 4, footprint).ToArray());
-    }
-
-    [Fact]
-    public void DecompressImage_StreamOverloadIntoBuffer_WithTooSmallBuffer_ShouldThrow()
-    {
-        using MemoryStream stream = new(new byte[16]);
-        byte[] buffer = new byte[32]; // too small for a 4×4 image (needs 64)
-        Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint4x4);
-
-        Assert.Throws<ArgumentOutOfRangeException>(() =>
-            AstcDecoder.DecompressImage(stream, 4, 4, footprint, buffer));
     }
 }

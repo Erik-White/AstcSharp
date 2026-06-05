@@ -16,6 +16,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\AstcSharp.Tests\Utils\StreamCodec.cs" Link="Utils\StreamCodec.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="AstcEncoderCSharp" Version="5.3.0" />
   </ItemGroup>
 

@@ -44,6 +44,22 @@ public readonly record struct Footprint
     public int PixelCount { get; }
 
     /// <summary>
+    /// Returns the number of blocks spanning <paramref name="imageWidth"/> texels, rounding up so
+    /// a partial block at the right edge is counted.
+    /// </summary>
+    /// <param name="imageWidth">Image width in texels.</param>
+    /// <returns>The block count along the image width.</returns>
+    public int BlocksWide(int imageWidth) => (imageWidth + this.Width - 1) / this.Width;
+
+    /// <summary>
+    /// Returns the number of blocks spanning <paramref name="imageHeight"/> texels, rounding up so
+    /// a partial block at the bottom edge is counted.
+    /// </summary>
+    /// <param name="imageHeight">Image height in texels.</param>
+    /// <returns>The block count along the image height.</returns>
+    public int BlocksHigh(int imageHeight) => (imageHeight + this.Height - 1) / this.Height;
+
+    /// <summary>
     /// Creates a <see cref="Footprint"/> from the specified <see cref="FootprintType"/>.
     /// </summary>
     /// <param name="type">The footprint type to create a footprint from.</param>

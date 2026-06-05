@@ -5,8 +5,9 @@ A pure C# library for decoding and encoding ASTC (Adaptive Scalable Texture Comp
 ## Features
 
 - Managed C#, no native dependencies
+- Stream-to-stream API (sync + async) that processes one block-row band at a time, bounding memory independently of image size
 - Decode ASTC textures to RGBA32 (LDR) or RGBA float / FP16 (HDR)
-- Encode RGBA32 LDR images to ASTC blocks or `.astc` files
+- Encode RGBA32 LDR images to ASTC blocks
 - Linear and sRGB LDR decode modes
 - All standard block footprints (4x4 to 12x12)
 - UASTC LDR decode (Basis Universal), via `UastcDecoder` — all 19 LDR modes (single/multi-subset, dual-plane, RGB/RGBA/LA, solid)
@@ -19,34 +20,46 @@ dotnet add package AstcSharp
 
 ## Usage
 
+The API is **stream-to-stream**: decode and encode read ASTC blocks / pixels from a source `Stream`
+and write the result to a destination `Stream`, processing one block-row band at a time so peak
+memory is bounded to a single band rather than the whole image. You pass the image dimensions and
+footprint explicitly — the source holds raw block/pixel data, not an `.astc` file header. Each
+method has a synchronous form and an `Async` form taking a `CancellationToken`.
+
 ### Decoding
 ```csharp
 using AstcSharp;
 using AstcSharp.Core;
 
-byte[] astcData = File.ReadAllBytes("texture.astc");
 var footprint = Footprint.FromFootprintType(FootprintType.Footprint4x4);
+using var source = File.OpenRead("texture-blocks.bin"); // raw ASTC blocks
+using var destination = new MemoryStream();
 
 // LDR: decode to RGBA32
-Span<byte> ldrPixels = AstcDecoder.DecompressImage(astcData, width, height, footprint);
+AstcDecoder.DecompressImage(source, destination, width, height, footprint);
 
 // LDR sRGB: apply the spec's sRGB endpoint expansion (output stays sRGB-encoded)
-Span<byte> srgbPixels = AstcDecoder.DecompressImage(astcData, width, height, footprint, LdrDecodeMode.Srgb);
+AstcDecoder.DecompressImage(source, destination, width, height, footprint, LdrDecodeMode.Srgb);
 
-// HDR: decode to RGBA float
-Span<float> hdrPixels = AstcDecoder.DecompressHdrImage(astcData, width, height, footprint);
+// HDR: decode to RGBA float / FP16 Half, written as little-endian channels (RGBA, row-major)
+AstcDecoder.DecompressHdrImage(source, destination, width, height, footprint);
+AstcDecoder.DecompressHdrImageHalf(source, destination, width, height, footprint);
+
+// Async (e.g. file/network streams)
+await AstcDecoder.DecompressImageAsync(source, destination, width, height, footprint, cancellationToken: token);
 
 // UASTC (Basis Universal, always 4x4): decode raw UASTC block data to RGBA8888
-Span<byte> uastcPixels = UastcDecoder.DecompressImage(uastcData, width, height);
+UastcDecoder.DecompressImage(uastcSource, destination, width, height);
 ```
 
 ### Encoding
-```
-// Encode an RGBA32 LDR image to ASTC blocks
-byte[] blocks = AstcEncoder.CompressImage(rgbaPixels, width, height, footprint);
+```csharp
+using var pixelSource = new MemoryStream(rgbaPixels); // RGBA32, row-major
+using var blockDestination = new MemoryStream();
 
-// Encode to a complete .astc file (16-byte header + blocks)
-byte[] astcFile = AstcEncoder.CompressToAstcFile(rgbaPixels, width, height, footprint);
+// Encode an RGBA32 LDR image to ASTC blocks
+AstcEncoder.CompressImage(pixelSource, blockDestination, width, height, footprint);
+await AstcEncoder.CompressImageAsync(pixelSource, blockDestination, width, height, footprint, token);
 ```
 
 ## Performance

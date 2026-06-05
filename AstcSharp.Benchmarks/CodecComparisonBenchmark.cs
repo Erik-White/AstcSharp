@@ -1,6 +1,7 @@
 using AstcEncoder;
 using AstcSharp.Core;
 using AstcSharp.IO;
+using AstcSharp.Tests.Utils;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Order;
@@ -34,8 +35,13 @@ public class CodecComparisonBenchmark
         public Footprint Footprint;
         public byte[] Pixels = [];        // RGBA8 source for the encode benchmarks
         public byte[] Blocks = [];        // ASTC blocks for the decode benchmarks (ARM-encoded ground truth)
-        public byte[] DecodeOutput = [];  // reused RGBA8 decode target
+        public byte[] DecodeOutput = [];  // reused RGBA8 decode target (ARM)
         public AstcencContext ArmContext; // footprint-specific, so one per image
+
+        // Reused streams for the AstcSharp streaming codec, so its benchmarks measure work not allocation.
+        public MemoryStream BlockSource = null!;
+        public MemoryStream PixelSource = null!;
+        public MemoryStream Sink = null!;
     }
 
     private Image[] images = [];
@@ -50,22 +56,26 @@ public class CodecComparisonBenchmark
             AstcFile file = AstcFile.FromMemory(File.ReadAllBytes(path));
             Footprint footprint = file.Footprint;
 
-            byte[] full = AstcDecoder.DecompressImage(file.Blocks, file.Width, file.Height, footprint).ToArray();
+            byte[] full = StreamCodec.DecodeLdr(file.Blocks, file.Width, file.Height, footprint);
             int blocksWide = (TileSize + footprint.Width - 1) / footprint.Width;
             int blocksHigh = (TileSize + footprint.Height - 1) / footprint.Height;
 
+            byte[] pixels = BenchmarkImage.CropTopLeft(full, file.Width, TileSize, TileSize);
             var image = new Image
             {
                 Footprint = footprint,
-                Pixels = BenchmarkImage.CropTopLeft(full, file.Width, TileSize, TileSize),
+                Pixels = pixels,
                 Blocks = new byte[blocksWide * blocksHigh * BlockInfo.SizeInBytes],
                 DecodeOutput = new byte[TileSize * TileSize * 4],
                 ArmContext = ArmCodec.CreateContext(footprint, AstcencProfile.AstcencPrfLdr, Astcenc.AstcencPreMedium, flags: 0),
+                PixelSource = new MemoryStream(pixels),
+                Sink = new MemoryStream(TileSize * TileSize * 4),
             };
 
             // Encode the tile with ARM once to get spec-legal blocks for the decode benchmarks to read.
             ArmEncode(image);
             Astcenc.AstcencCompressReset(image.ArmContext);
+            image.BlockSource = new MemoryStream(image.Blocks);
             this.images[i] = image;
         }
     }
@@ -95,7 +105,9 @@ public class CodecComparisonBenchmark
     {
         foreach (Image image in this.images)
         {
-            AstcDecoder.DecompressImage(image.Blocks, TileSize, TileSize, image.Footprint, image.DecodeOutput);
+            image.BlockSource.Position = 0;
+            image.Sink.SetLength(0);
+            AstcDecoder.DecompressImage(image.BlockSource, image.Sink, TileSize, TileSize, image.Footprint);
         }
     }
 
@@ -114,7 +126,9 @@ public class CodecComparisonBenchmark
     {
         foreach (Image image in this.images)
         {
-            AstcEncoder.CompressImage(image.Pixels, TileSize, TileSize, image.Footprint);
+            image.PixelSource.Position = 0;
+            image.Sink.SetLength(0);
+            AstcEncoder.CompressImage(image.PixelSource, image.Sink, TileSize, TileSize, image.Footprint);
         }
     }
 
