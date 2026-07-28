@@ -29,14 +29,14 @@ internal struct BitStream
 
     public void PutBits(ulong value, int size)
     {
-        if (this.dataSize + (uint)size > 128)
+        if (this.dataSize + (uint)size > BlockInfo.SizeInBits)
         {
             throw new InvalidOperationException("Not enough space in BitStream");
         }
 
-        if (this.dataSize < 64)
+        if (this.dataSize < UInt128Extensions.HalfBits)
         {
-            int lowFree = (int)(64 - this.dataSize);
+            int lowFree = (int)(UInt128Extensions.HalfBits - this.dataSize);
             if (size <= lowFree)
             {
                 this.low |= (value & MaskFor(size)) << (int)this.dataSize;
@@ -49,7 +49,7 @@ internal struct BitStream
         }
         else
         {
-            int shift = (int)(this.dataSize - 64);
+            int shift = (int)(this.dataSize - UInt128Extensions.HalfBits);
             this.high |= (value & MaskFor(size)) << shift;
         }
 
@@ -64,6 +64,7 @@ internal struct BitStream
     {
         UInt128? result = this.GetBitsUInt128(count);
         bits = result ?? default;
+
         return result is not null;
     }
 
@@ -78,10 +79,11 @@ internal struct BitStream
         bits = count switch
         {
             0 => 0,
-            <= 64 => this.low & MaskFor(count),
+            <= UInt128Extensions.HalfBits => this.low & MaskFor(count),
             _ => this.low
         };
         this.ShiftBuffer(count);
+
         return true;
     }
 
@@ -96,15 +98,16 @@ internal struct BitStream
         bits = (uint)(count switch
         {
             0 => 0UL,
-            <= 64 => this.low & MaskFor(count),
+            <= UInt128Extensions.HalfBits => this.low & MaskFor(count),
             _ => this.low
         });
         this.ShiftBuffer(count);
+
         return true;
     }
 
     private static ulong MaskFor(int bits)
-        => bits == 64
+        => bits == UInt128Extensions.HalfBits
             ? ~0UL
             : ((1UL << bits) - 1UL);
 
@@ -118,11 +121,9 @@ internal struct BitStream
         UInt128 result = count switch
         {
             0 => UInt128.Zero,
-            <= 64 => (UInt128)(this.low & MaskFor(count)),
-            128 => new UInt128(this.high, this.low),
-            _ => new UInt128(
-                (count - 64 == 64) ? this.high : (this.high & MaskFor(count - 64)),
-                this.low)
+            <= UInt128Extensions.HalfBits => (UInt128)(this.low & MaskFor(count)),
+            BlockInfo.SizeInBits => new UInt128(this.high, this.low),
+            _ => new UInt128((count - UInt128Extensions.HalfBits == UInt128Extensions.HalfBits) ? this.high : (this.high & MaskFor(count - UInt128Extensions.HalfBits)), this.low)
         };
 
         this.ShiftBuffer(count);
@@ -140,19 +141,19 @@ internal struct BitStream
             return;
         }
 
-        if (count < 64)
+        if (count < UInt128Extensions.HalfBits)
         {
-            this.low = (this.low >> count) | (this.high << (64 - count));
+            this.low = (this.low >> count) | (this.high << (UInt128Extensions.HalfBits - count));
             this.high >>= count;
         }
-        else if (count == 64)
+        else if (count == UInt128Extensions.HalfBits)
         {
             this.low = this.high;
             this.high = 0;
         }
-        else if (count < 128)
+        else if (count < BlockInfo.SizeInBits)
         {
-            this.low = this.high >> (count - 64);
+            this.low = this.high >> (count - UInt128Extensions.HalfBits);
             this.high = 0;
         }
         else

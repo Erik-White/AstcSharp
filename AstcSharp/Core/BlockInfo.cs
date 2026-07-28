@@ -12,10 +12,24 @@ internal readonly struct BlockInfo
     /// <summary>Every ASTC compressed block is exactly 128 bits (16 bytes) regardless of footprint (spec §C.2.4).</summary>
     public const int SizeInBytes = 16;
 
+    /// <summary>Every ASTC compressed block is exactly 128 bits (16 bytes) regardless of footprint (spec §C.2.4).</summary>
+    public const int SizeInBits = SizeInBytes * 8;
+
     /// <summary>
-    /// Number of output channels per decoded pixel — RGBA in both the LDR (UNORM8) and HDR
-    /// (float32) profiles. Used as a multiplier on <see cref="Footprint.PixelCount"/> to size
-    /// scratch and image buffers.
+    /// Maximum number of colour-endpoint partitions in a block (spec §C.2.10). The block mode
+    /// encodes the partition count as a 2-bit field, so it never exceeds four.
+    /// </summary>
+    public const int MaxPartitionCount = 4;
+
+    /// <summary>
+    /// Maximum number of colour-endpoint values a block may encode. The BISE colour region is
+    /// rejected if it would need more than this (spec §C.2.24), which bounds the per-block
+    /// colour scratch buffers.
+    /// </summary>
+    public const int MaxColorValues = 18;
+
+    /// <summary>
+    /// Number of output channels per decoded pixel — RGBA in both the LDR (UNORM8) and HDR (float32) profiles
     /// </summary>
     public const int ChannelsPerPixel = 4;
 
@@ -45,8 +59,7 @@ internal readonly struct BlockInfo
     }
 
     /// <summary>
-    /// Gets a malformed void-extent block (spec §C.2.23 — reserved bits or coordinates
-    /// invalid). <see cref="IsVoidExtent"/> is true, all other properties are <c>default</c>.
+    /// Gets a malformed void-extent block (spec §C.2.23 — reserved bits or coordinates invalid)
     /// </summary>
     public static BlockInfo MalformedVoidExtent { get; } = new(isMalformedVoidExtent: true);
 
@@ -58,8 +71,7 @@ internal readonly struct BlockInfo
     public bool IsValid { get; }
 
     /// <summary>
-    /// Gets a value indicating whether the block is a void-extent (single-colour) block, per
-    /// ASTC spec §C.2.23.
+    /// Gets a value indicating whether the block is a void-extent (single-colour) block, per ASTC spec §C.2.23.
     /// </summary>
     public bool IsVoidExtent { get; }
 
@@ -73,8 +85,7 @@ internal readonly struct BlockInfo
     public bool IsHdr { get; }
 
     /// <summary>
-    /// Gets the weight-grid metadata: dimensions, BISE range, and packed bit count
-    /// (ASTC spec §C.2.10, §C.2.16).
+    /// Gets the weight-grid metadata: dimensions, BISE range, and packed bit count (§C.2.10, §C.2.16).
     /// </summary>
     public WeightGrid Weights { get; }
 
@@ -121,7 +132,7 @@ internal readonly struct BlockInfo
     /// <summary>
     /// Gets the colour endpoint mode for the given partition index. Only the first
     /// <see cref="PartitionCount"/> slots in <see cref="EndpointModes"/> are populated by
-    /// <see cref="BlockDecoding.BlockModeDecoder"/>; the trailing slots retain their
+    /// <see cref="BlockDecoding.BlockModeDecoder"/>, the trailing slots retain their
     /// <c>default(ColorEndpointMode)</c> value and reading them would silently return
     /// <see cref="ColorEndpointMode.LdrLumaDirect"/>.
     /// </summary>
@@ -135,7 +146,7 @@ internal readonly struct BlockInfo
             ? this.EndpointModes[partition]
             : throw new ArgumentOutOfRangeException(nameof(partition), partition, $"Must be in [0, PartitionCount={this.PartitionCount}).");
 
-    [InlineArray(4)]
+    [InlineArray(MaxPartitionCount)]
     public struct EndpointModeBuffer
     {
 #pragma warning disable CS0169, IDE0051, S1144 // Accessed by runtime via [InlineArray]

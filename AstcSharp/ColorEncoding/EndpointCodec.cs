@@ -45,8 +45,7 @@ internal static class EndpointCodec
 
     // Mode 0 (§C.2.14 "LDR luminance, direct"): two 8-bit luma values.
     private static (RgbaColor Low, RgbaColor High) DecodeLumaDirect(ReadOnlySpan<int> v)
-        => (ClampedRgba(v[0], v[0], v[0]),
-            ClampedRgba(v[1], v[1], v[1]));
+        => (ClampedRgba(v[0], v[0], v[0]), ClampedRgba(v[1], v[1], v[1]));
 
     // Mode 1 (§C.2.14 "LDR luminance, base+offset"): v0 plus the top bits of v1 form the low
     // luma; the bottom six bits of v1 are a saturated offset added to form the high luma.
@@ -54,24 +53,23 @@ internal static class EndpointCodec
     {
         int l0 = (v[0] >> 2) | (v[1] & 0xC0);
         int l1 = Math.Min(l0 + (v[1] & 0x3F), 0xFF);
-        return (ClampedRgba(l0, l0, l0),
-                ClampedRgba(l1, l1, l1));
+
+        return (ClampedRgba(l0, l0, l0), ClampedRgba(l1, l1, l1));
     }
 
     // Mode 4 (§C.2.14 "LDR luminance+alpha, direct"): v0,v1 → luma; v2,v3 → alpha.
     private static (RgbaColor Low, RgbaColor High) DecodeLumaAlphaDirect(ReadOnlySpan<int> v)
-        => (ClampedRgba(v[0], v[0], v[0], v[2]),
-            ClampedRgba(v[1], v[1], v[1], v[3]));
+        => (ClampedRgba(v[0], v[0], v[0], v[2]), ClampedRgba(v[1], v[1], v[1], v[3]));
 
-    // Mode 5 (§C.2.14 "LDR luminance+alpha, base+offset"): TransferPrecision unpacks each
+    // Mode 5 (§C.2.14 "LDR luminance+alpha, base+offset"), TransferPrecision unpacks each
     // (high,low) pair into a signed offset b and a base a.
     private static (RgbaColor Low, RgbaColor High) DecodeLumaAlphaBaseOffset(ReadOnlySpan<int> v)
     {
         (int bL, int aL) = BitOperations.TransferPrecision(v[1], v[0]);
         (int bA, int aA) = BitOperations.TransferPrecision(v[3], v[2]);
         int highLuma = aL + bL;
-        return (ClampedRgba(aL, aL, aL, aA),
-                ClampedRgba(highLuma, highLuma, highLuma, aA + bA));
+
+        return (ClampedRgba(aL, aL, aL, aA), ClampedRgba(highLuma, highLuma, highLuma, aA + bA));
     }
 
     // Mode 6 (§C.2.14 "LDR RGB, base+scale"): high = (v0,v1,v2); low = high * v3 >> 8.
@@ -79,6 +77,7 @@ internal static class EndpointCodec
     {
         RgbaColor low = ClampedRgba((v[0] * v[3]) >> 8, (v[1] * v[3]) >> 8, (v[2] * v[3]) >> 8);
         RgbaColor high = ClampedRgba(v[0], v[1], v[2]);
+
         return (low, high);
     }
 
@@ -96,8 +95,7 @@ internal static class EndpointCodec
                     ClampedRgba((v[0] + v[4]) >> 1, (v[2] + v[4]) >> 1, v[4]));
         }
 
-        return (ClampedRgba(v[0], v[2], v[4]),
-                ClampedRgba(v[1], v[3], v[5]));
+        return (ClampedRgba(v[0], v[2], v[4]), ClampedRgba(v[1], v[3], v[5]));
     }
 
     // Mode 9 (§C.2.14 "LDR RGB, base+offset"): per-channel (base, offset). When the sum of
@@ -115,8 +113,7 @@ internal static class EndpointCodec
                     ClampedRgba((aR + aB) >> 1, (aG + aB) >> 1, aB));
         }
 
-        return (ClampedRgba(aR, aG, aB),
-                ClampedRgba(aR + bR, aG + bG, aB + bB));
+        return (ClampedRgba(aR, aG, aB), ClampedRgba(aR + bR, aG + bG, aB + bB));
     }
 
     // Mode 10 (§C.2.14 "LDR RGB, base+scale plus two alpha values"): same RGB scaling as
@@ -129,12 +126,12 @@ internal static class EndpointCodec
             b: (v[2] * v[3]) >> 8,
             a: v[4]);
         RgbaColor high = ClampedRgba(v[0], v[1], v[2], v[5]);
+
         return (low, high);
     }
 
     // Mode 12 (§C.2.14 "LDR RGBA, direct"): like RGB-direct plus alpha. When the high
-    // triple is dimmer the endpoints are swapped (RGB via blue-contract, alpha by
-    // index-swap).
+    // triple is dimmer the endpoints are swapped (RGB via blue-contract, alpha by index-swap).
     private static (RgbaColor Low, RgbaColor High) DecodeRgbaDirect(ReadOnlySpan<int> v)
     {
         int sumLow = v[0] + v[2] + v[4];
@@ -142,8 +139,7 @@ internal static class EndpointCodec
 
         if (sumHigh >= sumLow)
         {
-            return (ClampedRgba(v[0], v[2], v[4], v[6]),
-                    ClampedRgba(v[1], v[3], v[5], v[7]));
+            return (ClampedRgba(v[0], v[2], v[4], v[6]), ClampedRgba(v[1], v[3], v[5], v[7]));
         }
 
         return (ClampedRgba((v[1] + v[5]) >> 1, (v[3] + v[5]) >> 1, v[5], v[7]),
@@ -164,7 +160,6 @@ internal static class EndpointCodec
                     ClampedRgba((aR + aB) >> 1, (aG + aB) >> 1, aB, aA));
         }
 
-        return (ClampedRgba(aR, aG, aB, aA),
-                ClampedRgba(aR + bR, aG + bG, aB + bB, aA + bA));
+        return (ClampedRgba(aR, aG, aB, aA), ClampedRgba(aR + bR, aG + bG, aB + bB, aA + bA));
     }
 }

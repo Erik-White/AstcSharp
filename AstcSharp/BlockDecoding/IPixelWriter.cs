@@ -10,8 +10,7 @@ internal interface IPixelWriter<T>
     where T : unmanaged
 {
     /// <summary>
-    /// Writes one pixel at <c>buffer[offset..offset+4]</c> using <paramref name="weight"/>
-    /// for every channel.
+    /// Writes one pixel at <c>buffer[offset..offset+4]</c> using <paramref name="weight"/> for every channel.
     /// </summary>
     /// <param name="buffer">Destination pixel buffer.</param>
     /// <param name="offset">Element offset of the pixel's first channel.</param>

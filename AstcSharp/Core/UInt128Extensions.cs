@@ -3,6 +3,12 @@ namespace AstcSharp.Core;
 internal static class UInt128Extensions
 {
     /// <summary>
+    /// Bits per <see cref="ulong"/> half of a <see cref="UInt128"/>. The low/high split, and any
+    /// bit arithmetic that crosses it, is expressed in terms of this width.
+    /// </summary>
+    public const int HalfBits = 64;
+
+    /// <summary>
     /// The lower 64 bits of the <see cref="UInt128"/> value
     /// </summary>
     public static ulong Low(this UInt128 value)
@@ -12,7 +18,7 @@ internal static class UInt128Extensions
     /// The upper 64 bits of the <see cref="UInt128"/> value
     /// </summary>
     public static ulong High(this UInt128 value)
-        => (ulong)(value >> 64);
+        => (ulong)(value >> HalfBits);
 
     /// <summary>
     /// A mask with the lowest n bits set to 1

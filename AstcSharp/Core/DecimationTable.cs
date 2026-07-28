@@ -14,6 +14,10 @@ internal static class DecimationTable
     private const int GridMin = 2;
     private const int GridRange = 11; // 12 - 2 + 1
     private const int FootprintCount = 14;
+
+    // Each texel's weight is a bilinear blend of the four surrounding weight-grid points (the
+    // 2×2 corners, ASTC spec §C.2.18).
+    private const int CornersPerTexel = 4;
     private static readonly DecimationInfo?[] Table = new DecimationInfo?[FootprintCount * GridRange * GridRange];
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -71,8 +75,8 @@ internal static class DecimationTable
     private static DecimationInfo Compute(int footprintWidth, int footprintHeight, int gridWidth, int gridHeight)
     {
         int texelCount = footprintWidth * footprintHeight;
-        int[] indices = new int[4 * texelCount];
-        int[] factors = new int[4 * texelCount];
+        int[] indices = new int[CornersPerTexel * texelCount];
+        int[] factors = new int[CornersPerTexel * texelCount];
 
         int scaleHorizontal = GetScaleFactorD(footprintWidth);
         int scaleVertical = GetScaleFactorD(footprintHeight);
@@ -145,7 +149,7 @@ internal static class DecimationTable
         // one corner at a time across all texels.
         Span<int> gridPoints = [gridPoint0, gridPoint1, gridPoint2, gridPoint3];
         Span<int> cornerFactors = [factor0, factor1, factor2, factor3];
-        for (int corner = 0; corner < 4; corner++)
+        for (int corner = 0; corner < CornersPerTexel; corner++)
         {
             indices[(corner * texelCount) + texelIndex] = gridPoints[corner];
             factors[(corner * texelCount) + texelIndex] = cornerFactors[corner];
