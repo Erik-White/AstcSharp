@@ -59,6 +59,82 @@ public class HdrEncoderReferenceTests
         CompareF16(ourDecoded, armDecoded, $"HdrVoidExtentColor_{r}_{g}_{b}_{a}");
     }
 
+    [Theory]
+    [MemberData(nameof(AllFootprintTypes))]
+    public void EncodedHdrGradient_DecodesUnderArmReference(FootprintType footprintType)
+    {
+        // A chromatic HDR gradient (values above 1.0) drives the single-partition RGB-direct search.
+        // The block is a legal bitstream, so ARM's decode must agree with ours; we do not compare to
+        // the original pixels, since the encode is lossy.
+        var (blockX, blockY) = ReferenceDecoder.ToBlockDimensions(footprintType);
+        Footprint footprint = Footprint.FromFootprintType(footprintType);
+        int width = blockX * 2;
+        int height = blockY * 2;
+        Half[] pixels = HdrGradient(width, height);
+
+        byte[] encoded = StreamCodec.EncodeHdr(pixels, width, height, footprint);
+        float[] armDecoded = HalvesToFloats(ReferenceDecoder.DecompressHdr(encoded, width, height, blockX, blockY));
+        float[] ourDecoded = StreamCodec.DecodeHdr(encoded, width, height, footprint);
+
+        CompareF16(ourDecoded, armDecoded, $"HdrGradient_{footprintType}");
+    }
+
+    [Theory]
+    [MemberData(nameof(AllFootprintTypes))]
+    public void EncodedHdrGrayscaleRamp_DecodesUnderArmReference(FootprintType footprintType)
+    {
+        // A grey HDR ramp drives the luminance-mode (CEM 2) search; ARM's decode must agree with ours.
+        var (blockX, blockY) = ReferenceDecoder.ToBlockDimensions(footprintType);
+        Footprint footprint = Footprint.FromFootprintType(footprintType);
+        int width = blockX * 2;
+        int height = blockY * 2;
+        Half[] pixels = HdrGrayscaleRamp(width, height);
+
+        byte[] encoded = StreamCodec.EncodeHdr(pixels, width, height, footprint);
+        float[] armDecoded = HalvesToFloats(ReferenceDecoder.DecompressHdr(encoded, width, height, blockX, blockY));
+        float[] ourDecoded = StreamCodec.DecodeHdr(encoded, width, height, footprint);
+
+        CompareF16(ourDecoded, armDecoded, $"HdrGrayscaleRamp_{footprintType}");
+    }
+
+    private static Half[] HdrGradient(int width, int height)
+    {
+        Half[] pixels = new Half[width * height * 4];
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                int idx = ((y * width) + x) * 4;
+                float t = (float)x / Math.Max(1, width - 1);
+                pixels[idx] = (Half)(4.0f * t);
+                pixels[idx + 1] = (Half)(2.0f * (1.0f - t));
+                pixels[idx + 2] = (Half)(1.0f + (3.0f * t));
+                pixels[idx + 3] = (Half)1.0f;
+            }
+        }
+
+        return pixels;
+    }
+
+    private static Half[] HdrGrayscaleRamp(int width, int height)
+    {
+        Half[] pixels = new Half[width * height * 4];
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                int idx = ((y * width) + x) * 4;
+                float v = 8.0f * (x + y) / Math.Max(1, width + height - 2);
+                pixels[idx] = (Half)v;
+                pixels[idx + 1] = (Half)v;
+                pixels[idx + 2] = (Half)v;
+                pixels[idx + 3] = (Half)1.0f;
+            }
+        }
+
+        return pixels;
+    }
+
     private static Half[] SolidImage(int width, int height, Half r, Half g, Half b, Half a)
     {
         Half[] pixels = new Half[width * height * 4];

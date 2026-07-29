@@ -395,12 +395,10 @@ public static class AstcEncoder
     }
 
     /// <summary>
-    /// Encodes one block's gathered HDR texels. Constant blocks become HDR void-extent blocks.
+    /// Encodes one block's gathered HDR texels (FP16 bit patterns): a void-extent block when all
+    /// texels are identical, otherwise a single-partition (or, for large footprints, multi-partition)
+    /// HDR block whose weight grid is fitted to the texels in the LNS domain.
     /// </summary>
-    /// <remarks>
-    /// Stage 1 scaffolding: non-constant blocks are not yet handled by an HDR block search, so they
-    /// fall back to a void-extent of the per-channel mean.
-    /// </remarks>
     private static UInt128 EncodeHdrTexels(ReadOnlySpan<RgbaHdrColor> texels, Footprint footprint)
     {
         if (IsConstant(texels, out RgbaHdrColor constant))
@@ -408,8 +406,7 @@ public static class AstcEncoder
             return VoidExtentEncoder.EncodeHdr(constant.R, constant.G, constant.B, constant.A);
         }
 
-        RgbaHdrColor mean = MeanColor(texels);
-        return VoidExtentEncoder.EncodeHdr(mean.R, mean.G, mean.B, mean.A);
+        return HdrBlockEncoder.Encode(texels, footprint);
     }
 
     private static bool IsConstant(ReadOnlySpan<RgbaHdrColor> texels, out RgbaHdrColor constant)
@@ -424,20 +421,5 @@ public static class AstcEncoder
         }
 
         return true;
-    }
-
-    private static RgbaHdrColor MeanColor(ReadOnlySpan<RgbaHdrColor> texels)
-    {
-        long r = 0, g = 0, b = 0, a = 0;
-        foreach (RgbaHdrColor texel in texels)
-        {
-            r += texel.R;
-            g += texel.G;
-            b += texel.B;
-            a += texel.A;
-        }
-
-        int count = texels.Length;
-        return new RgbaHdrColor((ushort)(r / count), (ushort)(g / count), (ushort)(b / count), (ushort)(a / count));
     }
 }
