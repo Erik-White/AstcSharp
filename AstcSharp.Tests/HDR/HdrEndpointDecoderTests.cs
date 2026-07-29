@@ -13,7 +13,8 @@ public class HdrEndpointDecoderTests
     [Fact]
     public void Decode_HdrLumaLargeRange_WithAscendingValues_ReturnsExpected()
     {
-        // v1 >= v0 branch: y0 = v0 << 4, y1 = v1 << 4
+        // HDR luminance large range (CEM 2, spec §C.2.14): when v0 <= v1 the endpoints take the
+        // direct branch — no swap and no rounding offset.
         ReadOnlySpan<int> values = [0x10, 0x80];
         (RgbaHdrColor low, RgbaHdrColor high) = HdrEndpointDecoder.DecodeHdrModeUnquantized(values, ColorEndpointMode.HdrLumaLargeRange);
 
@@ -24,7 +25,8 @@ public class HdrEndpointDecoderTests
     [Fact]
     public void Decode_HdrLumaLargeRange_WithDescendingValues_ReturnsSwappedAndOffset()
     {
-        // v1 < v0 branch: y0 = (v1 << 4) + 8, y1 = (v0 << 4) - 8
+        // HDR luminance large range (CEM 2, spec §C.2.14): when v0 > v1 the endpoints are
+        // swapped and each nudged by a half-step rounding offset.
         ReadOnlySpan<int> values = [0x80, 0x10];
         (RgbaHdrColor low, RgbaHdrColor high) = HdrEndpointDecoder.DecodeHdrModeUnquantized(values, ColorEndpointMode.HdrLumaLargeRange);
 
@@ -37,7 +39,8 @@ public class HdrEndpointDecoderTests
     [Fact]
     public void Decode_HdrLumaSmallRange_V0LowBitClear_UsesLowBitBranch()
     {
-        // (v0 & 0x80) == 0 -> y0 uses v1 & 0xF0, shift << 1
+        // HDR luminance small range (CEM 3, spec §C.2.14): the top bit of v0 selects between two
+        // bit layouts. With it clear, the low-precision layout applies.
         ReadOnlySpan<int> values = [0x40, 0x55];
         (RgbaHdrColor low, RgbaHdrColor high) = HdrEndpointDecoder.DecodeHdrModeUnquantized(values, ColorEndpointMode.HdrLumaSmallRange);
 
@@ -51,7 +54,8 @@ public class HdrEndpointDecoderTests
     [Fact]
     public void Decode_HdrLumaSmallRange_V0HighBitSet_UsesHighBitBranch()
     {
-        // (v0 & 0x80) != 0 -> y0 uses v1 & 0xE0, shift << 2
+        // HDR luminance small range (CEM 3, spec §C.2.14): with the top bit of v0 set, the
+        // high-precision layout applies.
         ReadOnlySpan<int> values = [0xC0, 0xB5];
         (RgbaHdrColor low, RgbaHdrColor high) = HdrEndpointDecoder.DecodeHdrModeUnquantized(values, ColorEndpointMode.HdrLumaSmallRange);
 
@@ -65,7 +69,8 @@ public class HdrEndpointDecoderTests
     [Fact]
     public void Decode_HdrLumaSmallRange_ClampsY1ToMax()
     {
-        // Values chosen so y1 overflows 0xFFF and clamps.
+        // CEM 3 (spec §C.2.14): the high luma is clamped to the 12-bit intermediate maximum
+        // (0xFFF) before the << 4 pack to FP16. Max inputs force that clamp.
         ReadOnlySpan<int> values = [0xFF, 0xFF];
         (_, RgbaHdrColor high) = HdrEndpointDecoder.DecodeHdrModeUnquantized(values, ColorEndpointMode.HdrLumaSmallRange);
 
@@ -86,7 +91,8 @@ public class HdrEndpointDecoderTests
         ReadOnlySpan<int> values = [v0, v1, v2, v3];
         (RgbaHdrColor low, RgbaHdrColor high) = HdrEndpointDecoder.DecodeHdrModeUnquantized(values, ColorEndpointMode.HdrRgbBaseScale);
 
-        // Alpha always HdrOne. Other channels must be clamped to [0, 0xFFF0].
+        // CEM 7 (spec §C.2.14): alpha is always opaque; RGB channels are the 12-bit intermediate
+        // maximum (0xFFF) packed to 16-bit (0xFFF0) at the upper bound.
         Assert.Equal(HdrOne, low.A);
         Assert.Equal(HdrOne, high.A);
         Assert.True(low.R <= 0xFFF0);
@@ -123,8 +129,9 @@ public class HdrEndpointDecoderTests
     [Fact]
     public void Decode_HdrRgbDirect_MajorComponent3_UsesPassthroughBranch()
     {
-        // majorComponent = ((v4 & 0x80) >> 7) | (((v5 & 0x80) >> 7) << 1) = 0x80 | 0x80 = 3.
-        // Produces direct shifts rather than running the bit-placement tree.
+        // CEM 11 (spec §C.2.14): a major component of 3 selects the passthrough layout — the
+        // decoder emits direct shifts rather than running the bit-placement tables. The inputs
+        // set the top bit of both v4 and v5 to reach that case.
         ReadOnlySpan<int> values = [0x10, 0x80, 0x20, 0x90, 0xA5, 0xC5];
         (RgbaHdrColor low, RgbaHdrColor high) = HdrEndpointDecoder.DecodeHdrModeUnquantized(values, ColorEndpointMode.HdrRgbDirect);
 
@@ -174,7 +181,8 @@ public class HdrEndpointDecoderTests
     [Fact]
     public void Decode_HdrRgbDirectLdrAlpha_AlphaIsUnorm16()
     {
-        // RGB decoded via UnpackHdrRgbDirect; alpha is v6,v7 * 257 (UNORM8 → UNORM16).
+        // CEM 14 (spec §C.2.14): RGB is HDR (decoded as CEM 11) but alpha is LDR — the two 8-bit
+        // alpha values widen to UNORM16 by the standard bit-replication (× 257).
         ReadOnlySpan<int> values = [0x10, 0x80, 0x20, 0x90, 0xA5, 0xC5, 0x40, 0xC0];
         (RgbaHdrColor low, RgbaHdrColor high) = HdrEndpointDecoder.DecodeHdrModeUnquantized(values, ColorEndpointMode.HdrRgbDirectLdrAlpha);
 
@@ -185,11 +193,12 @@ public class HdrEndpointDecoderTests
     [Fact]
     public void Decode_HdrRgbDirectHdrAlpha_AlphaDecodedAsHdr()
     {
-        // Selector derived from high bits of v6,v7. Here selector = 3 (simple passthrough branch).
+        // CEM 15 (spec §C.2.14): both RGB and alpha are HDR. The alpha sub-mode selector comes
+        // from the high bits of v6/v7; these inputs select selector 3, the direct passthrough
+        // branch, so both alpha endpoints decode to the same value.
         ReadOnlySpan<int> values = [0x10, 0x80, 0x20, 0x90, 0xA5, 0xC5, 0xC0, 0xC0];
         (RgbaHdrColor low, RgbaHdrColor high) = HdrEndpointDecoder.DecodeHdrModeUnquantized(values, ColorEndpointMode.HdrRgbDirectHdrAlpha);
 
-        // Selector == 3: a0 = (v6 & 0x7F) << 5, a1 = (v7 & 0x7F) << 5.
         Assert.Equal((ushort)(((0xC0 & 0x7F) << 5) << 4), low.A);
         Assert.Equal((ushort)(((0xC0 & 0x7F) << 5) << 4), high.A);
     }

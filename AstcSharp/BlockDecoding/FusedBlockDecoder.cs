@@ -104,7 +104,7 @@ internal static class FusedBlockDecoder
         ulong lowBits = source.Low();
         int totalBits = count * bitsPerValue;
 
-        if (totalBits <= 64)
+        if (totalBits <= UInt128Extensions.HalfBits)
         {
             for (int i = 0; i < count; i++)
             {
@@ -119,19 +119,19 @@ internal static class FusedBlockDecoder
         int bitPos = 0;
         for (int i = 0; i < count; i++)
         {
-            if (bitPos < 64)
+            if (bitPos < UInt128Extensions.HalfBits)
             {
                 ulong val = (lowBits >> bitPos) & mask;
-                if (bitPos + bitsPerValue > 64)
+                if (bitPos + bitsPerValue > UInt128Extensions.HalfBits)
                 {
-                    val |= (highBits << (64 - bitPos)) & mask;
+                    val |= (highBits << (UInt128Extensions.HalfBits - bitPos)) & mask;
                 }
 
                 result[i] = (int)val;
             }
             else
             {
-                result[i] = (int)((highBits >> (bitPos - 64)) & mask);
+                result[i] = (int)((highBits >> (bitPos - UInt128Extensions.HalfBits)) & mask);
             }
 
             bitPos += bitsPerValue;

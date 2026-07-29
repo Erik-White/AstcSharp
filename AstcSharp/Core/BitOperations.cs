@@ -18,8 +18,8 @@ internal static class BitOperations
     public static ulong GetBits(ulong value, int start, int length) => length switch
     {
         <= 0 => 0UL,
-        >= 64 => value >> start,
-        _ => (value >> start) & (ulong.MaxValue >> (64 - length))
+        >= UInt128Extensions.HalfBits => value >> start,
+        _ => (value >> start) & (ulong.MaxValue >> (UInt128Extensions.HalfBits - length))
     };
 
     /// <summary>

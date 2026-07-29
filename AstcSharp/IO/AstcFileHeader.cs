@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using AstcSharp.Core;
 
 namespace AstcSharp.IO;
 
@@ -71,9 +72,8 @@ internal readonly record struct AstcFileHeader(byte BlockWidth, byte BlockHeight
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(imageDepth, 0);
 
         // Guard against callers that compute a 4-byte-per-pixel RGBA32 output buffer.
-        const int bytesPerPixel = 4;
         long totalPixels = (long)imageWidth * imageHeight;
-        if (totalPixels > int.MaxValue / bytesPerPixel)
+        if (totalPixels > int.MaxValue / BlockInfo.ChannelsPerPixel)
         {
             throw new ArgumentOutOfRangeException(nameof(data), "ASTC image dimensions exceed the maximum supported size");
         }

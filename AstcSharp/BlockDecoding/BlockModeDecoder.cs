@@ -13,6 +13,16 @@ namespace AstcSharp.BlockDecoding;
 /// </summary>
 internal static class BlockModeDecoder
 {
+    // Spec §C.2.11: a block may encode at most 64 weights (grid width × height, doubled for
+    // dual plane), and the packed weight bit count must fall within [24, 96].
+    private const int MaxWeightCount = 64;
+    private const int MinWeightBitCount = 24;
+    private const int MaxWeightBitCount = 96;
+
+    // Void-extent texel coordinates (spec §C.2.23) are 13-bit values; all-ones is the sentinel
+    // for "no constraint".
+    private const int VoidExtentCoordinateBits = 13;
+
     // Spec §C.2.10 Table C.2.7: weight range table indexed by r[2:0] + h. Entries marked -1
     // are reserved and reject the block. Two six-entry groups (low precision, high precision).
     private static ReadOnlySpan<int> WeightRanges
@@ -74,15 +84,15 @@ internal static class BlockModeDecoder
         }
 
         // Fixed 4 entries (max partition count per spec §C.2.10)
-        Span<ColorEndpointMode> cems = stackalloc ColorEndpointMode[4];
+        Span<ColorEndpointMode> cems = stackalloc ColorEndpointMode[BlockInfo.MaxPartitionCount];
         int colorValuesCount = DecodeEndpointModes(bits, lowBits, partitionCount, weightBitCount, cems, out int numExtraCEMBits);
-        if (colorValuesCount is < 0 or > 18)
+        if (colorValuesCount is < 0 or > BlockInfo.MaxColorValues)
         {
             return default;
         }
 
         // Dual plane and color bit positions depend on weight + extra-CEM bit allocation.
-        int dualPlaneBitStartPos = 128 - weightBitCount - numExtraCEMBits;
+        int dualPlaneBitStartPos = BlockInfo.SizeInBits - weightBitCount - numExtraCEMBits;
         if (isDualPlane)
         {
             dualPlaneBitStartPos -= 2;
@@ -285,14 +295,14 @@ internal static class BlockModeDecoder
         }
 
         // 4 partitions + dual plane is illegal per spec §C.2.11.
-        if (numWeights > 64 || (partitionCount == 4 && isDualPlane))
+        if (numWeights > MaxWeightCount || (partitionCount == BlockInfo.MaxPartitionCount && isDualPlane))
         {
             weightBitCount = 0;
             return false;
         }
 
         weightBitCount = BoundedIntegerSequenceCodec.GetBitCountForRange(numWeights, weightRange);
-        return weightBitCount is >= 24 and <= 96;
+        return weightBitCount is >= MinWeightBitCount and <= MaxWeightBitCount;
     }
 
     /// <summary>
@@ -308,9 +318,9 @@ internal static class BlockModeDecoder
         int partitionCount,
         int weightBitCount,
         Span<ColorEndpointMode> cems,
-        out int numExtraCEMBits)
+        out int extraCEMBitCount)
     {
-        numExtraCEMBits = 0;
+        extraCEMBitCount = 0;
 
         if (partitionCount == 1)
         {
@@ -334,10 +344,10 @@ internal static class BlockModeDecoder
             return colorValuesCount;
         }
 
-        numExtraCEMBits = ExtraCemBitsForPartition[partitionCount - 1];
+        extraCEMBitCount = ExtraCemBitsForPartition[partitionCount - 1];
 
-        int extraCemStartPos = 128 - numExtraCEMBits - weightBitCount;
-        UInt128 extraCem = BitOperations.GetBits(bits, extraCemStartPos, numExtraCEMBits);
+        int extraCemStartPos = BlockInfo.SizeInBits - extraCEMBitCount - weightBitCount;
+        UInt128 extraCem = BitOperations.GetBits(bits, extraCemStartPos, extraCEMBitCount);
 
         ulong cemval = (lowBits >> 23) & 0x3F;
         int baseCem = (int)(((cemval & 0x3) - 1) * 4);
@@ -346,7 +356,7 @@ internal static class BlockModeDecoder
 
         // 1 selector bit per partition (c[i]), then 2 mode bits per partition (m).
         // Fixed 4 ints (16 bytes) — max partition count per spec §C.2.10.
-        Span<int> c = stackalloc int[4];
+        Span<int> c = stackalloc int[BlockInfo.MaxPartitionCount];
         for (int i = 0; i < partitionCount; i++)
         {
             c[i] = (int)(cembits & 0x1);
@@ -426,14 +436,14 @@ internal static class BlockModeDecoder
             return false;
         }
 
-        int c0 = (int)BitOperations.GetBits(lowBits, 12, 13);
-        int c1 = (int)BitOperations.GetBits(lowBits, 25, 13);
-        int c2 = (int)BitOperations.GetBits(lowBits, 38, 13);
-        int c3 = (int)BitOperations.GetBits(lowBits, 51, 13);
+        int c0 = (int)BitOperations.GetBits(lowBits, 12, VoidExtentCoordinateBits);
+        int c1 = (int)BitOperations.GetBits(lowBits, 25, VoidExtentCoordinateBits);
+        int c2 = (int)BitOperations.GetBits(lowBits, 38, VoidExtentCoordinateBits);
+        int c3 = (int)BitOperations.GetBits(lowBits, 51, VoidExtentCoordinateBits);
 
-        const int all1s = (1 << 13) - 1;
-        bool coordsAll1s = c0 == all1s && c1 == all1s && c2 == all1s && c3 == all1s;
+        const int allOnes = (1 << VoidExtentCoordinateBits) - 1;
+        bool allOnesCoordinates = c0 == allOnes && c1 == allOnes && c2 == allOnes && c3 == allOnes;
 
-        return coordsAll1s || (c0 < c1 && c2 < c3);
+        return allOnesCoordinates || (c0 < c1 && c2 < c3);
     }
 }

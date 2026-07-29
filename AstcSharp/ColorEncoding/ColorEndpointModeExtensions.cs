@@ -2,8 +2,11 @@ namespace AstcSharp.ColorEncoding;
 
 internal static class ColorEndpointModeExtensions
 {
+    // The 16 colour endpoint modes (spec §C.2.11) are grouped into 4 classes of 4 modes each.
+    private const int ModesPerClass = 4;
+
     public static int GetEndpointModeClass(this ColorEndpointMode mode)
-        => (int)mode / 4;
+        => (int)mode / ModesPerClass;
 
     public static int GetColorValuesCount(this ColorEndpointMode mode)
         => (mode.GetEndpointModeClass() + 1) * 2;
@@ -12,7 +15,7 @@ internal static class ColorEndpointModeExtensions
     /// Determines whether the specified endpoint mode uses HDR (High Dynamic Range) encoding.
     /// </summary>
     /// <returns>
-    /// True if the mode is one of the 6 HDR modes (2, 3, 7, 11, 14, 15), false otherwise.
+    /// True if the mode is one of the 6 HDR modes
     /// </returns>
     public static bool IsHdr(this ColorEndpointMode mode)
         => mode switch

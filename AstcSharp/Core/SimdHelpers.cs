@@ -22,9 +22,8 @@ internal static class SimdHelpers
         Vector128<int> v0 = Vector128.Create(c0);
         Vector128<int> v1 = Vector128.Create(c1);
 
-        // c = (c0 * (64 - w) + c1 * w + 32) >> 6
-        // NOTE: Using >> 6 instead of / 64 because Vector128<int> division
-        // has no hardware support and decomposes to scalar operations.
+        // Vectorised form of the ASTC spec §C.2.19 weighted blend (see Interpolation.BlendWeighted).
+        // NOTE: >> 6 rather than / 64 — Vector128<int> has no hardware division and decomposes to scalar ops.
         Vector128<int> w64 = Vec64 - weights;
         Vector128<int> c = ((v0 * w64) + (v1 * weights) + Vec32) >> 6;
 

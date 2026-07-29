@@ -41,19 +41,16 @@ internal static class HdrEndpointDecoder
     /// <see cref="ModeMask"/>, the bit at source index <see cref="SourceBit"/> is OR'd into
     /// the output slot at index <see cref="Slot"/>, shifted left by <see cref="TargetShift"/>.
     /// The slot is stored as a plain <c>int</c> so the same row type serves both placement
-    /// tables; callers populate it from <see cref="BaseScaleTarget"/> or <see cref="DirectTarget"/>.
+    /// tables. Callers populate it from <see cref="BaseScaleTarget"/> or <see cref="DirectTarget"/>.
     /// </summary>
     private readonly record struct BitPlacement(int Slot, int ModeMask, int SourceBit, int TargetShift);
 
     // Shift amounts for the HdrRgbBaseScale mode, indexed by the mode selector (0..5).
-    // See ARM astcenc_color_unquantize.cpp rgb_hdr_unpack.
 #pragma warning disable SA1201 // Readability: keep tables adjacent to the types they use.
     private static readonly int[] BaseScaleShiftByMode = [1, 1, 2, 3, 4, 5];
 
     // Bit placements for the HdrRgbBaseScale mode (ASTC CEM 7). Each entry represents:
-    // "if the current one-hot mode matches ModeMask, OR sourceBits[SourceBit] into Slot at
-    // position TargetShift." The table reproduces the if-statement ladder from the ARM
-    // reference while making the per-mode pattern directly inspectable.
+    // "if the current one-hot mode matches ModeMask, OR sourceBits[SourceBit] into Slot at position TargetShift."
     private static readonly BitPlacement[] BaseScalePlacements =
     [
         new(Slot: (int)BaseScaleTarget.Green, ModeMask: 0x30, SourceBit: 0, TargetShift: 6),
@@ -76,14 +73,12 @@ internal static class HdrEndpointDecoder
     ];
 
     // Data-bit widths for the HdrRgbDirect mode (ASTC CEM 11), indexed by modeValue (0..7).
-    // Used for sign-extension of the d0/d1 offsets. From ARM reference.
+    // Used for sign-extension of the d0/d1 offsets.
     private static readonly int[] DirectDataBitsByMode = [7, 6, 7, 6, 5, 6, 5, 6];
 
     // Bit placements for the HdrRgbDirect mode (ASTC CEM 11). Each entry: if the current
     // one-hot modeValue matches ModeMask, OR sourceBits[SourceBit] into Slot at TargetShift.
-    // Entries are grouped by Slot (A, C, B0/B1, D0/D1 — see the ARM reference).
-    // Pairs like (B0, B1) or (D0, D1) share a single ModeMask in the ARM reference but
-    // consume different source bits per slot, so they appear as two entries here.
+    // Entries are grouped by Slot (A, C, B0/B1, D0/D1).
     private static readonly BitPlacement[] DirectPlacements =
     [
         new(Slot: (int)DirectTarget.A,  ModeMask: 0xA4, SourceBit: 0, TargetShift: 9),
@@ -135,7 +130,7 @@ internal static class HdrEndpointDecoder
     /// Swaps the R/G/B channels of a 12-bit HDR endpoint pair according to
     /// <paramref name="majorComponent"/> (ASTC spec §C.2.14) and shifts each channel left
     /// by 4 to produce the FP16 bit patterns stored in the returned <see cref="RgbaHdrColor"/>
-    /// pair; alpha is set to <see cref="Fp16.One"/>.
+    /// pair, alpha is set to <see cref="Fp16.One"/>.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static (RgbaHdrColor Low, RgbaHdrColor High) PackHdrRgbPairWithSwap(
@@ -156,6 +151,7 @@ internal static class HdrEndpointDecoder
 
         RgbaHdrColor low = new((ushort)(red0 << 4), (ushort)(green0 << 4), (ushort)(blue0 << 4), Fp16.One);
         RgbaHdrColor high = new((ushort)(red1 << 4), (ushort)(green1 << 4), (ushort)(blue1 << 4), Fp16.One);
+
         return (low, high);
     }
 
@@ -188,17 +184,20 @@ internal static class HdrEndpointDecoder
         int y0, y1;
         if (v1 >= v0)
         {
+            // (A) input → 12-bit intermediate
             y0 = v0 << 4;
             y1 = v1 << 4;
         }
         else
         {
+            // (A) again, + half-LSB rounding at 12-bit precision
             y0 = (v1 << 4) + 8;
             y1 = (v0 << 4) - 8;
         }
 
         RgbaHdrColor low = new((ushort)(y0 << 4), (ushort)(y0 << 4), (ushort)(y0 << 4), Fp16.One);
         RgbaHdrColor high = new((ushort)(y1 << 4), (ushort)(y1 << 4), (ushort)(y1 << 4), Fp16.One);
+
         return (low, high);
     }
 
@@ -238,6 +237,9 @@ internal static class HdrEndpointDecoder
     /// </summary>
     private static (RgbaHdrColor Low, RgbaHdrColor High) UnpackHdrRgbBaseScaleCore(int v0, int v1, int v2, int v3)
     {
+        // The 4-bit mode selector (spec §C.2.14, CEM 7) is scattered across the top bits of the
+        // first three input values: bits [1:0] come from v0[7:6], bit 2 from v1[7], bit 3 from
+        // v2[7]. Reassemble them into a single value that then chooses the sub-mode below.
         int modeValue = ((v0 & 0xC0) >> 6) | (((v1 & 0x80) >> 7) << 2) | (((v2 & 0x80) >> 7) << 3);
 
         (int majorComponent, int mode) = modeValue switch
@@ -374,7 +376,7 @@ internal static class HdrEndpointDecoder
 
     /// <summary>
     /// Decodes the CEM 14 endpoint pair (HDR RGB + LDR alpha) per ASTC spec §C.2.14.
-    /// RGB is decoded as for CEM 11; alpha is bit-replicated UNORM16 (the same expansion
+    /// RGB is decoded as for CEM 11, alpha is bit-replicated UNORM16 (the same expansion
     /// LDR endpoints use, so the HDR pipeline can blend it as if it were HDR).
     /// </summary>
     private static (RgbaHdrColor Low, RgbaHdrColor High) UnpackHdrRgbDirectLdrAlphaCore(ReadOnlySpan<int> unquantizedValues)
@@ -386,6 +388,7 @@ internal static class HdrEndpointDecoder
 
         RgbaHdrColor low = new(rgbLow.R, rgbLow.G, rgbLow.B, alpha0);
         RgbaHdrColor high = new(rgbHigh.R, rgbHigh.G, rgbHigh.B, alpha1);
+
         return (low, high);
     }
 
@@ -400,6 +403,7 @@ internal static class HdrEndpointDecoder
 
         RgbaHdrColor low = new(rgbLow.R, rgbLow.G, rgbLow.B, alpha0);
         RgbaHdrColor high = new(rgbHigh.R, rgbHigh.G, rgbHigh.B, alpha1);
+
         return (low, high);
     }
 

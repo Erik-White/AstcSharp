@@ -26,8 +26,6 @@ internal static class LogicalBlock
             return;
         }
 
-        // Conditional stackalloc isn't legal inside an expression; split the dual-plane case
-        // into a separate frame so the secondary-plane buffer is only stackalloc'd when needed.
         if (info.DualPlane.Enabled && !info.IsVoidExtent)
         {
             DecodeDualPlane<LdrPixelWriter<TMode>, byte>(bits, in info, footprint, pixels);
@@ -68,15 +66,14 @@ internal static class LogicalBlock
     /// <summary>
     /// Decodes a dual-plane block (spec §C.2.20) and writes its pixels via
     /// <typeparamref name="TWriter"/>. Split into its own non-inlined frame so the
-    /// secondary-plane buffer is only stackalloc'd for dual-plane blocks.
+    /// secondary-plane buffer is only allocated for dual-plane blocks.
     /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void DecodeDualPlane<TWriter, T>(UInt128 bits, in BlockInfo info, Footprint footprint, Span<T> pixels)
         where TWriter : struct, IPixelWriter<T>
         where T : unmanaged
     {
-        // Two weight planes for dual-plane blocks (spec §C.2.20). Up to 2 × 144 = 288 ints
-        // (1152 bytes) at the largest 12×12 footprint.
+        // Two weight planes for dual-plane blocks (spec §C.2.20). Up to 2 × 144 = 288 ints (1152 bytes) at the largest 12×12 footprint.
         Span<int> weights = stackalloc int[footprint.PixelCount];
         Span<int> secondaryWeights = stackalloc int[footprint.PixelCount];
         DecodedBlockState state = DecodeDualPlaneState(bits, in info, footprint, weights, secondaryWeights);
@@ -137,7 +134,7 @@ internal static class LogicalBlock
     /// </summary>
     private static void DecodeEndpointsFromBits(UInt128 bits, in BlockInfo info, ref EndpointBuffer endpoints)
     {
-        // Up to 18 ints (72 bytes) — BlockModeDecoder rejects blocks with Colors.Count > 18.
+        // Up to BlockInfo.MaxColorValues ints — BlockModeDecoder rejects blocks that exceed it.
         Span<int> colors = stackalloc int[info.Colors.Count];
         FusedBlockDecoder.DecodeBiseValues(
             bits,
@@ -191,7 +188,7 @@ internal static class LogicalBlock
         int totalWeights = isDualPlane ? gridSize * 2 : gridSize;
 
         // Up to 128 ints (512 bytes) — spec §C.2.11 caps total weights (gridSize × planes) at 64
-        // for single-plane and 128 (i.e. 64 × 2) for dual-plane.
+        // for single-plane and 128 for dual-plane.
         Span<int> rawWeights = stackalloc int[totalWeights];
         FusedBlockDecoder.DecodeBiseWeights(
             bits,
@@ -210,7 +207,7 @@ internal static class LogicalBlock
         }
 
         // Spec §C.2.20: the two planes' weights are interleaved — even indices drive the
-        // main plane, odd the secondary plane. Each plane has up to 64 ints (256 bytes); spec
+        // main plane, odd the secondary plane. Each plane has up to 64 ints, spec
         // §C.2.11 caps gridSize × 2 ≤ 128, so gridSize ≤ 64 for dual-plane.
         Span<int> plane0 = stackalloc int[gridSize];
         Span<int> plane1 = stackalloc int[gridSize];
@@ -358,7 +355,7 @@ internal static class LogicalBlock
     /// (spec §C.2.10 caps partition count at 4). Used as a stack-local buffer to hold the
     /// decoded endpoints during a single <see cref="DecodeToBytes"/>/<see cref="DecodeToFloats"/> call.
     /// </summary>
-    [InlineArray(4)]
+    [InlineArray(BlockInfo.MaxPartitionCount)]
     private struct EndpointBuffer
     {
 #pragma warning disable CS0169, IDE0051, S1144 // Accessed by runtime via [InlineArray]

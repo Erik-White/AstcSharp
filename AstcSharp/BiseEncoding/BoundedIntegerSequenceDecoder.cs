@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using AstcSharp.Core;
 
 namespace AstcSharp.BiseEncoding;
 
@@ -23,7 +24,7 @@ internal static class BoundedIntegerSequenceDecoder
     {
         int totalBitCount = BoundedIntegerSequenceCodec.GetBitCount(encoding, valuesCount, bitCount);
         int bitsPerBlock = BoundedIntegerSequenceCodec.GetEncodedBlockSize(encoding, bitCount);
-        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(bitsPerBlock, 64);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(bitsPerBlock, UInt128Extensions.HalfBits);
 
         // Fixed 5 ints (20 bytes) — one BISE block holds at most 5 trits or 3 quints (spec §C.2.12).
         Span<int> blockResult = stackalloc int[5];

@@ -17,8 +17,7 @@ public class EndpointCodecLdrTests
         return (pair.LdrLow, pair.LdrHigh);
     }
 
-    // ---- Mode 0: LdrLumaDirect (spec §C.2.14 — "Direct luminance") ----
-
+    // Mode 0: LdrLumaDirect (spec §C.2.14 — "Direct luminance")
     [Fact]
     public void Decode_LdrLumaDirect_ProducesGrayscaleWithFullAlpha()
     {
@@ -29,12 +28,13 @@ public class EndpointCodecLdrTests
         Assert.Equal(new RgbaColor(0xE0, 0xE0, 0xE0, 255), high);
     }
 
-    // ---- Mode 1: LdrLumaBaseOffset (spec §C.2.14 — "Luminance, base+offset") ----
-
+    // Mode 1: LdrLumaBaseOffset (spec §C.2.14 — "Luminance, base+offset")
     [Fact]
     public void Decode_LdrLumaBaseOffset_DecodesBaseAndOffset()
     {
-        // L0 = (v0 >> 2) | (v1 & 0xC0); L1 = L0 + (v1 & 0x3F), saturated at 0xFF.
+        // Mode 1 (spec §C.2.14): the base luma is packed across v0 and v1's high bits, and v1's
+        // low bits are a saturating offset producing the high endpoint. The expected values below
+        // mirror that derivation.
         int v0 = 0x80;
         int v1 = 0x6F;
         int l0 = (v0 >> 2) | (v1 & 0xC0);
@@ -49,14 +49,14 @@ public class EndpointCodecLdrTests
     [Fact]
     public void Decode_LdrLumaBaseOffset_SaturatesOffsetAtFF()
     {
-        // Choose v1 so L0 + offset > 0xFF.
+        // Mode 1 (spec §C.2.14): max inputs push the base+offset high endpoint past 0xFF, forcing
+        // the saturation clamp.
         (RgbaColor _, RgbaColor high) = Decode(ColorEndpointMode.LdrLumaBaseOffset, 0xFF, 0xFF);
 
         Assert.Equal(255, high.R);
     }
 
-    // ---- Mode 4: LdrLumaAlphaDirect (spec §C.2.14 — "Luminance+alpha, direct") ----
-
+    // Mode 4: LdrLumaAlphaDirect (spec §C.2.14 — "Luminance+alpha, direct")
     [Fact]
     public void Decode_LdrLumaAlphaDirect_DecodesLumaAndAlphaIndependently()
     {
@@ -67,12 +67,12 @@ public class EndpointCodecLdrTests
         Assert.Equal(new RgbaColor(0xF0, 0xF0, 0xF0, 0xC0), high);
     }
 
-    // ---- Mode 5: LdrLumaAlphaBaseOffset (spec §C.2.14) ----
-
+    // Mode 5: LdrLumaAlphaBaseOffset (spec §C.2.14)
     [Fact]
     public void Decode_LdrLumaAlphaBaseOffset_DecodesTransferPrecisionPairs()
     {
-        // TransferPrecision unpacks each (high, low) pair into (offset, base).
+        // Mode 5 (spec §C.2.14): luma and alpha each arrive as a (base, offset) pair recovered by
+        // the spec's bit_transfer_signed step (BitOperations.TransferPrecision).
         (int b0, int a0) = BitOperations.TransferPrecision(0x30, 0x80);
         (int b2, int a2) = BitOperations.TransferPrecision(0x10, 0x40);
 
@@ -84,27 +84,26 @@ public class EndpointCodecLdrTests
         Assert.Equal(new RgbaColor((byte)highLuma, (byte)highLuma, (byte)highLuma, (byte)highAlpha), high);
     }
 
-    // ---- Mode 6: LdrRgbBaseScale (spec §C.2.14 — "RGB, base+scale") ----
-
+    // Mode 6: LdrRgbBaseScale (spec §C.2.14 — "RGB, base+scale")
     [Fact]
     public void Decode_LdrRgbBaseScale_LowIsScaledHigh()
     {
-        // low = (v0,v1,v2) * v3 >> 8 ; high = (v0,v1,v2). Alpha = 255 on both.
+        // Mode 6 (spec §C.2.14): the high endpoint is the base RGB (v0,v1,v2), and the low
+        // endpoint is that base scaled down by v3. Alpha is opaque on both.
         (RgbaColor low, RgbaColor high) = Decode(ColorEndpointMode.LdrRgbBaseScale, 0xFF, 0x80, 0x40, 0x80);
 
         Assert.Equal(new RgbaColor((byte)((0xFF * 0x80) >> 8), (byte)((0x80 * 0x80) >> 8), (byte)((0x40 * 0x80) >> 8), 255), low);
         Assert.Equal(new RgbaColor(0xFF, 0x80, 0x40, 255), high);
     }
 
-    // ---- Mode 8: LdrRgbDirect (spec §C.2.14) with blue-contract swap ----
-
+    // Mode 8: LdrRgbDirect (spec §C.2.14) with blue-contract swap
     [Fact]
     public void Decode_LdrRgbDirect_WhenHighIsDimmer_SwapsEndpointsAndAveragesBlue()
     {
-        // sum1 (high) < sum0 (low) triggers blue-contract swap.
+        // Mode 8 (spec §C.2.14): when the high triple is dimmer than the low triple the endpoints
+        // are swapped and the blue-contract correction is applied. These inputs select that path.
         (RgbaColor low, RgbaColor high) = Decode(ColorEndpointMode.LdrRgbDirect, 0xC0, 0x20, 0xC0, 0x20, 0xC0, 0x20);
 
-        // Swapped: low uses odd-indexed (high-side) values with blue-contract averaging.
         Assert.Equal(new RgbaColor((byte)((0x20 + 0x20) >> 1), (byte)((0x20 + 0x20) >> 1), 0x20, 255), low);
         Assert.Equal(new RgbaColor((byte)((0xC0 + 0xC0) >> 1), (byte)((0xC0 + 0xC0) >> 1), 0xC0, 255), high);
     }
@@ -119,12 +118,13 @@ public class EndpointCodecLdrTests
         Assert.Equal(new RgbaColor(0xC0, 0xC0, 0xC0, 255), high);
     }
 
-    // ---- Mode 9: LdrRgbBaseOffset (spec §C.2.14 — with blue-contract) ----
-
+    // Mode 9: LdrRgbBaseOffset (spec §C.2.14 — with blue-contract)
     [Fact]
     public void Decode_LdrRgbBaseOffset_NonNegativeSum_ProducesBasePlusOffset()
     {
-        // b0+b1+b2 >= 0 → low = base, high = base + offset.
+        // Mode 9 (spec §C.2.14): each channel is a (base, offset) pair via bit_transfer_signed.
+        // With a non-negative offset sum, the blue-contract branch is skipped: low = base,
+        // high = base + offset.
         (int b0, int a0) = BitOperations.TransferPrecision(0x10, 0x80);
         (int b1, int a1) = BitOperations.TransferPrecision(0x08, 0x40);
         (int b2, int a2) = BitOperations.TransferPrecision(0x04, 0x20);
@@ -138,8 +138,7 @@ public class EndpointCodecLdrTests
         Assert.Equal(new RgbaColor((byte)hr, (byte)hg, (byte)hb, 255), high);
     }
 
-    // ---- Mode 10: LdrRgbBaseScaleTwoA (spec §C.2.14 — base+scale with separate alpha) ----
-
+    // Mode 10: LdrRgbBaseScaleTwoA (spec §C.2.14 — base+scale with separate alpha)
     [Fact]
     public void Decode_LdrRgbBaseScaleTwoA_AppliesScaleAndSeparateAlphaChannels()
     {
@@ -149,8 +148,7 @@ public class EndpointCodecLdrTests
         Assert.Equal(new RgbaColor(0xFF, 0x80, 0x40, 0xE0), high);
     }
 
-    // ---- Mode 12: LdrRgbaDirect (spec §C.2.14) ----
-
+    // Mode 12: LdrRgbaDirect (spec §C.2.14)
     [Fact]
     public void Decode_LdrRgbaDirect_WhenHighIsBrighter_KeepsDirectValues()
     {
@@ -165,13 +163,13 @@ public class EndpointCodecLdrTests
     {
         (RgbaColor low, RgbaColor high) = Decode(ColorEndpointMode.LdrRgbaDirect, 0xC0, 0x20, 0xC0, 0x20, 0xC0, 0x20, 0x30, 0xB0);
 
-        // Blue-contract swap: alpha indexes (6,7) swap too — low gets v7, high gets v6.
+        // Mode 12 (spec §C.2.14): the dimmer-high case swaps endpoints (RGB via blue-contract,
+        // alpha by index swap), so low takes the high-side alpha and vice versa.
         Assert.Equal(new RgbaColor((byte)((0x20 + 0x20) >> 1), (byte)((0x20 + 0x20) >> 1), 0x20, 0xB0), low);
         Assert.Equal(new RgbaColor((byte)((0xC0 + 0xC0) >> 1), (byte)((0xC0 + 0xC0) >> 1), 0xC0, 0x30), high);
     }
 
-    // ---- Mode 13: LdrRgbaBaseOffset (spec §C.2.14) ----
-
+    // Mode 13: LdrRgbaBaseOffset (spec §C.2.14)
     [Fact]
     public void Decode_LdrRgbaBaseOffset_DecodesAllFourChannelsWithTransferPrecision()
     {
