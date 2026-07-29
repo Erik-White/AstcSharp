@@ -1,0 +1,77 @@
+using AstcSharp.BiseEncoding.Quantize;
+using AstcSharp.ColorEncoding;
+using AstcSharp.Core;
+using AstcSharp.Encoding;
+
+namespace AstcSharp.Tests.HDR;
+
+/// <summary>
+/// Per-mode round-trip tests for <see cref="HdrEndpointEncoder"/>: encoding an HDR endpoint pair,
+/// then decoding it back through the real <see cref="EndpointCodec"/> (the exact path the block
+/// encoder measures against), must recover the endpoints. These pin the per-mode colour-value layout
+/// the block encoder relies on. The colour range is the widest 8-bit range (255), where CE
+/// quantisation is the identity, so recovery is exact for values whose discarded low bits are zero.
+/// </summary>
+public class HdrEndpointEncoderTests
+{
+    // Widest 8-bit endpoint range: quantise/unquantise round-trips losslessly, so any residual error
+    // is a wiring bug, not quantisation.
+    private const int LosslessColorRange = 255;
+
+    // These modes decode alpha to the FP16 pattern for 1.0.
+    private const ushort AlphaOne = Fp16.One;
+
+    private static (RgbaHdrColor Low, RgbaHdrColor High) RoundTrip(ColorEndpointMode mode, RgbaHdrColor low, RgbaHdrColor high)
+    {
+        int count = mode.GetColorValuesCount();
+        Span<int> colorValues = stackalloc int[count];
+        HdrEndpointEncoder.Encode(mode, low, high, LosslessColorRange, colorValues);
+
+        Quantization.UnquantizeCEValuesBatch(colorValues, LosslessColorRange);
+        ColorEndpointPair pair = EndpointCodec.Decode(colorValues, mode);
+        return (pair.HdrLow, pair.HdrHigh);
+    }
+
+    [Fact]
+    public void Encode_LumaLargeRange_RecoversGreyEndpoints()
+    {
+        // CEM 2 stores luma >> 8 and decodes (v << 8), so the low byte must be zero for exact
+        // recovery. Grey endpoints ordered low <= high keep the decoder on its non-rounding branch.
+        var low = new RgbaHdrColor(0x2000, 0x2000, 0x2000, AlphaOne);
+        var high = new RgbaHdrColor(0x5000, 0x5000, 0x5000, AlphaOne);
+
+        (RgbaHdrColor recoveredLow, RgbaHdrColor recoveredHigh) = RoundTrip(ColorEndpointMode.HdrLumaLargeRange, low, high);
+
+        Assert.Equal(low, recoveredLow);
+        Assert.Equal(high, recoveredHigh);
+    }
+
+    [Fact]
+    public void Encode_RgbDirect_RecoversRgbEndpoints()
+    {
+        // CEM 11 direct sub-mode: R/G store the top byte (low 8 bits discarded), B stores a 7-bit
+        // (value >> 9) field (low 9 bits discarded). Distinct per-channel values catch a channel
+        // swap; all are multiples of 0x200 so recovery is exact. Alpha decodes to 1.0.
+        var low = new RgbaHdrColor(0x1000, 0x2000, 0x2200, AlphaOne);
+        var high = new RgbaHdrColor(0x4000, 0x5000, 0x6200, AlphaOne);
+
+        (RgbaHdrColor recoveredLow, RgbaHdrColor recoveredHigh) = RoundTrip(ColorEndpointMode.HdrRgbDirect, low, high);
+
+        Assert.Equal(low, recoveredLow);
+        Assert.Equal(high, recoveredHigh);
+    }
+
+    [Fact]
+    public void Encode_RgbDirect_MaxChannelValues_StayInRange()
+    {
+        // The largest representable endpoints must not overflow the stored fields (B is a 7-bit
+        // >> 9 field, so 0xFE00 is the largest exactly-representable blue).
+        var low = new RgbaHdrColor(0x0000, 0x0000, 0x0000, AlphaOne);
+        var high = new RgbaHdrColor(0xFF00, 0xFF00, 0xFE00, AlphaOne);
+
+        (RgbaHdrColor recoveredLow, RgbaHdrColor recoveredHigh) = RoundTrip(ColorEndpointMode.HdrRgbDirect, low, high);
+
+        Assert.Equal(low, recoveredLow);
+        Assert.Equal(high, recoveredHigh);
+    }
+}
