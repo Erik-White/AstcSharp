@@ -170,6 +170,60 @@ public class HdrEncoderReferenceTests
         CompareF16(ourDecoded, armDecoded, $"HdrVaryingAlpha_{footprintType}");
     }
 
+    [Theory]
+    [MemberData(nameof(AllFootprintTypes))]
+    public void EncodedHdrGradient_QualityWithinMarginOfReferenceEncoder(FootprintType footprintType)
+    {
+        // Our HDR encoder targets quality within a margin of ARM's, not bit parity. Both are measured
+        // as log-space PSNR (error taken on the FP16 bit patterns, the domain HDR error is perceived
+        // in) so the comparison is like-for-like.
+        var (blockX, blockY) = ReferenceDecoder.ToBlockDimensions(footprintType);
+        Footprint footprint = Footprint.FromFootprintType(footprintType);
+        int width = blockX * 2;
+        int height = blockY * 2;
+        Half[] pixels = HdrGradient(width, height);
+
+        // Our encoder, decoded by our decoder.
+        byte[] ourEncoded = StreamCodec.EncodeHdr(pixels, width, height, footprint);
+        float[] ourDecoded = StreamCodec.DecodeHdr(ourEncoded, width, height, footprint);
+        double ourPsnr = LogPsnr(pixels, ourDecoded);
+
+        // ARM's encoder, decoded by ARM's decoder.
+        byte[] armEncoded = ReferenceDecoder.CompressHdr(pixels, width, height, blockX, blockY);
+        float[] armDecoded = HalvesToFloats(ReferenceDecoder.DecompressHdr(armEncoded, width, height, blockX, blockY));
+        double armPsnr = LogPsnr(pixels, armDecoded);
+
+        ourPsnr.Should().BeGreaterThanOrEqualTo(
+            armPsnr - 6.0,
+            because: $"[{footprintType}] our log-PSNR {ourPsnr:F2} dB should be within 6 dB of ARM's {armPsnr:F2} dB");
+    }
+
+    /// <summary>
+    /// PSNR computed on the FP16 bit patterns (the log-encoded HDR representation), so the metric
+    /// reflects perceived HDR error rather than raw linear magnitude and is comparable between the two
+    /// encoders. Peak is the 16-bit FP16 pattern range.
+    /// </summary>
+    private static double LogPsnr(ReadOnlySpan<Half> original, ReadOnlySpan<float> decoded)
+    {
+        const double peak = 0x7BFF; // MaxFinite FP16 bit pattern
+        double sumSquaredError = 0;
+        for (int i = 0; i < original.Length; i++)
+        {
+            double o = BitConverter.HalfToUInt16Bits(original[i]);
+            double d = BitConverter.HalfToUInt16Bits((Half)decoded[i]);
+            double diff = d - o;
+            sumSquaredError += diff * diff;
+        }
+
+        if (sumSquaredError == 0)
+        {
+            return double.PositiveInfinity;
+        }
+
+        double meanSquaredError = sumSquaredError / original.Length;
+        return 10.0 * Math.Log10((peak * peak) / meanSquaredError);
+    }
+
     // A colinear HDR colour ramp with a co-varying HDR alpha ramp — content the RGB+alpha mode
     // (CEM 15) can fit with a single endpoint line.
     private static Half[] HdrVaryingAlpha(int width, int height)
@@ -300,6 +354,63 @@ public class HdrEncoderReferenceTests
 
         return pixels;
     }
+
+    [Theory]
+    [InlineData(FootprintType.Footprint4x4)]
+    [InlineData(FootprintType.Footprint6x6)]
+    [InlineData(FootprintType.Footprint8x8)]
+    [InlineData(FootprintType.Footprint12x12)]
+    public void EncodedRandomHdrBlocks_DecodeUnderArmReference(FootprintType footprintType)
+    {
+        // The strongest correctness guard: no seeded-random HDR input may produce a bitstream ARM
+        // reads differently from us. Multi-region content with random alpha exercises the mode,
+        // partition, and dual-plane search across many blocks.
+        var (blockX, blockY) = ReferenceDecoder.ToBlockDimensions(footprintType);
+        Footprint footprint = Footprint.FromFootprintType(footprintType);
+        int width = blockX * 2;
+        int height = blockY * 2;
+        var rng = new Random(20260730);
+
+        for (int trial = 0; trial < 8; trial++)
+        {
+            Half[] pixels = RandomHdrRegions(width, height, rng);
+            byte[] encoded = StreamCodec.EncodeHdr(pixels, width, height, footprint);
+
+            float[] armDecoded = HalvesToFloats(ReferenceDecoder.DecompressHdr(encoded, width, height, blockX, blockY));
+            float[] ourDecoded = StreamCodec.DecodeHdr(encoded, width, height, footprint);
+
+            CompareF16(ourDecoded, armDecoded, $"RandomHdr_{footprintType}_trial{trial}");
+        }
+    }
+
+    // A few random solid HDR regions with random per-region alpha, spanning sub-1.0 to well above 1.0.
+    private static Half[] RandomHdrRegions(int width, int height, Random rng)
+    {
+        int regionCount = rng.Next(2, 5);
+        (Half R, Half G, Half B, Half A)[] regions = new (Half, Half, Half, Half)[regionCount];
+        for (int i = 0; i < regionCount; i++)
+        {
+            regions[i] = (RandomHdrChannel(rng), RandomHdrChannel(rng), RandomHdrChannel(rng), RandomHdrChannel(rng));
+        }
+
+        Half[] pixels = new Half[width * height * 4];
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                int idx = ((y * width) + x) * 4;
+                (Half r, Half g, Half b, Half a) = regions[rng.Next(regionCount)];
+                pixels[idx] = r;
+                pixels[idx + 1] = g;
+                pixels[idx + 2] = b;
+                pixels[idx + 3] = a;
+            }
+        }
+
+        return pixels;
+    }
+
+    private static Half RandomHdrChannel(Random rng) => (Half)(rng.NextSingle() * 64.0f);
 
     private static float[] HalvesToFloats(Half[] halves)
     {
