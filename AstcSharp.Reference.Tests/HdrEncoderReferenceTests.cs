@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using AstcSharp.BlockDecoding;
+using AstcSharp.ColorEncoding;
 using AstcSharp.Core;
 using AstcSharp.Reference.Tests.Utils;
 using AstcSharp.Tests.Utils;
@@ -100,6 +101,31 @@ public class HdrEncoderReferenceTests
         CompareF16(ourDecoded, armDecoded, $"HdrGrayscaleRamp_{footprintType}");
     }
 
+    [Fact]
+    public void EncodedHdrUniformDarkening_SelectsBaseScaleAndDecodesUnderArmReference()
+    {
+        // A block whose texels are a single bright HDR colour uniformly dimmed toward black in the
+        // log domain is exactly what CEM 7 base+scale models. Assert the cheaper 4-value mode is
+        // actually chosen (not CEM 11), then require ARM to read the base+scale bitstream in agreement
+        // with our decoder.
+        var footprintType = FootprintType.Footprint6x6;
+        var (blockX, blockY) = ReferenceDecoder.ToBlockDimensions(footprintType);
+        Footprint footprint = Footprint.FromFootprintType(footprintType);
+        Half[] pixels = HdrUniformDarkening(blockX, blockY);
+
+        byte[] encoded = StreamCodec.EncodeHdr(pixels, blockX, blockY, footprint);
+
+        UInt128 bits = BinaryPrimitives.ReadUInt128LittleEndian(encoded.AsSpan(0, 16));
+        BlockInfo info = BlockModeDecoder.Decode(bits);
+        info.EndpointMode0.Should().Be(
+            ColorEndpointMode.HdrRgbBaseScale, because: "a uniformly log-darkened HDR colour is the base+scale mode's ideal content");
+
+        float[] armDecoded = HalvesToFloats(ReferenceDecoder.DecompressHdr(encoded, blockX, blockY, blockX, blockY));
+        float[] ourDecoded = StreamCodec.DecodeHdr(encoded, blockX, blockY, footprint);
+
+        CompareF16(ourDecoded, armDecoded, "HdrUniformDarkening");
+    }
+
     // Footprints large enough to host distinct colour regions, where the encoder may pick a
     // multi-partition encoding (the HDR analogue of the LDR PartitionableFootprints set).
     public static TheoryData<FootprintType> PartitionableFootprints =>
@@ -196,6 +222,34 @@ public class HdrEncoderReferenceTests
         ourPsnr.Should().BeGreaterThanOrEqualTo(
             armPsnr - 6.0,
             because: $"[{footprintType}] our log-PSNR {ourPsnr:F2} dB should be within 6 dB of ARM's {armPsnr:F2} dB");
+    }
+
+    [Theory]
+    [InlineData(FootprintType.Footprint4x4)]
+    [InlineData(FootprintType.Footprint6x6)]
+    [InlineData(FootprintType.Footprint8x8)]
+    [InlineData(FootprintType.Footprint12x12)]
+    public void EncodedRandomHdrBlocks_DecodeUnderArmReference(FootprintType footprintType)
+    {
+        // The strongest correctness guard: no seeded-random HDR input may produce a bitstream ARM
+        // reads differently from us. Multi-region content with random alpha exercises the mode,
+        // partition, and dual-plane search across many blocks.
+        var (blockX, blockY) = ReferenceDecoder.ToBlockDimensions(footprintType);
+        Footprint footprint = Footprint.FromFootprintType(footprintType);
+        int width = blockX * 2;
+        int height = blockY * 2;
+        var rng = new Random(20260730);
+
+        for (int trial = 0; trial < 8; trial++)
+        {
+            Half[] pixels = RandomHdrRegions(width, height, rng);
+            byte[] encoded = StreamCodec.EncodeHdr(pixels, width, height, footprint);
+
+            float[] armDecoded = HalvesToFloats(ReferenceDecoder.DecompressHdr(encoded, width, height, blockX, blockY));
+            float[] ourDecoded = StreamCodec.DecodeHdr(encoded, width, height, footprint);
+
+            CompareF16(ourDecoded, armDecoded, $"RandomHdr_{footprintType}_trial{trial}");
+        }
     }
 
     /// <summary>
@@ -355,33 +409,31 @@ public class HdrEncoderReferenceTests
         return pixels;
     }
 
-    [Theory]
-    [InlineData(FootprintType.Footprint4x4)]
-    [InlineData(FootprintType.Footprint6x6)]
-    [InlineData(FootprintType.Footprint8x8)]
-    [InlineData(FootprintType.Footprint12x12)]
-    public void EncodedRandomHdrBlocks_DecodeUnderArmReference(FootprintType footprintType)
+    // A single bright HDR colour scaled uniformly toward black across the block (constant field
+    // difference per channel) — the log-space uniform darkening CEM 7 mode 5 reconstructs exactly.
+    private static Half[] HdrUniformDarkening(int width, int height)
     {
-        // The strongest correctness guard: no seeded-random HDR input may produce a bitstream ARM
-        // reads differently from us. Multi-region content with random alpha exercises the mode,
-        // partition, and dual-plane search across many blocks.
-        var (blockX, blockY) = ReferenceDecoder.ToBlockDimensions(footprintType);
-        Footprint footprint = Footprint.FromFootprintType(footprintType);
-        int width = blockX * 2;
-        int height = blockY * 2;
-        var rng = new Random(20260730);
-
-        for (int trial = 0; trial < 8; trial++)
+        Half[] pixels = new Half[width * height * 4];
+        for (int y = 0; y < height; y++)
         {
-            Half[] pixels = RandomHdrRegions(width, height, rng);
-            byte[] encoded = StreamCodec.EncodeHdr(pixels, width, height, footprint);
-
-            float[] armDecoded = HalvesToFloats(ReferenceDecoder.DecompressHdr(encoded, width, height, blockX, blockY));
-            float[] ourDecoded = StreamCodec.DecodeHdr(encoded, width, height, footprint);
-
-            CompareF16(ourDecoded, armDecoded, $"RandomHdr_{footprintType}_trial{trial}");
+            for (int x = 0; x < width; x++)
+            {
+                int idx = ((y * width) + x) * 4;
+                // Scale in the FP16 bit-pattern (log) domain by subtracting a per-texel field offset
+                // uniformly from each channel's high value, so all texels lie on one base+scale line.
+                int offset = 0x200 * ((x + y) % 4);
+                pixels[idx] = ScaledHalf(0x5800, offset);
+                pixels[idx + 1] = ScaledHalf(0x5400, offset);
+                pixels[idx + 2] = ScaledHalf(0x5000, offset);
+                pixels[idx + 3] = (Half)1.0f;
+            }
         }
+
+        return pixels;
     }
+
+    private static Half ScaledHalf(int highBits, int offset)
+        => BitConverter.UInt16BitsToHalf((ushort)Math.Max(highBits - offset, 0));
 
     // A few random solid HDR regions with random per-region alpha, spanning sub-1.0 to well above 1.0.
     private static Half[] RandomHdrRegions(int width, int height, Random rng)

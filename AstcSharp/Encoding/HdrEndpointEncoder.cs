@@ -29,6 +29,18 @@ internal static class HdrEndpointEncoder
     private const int SimpleAlphaSelectorFlag = 0x80;
     private const int AlphaFieldMask = 0x7F;
 
+    // CEM 7 mode 5 is selected by the 4-bit mode value 0xF: v0[7:6] = 11, v1[7] = v2[7] = 1. It is the
+    // only base+scale sub-mode that stores R/G/B independently (no green = red - delta) and applies no
+    // major-component swizzle, so it inverts cleanly.
+    private const int BaseScaleMode5V0Selector = 0xC0;
+    private const int BaseScaleModeBitFlag = 0x80;
+    private const int SevenBitFieldMask = 0x7F;
+    private const int SixBitFieldMask = 0x3F;
+
+    // CEM 7 channel/scale fields are 7-bit: value = channel >> 9.
+    private const int BaseScaleFieldShift = 9;
+    private const int MaxSevenBitField = 0x7F;
+
     /// <summary>
     /// Encodes <paramref name="low"/>/<paramref name="high"/> for <paramref name="mode"/> into
     /// quantised colour values written to <paramref name="colorValues"/> (length must be at least
@@ -40,6 +52,7 @@ internal static class HdrEndpointEncoder
         switch (mode)
         {
             case ColorEndpointMode.HdrLumaLargeRange: EncodeLumaLargeRange(colorRange, colorValues, low, high); break;
+            case ColorEndpointMode.HdrRgbBaseScale: EncodeRgbBaseScale(colorRange, colorValues, low, high); break;
             case ColorEndpointMode.HdrRgbDirect: EncodeRgbDirect(colorRange, colorValues, low, high); break;
             case ColorEndpointMode.HdrRgbDirectHdrAlpha: EncodeRgbDirectHdrAlpha(colorRange, colorValues, low, high); break;
             default:
@@ -73,6 +86,51 @@ internal static class HdrEndpointEncoder
         colorValues[3] = QuantizeByte(high.G >> 8, colorRange);
         colorValues[4] = QuantizeByte(MajorComponentDirectFlag | ((low.B >> 9) & BlueFieldMask), colorRange);
         colorValues[5] = QuantizeByte(MajorComponentDirectFlag | ((high.B >> 9) & BlueFieldMask), colorRange);
+    }
+
+    /// <summary>
+    /// CEM 7 (HDR RGB, base+scale) via mode 5, the only base+scale sub-mode that stores R/G/B
+    /// independently and applies no channel swizzle. The decoder reconstructs the high endpoint as
+    /// <c>field &lt;&lt; 9</c> per channel and the low endpoint as <c>(field − scale) &lt;&lt; 9</c>
+    /// with one shared 7-bit scale. That models a uniform log-space darkening (a
+    /// uniform multiplicative dim in linear space), fitting content whose dark endpoint is a dimmed
+    /// version of the bright one — at 4 colour values rather than CEM 11's 6, leaving more of the
+    /// 128-bit budget for weight precision.
+    /// </summary>
+    private static void EncodeRgbBaseScale(int colorRange, Span<int> colorValues, RgbaHdrColor low, RgbaHdrColor high)
+    {
+        int redField = high.R >> BaseScaleFieldShift;
+        int greenField = high.G >> BaseScaleFieldShift;
+        int blueField = high.B >> BaseScaleFieldShift;
+
+        // One scale serves all three channels; use the mean high-minus-low field difference, clamped
+        // so no channel's low endpoint underflows the field range.
+        int scale = ScaleField(low, high, redField, greenField, blueField);
+
+        int v0 = BaseScaleMode5V0Selector | (redField & SixBitFieldMask);
+        int v1 = BaseScaleModeBitFlag | (greenField & SevenBitFieldMask);
+        int v2 = BaseScaleModeBitFlag | (blueField & SevenBitFieldMask);
+        int v3 = ((redField >> 6) & 1) << 7 | (scale & SevenBitFieldMask);
+
+        colorValues[0] = QuantizeByte(v0, colorRange);
+        colorValues[1] = QuantizeByte(v1, colorRange);
+        colorValues[2] = QuantizeByte(v2, colorRange);
+        colorValues[3] = QuantizeByte(v3, colorRange);
+    }
+
+    /// <summary>
+    /// The shared 7-bit base+scale factor for CEM 7 mode 5: the mean per-channel high-minus-low field
+    /// difference, clamped to <c>[0, 0x7F]</c>. A larger scale can only drive a channel's low endpoint
+    /// negative (the decoder clamps it to 0), so bounding by the smallest field keeps every channel
+    /// representable.
+    /// </summary>
+    private static int ScaleField(RgbaHdrColor low, RgbaHdrColor high, int redField, int greenField, int blueField)
+    {
+        int lowRed = low.R >> BaseScaleFieldShift;
+        int lowGreen = low.G >> BaseScaleFieldShift;
+        int lowBlue = low.B >> BaseScaleFieldShift;
+        int meanDifference = ((redField - lowRed) + (greenField - lowGreen) + (blueField - lowBlue) + 1) / 3;
+        return Math.Clamp(meanDifference, 0, MaxSevenBitField);
     }
 
     /// <summary>

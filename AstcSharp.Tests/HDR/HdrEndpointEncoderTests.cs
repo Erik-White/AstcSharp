@@ -76,6 +76,22 @@ public class HdrEndpointEncoderTests
     }
 
     [Fact]
+    public void Encode_RgbBaseScale_RecoversUniformlyDarkenedEndpoints()
+    {
+        // CEM 7 mode 5 reconstructs high = field << 9 and low = (field - scale) << 9 with one shared
+        // scale, so it is exact only when the low endpoint is the high uniformly darkened in the 7-bit
+        // field domain. Fields are >> 9 (low 9 bits discarded); a uniform scale of 2 fields (0x400)
+        // subtracted from each channel satisfies that. Distinct per-channel fields catch a swap.
+        var low = new RgbaHdrColor(0x2000, 0x4000, 0x6000, AlphaOne);
+        var high = new RgbaHdrColor(0x2400, 0x4400, 0x6400, AlphaOne);
+
+        (RgbaHdrColor recoveredLow, RgbaHdrColor recoveredHigh) = RoundTrip(ColorEndpointMode.HdrRgbBaseScale, low, high);
+
+        Assert.Equal(low, recoveredLow);
+        Assert.Equal(high, recoveredHigh);
+    }
+
+    [Fact]
     public void Encode_RgbDirectHdrAlpha_RecoversRgbAndAlpha()
     {
         // CEM 15: RGB as CEM 11 direct, plus an HDR alpha pair. Alpha is a 7-bit (value >> 9) field
