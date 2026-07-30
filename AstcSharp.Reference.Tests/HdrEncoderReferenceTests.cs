@@ -1,6 +1,9 @@
+using System.Buffers.Binary;
+using AstcSharp.BlockDecoding;
 using AstcSharp.Core;
 using AstcSharp.Reference.Tests.Utils;
 using AstcSharp.Tests.Utils;
+using AwesomeAssertions;
 
 namespace AstcSharp.Reference.Tests;
 
@@ -97,6 +100,97 @@ public class HdrEncoderReferenceTests
         CompareF16(ourDecoded, armDecoded, $"HdrGrayscaleRamp_{footprintType}");
     }
 
+    // Footprints large enough to host distinct colour regions, where the encoder may pick a
+    // multi-partition encoding (the HDR analogue of the LDR PartitionableFootprints set).
+    public static TheoryData<FootprintType> PartitionableFootprints =>
+    [
+        FootprintType.Footprint6x6, FootprintType.Footprint8x6, FootprintType.Footprint8x8,
+        FootprintType.Footprint10x8, FootprintType.Footprint10x10, FootprintType.Footprint12x12,
+    ];
+
+    [Theory]
+    [MemberData(nameof(PartitionableFootprints))]
+    public void EncodedHdrTwoRegion_DecodesUnderArmReference(FootprintType footprintType)
+    {
+        // Two well-separated HDR colour regions the encoder may encode with multiple partitions
+        // (spec §C.2.21). The resulting shared-CEM multi-partition block must be spec-legal: ARM's
+        // decoder must read it back in agreement with ours.
+        var (blockX, blockY) = ReferenceDecoder.ToBlockDimensions(footprintType);
+        Footprint footprint = Footprint.FromFootprintType(footprintType);
+        int width = blockX * 2;
+        int height = blockY * 2;
+        Half[] pixels = HdrTwoRegion(width, height);
+
+        byte[] encoded = StreamCodec.EncodeHdr(pixels, width, height, footprint);
+        float[] armDecoded = HalvesToFloats(ReferenceDecoder.DecompressHdr(encoded, width, height, blockX, blockY));
+        float[] ourDecoded = StreamCodec.DecodeHdr(encoded, width, height, footprint);
+
+        CompareF16(ourDecoded, armDecoded, $"HdrTwoRegion_{footprintType}");
+    }
+
+    [Fact]
+    public void EncodedHdrMultiPartition_DecodesUnderArmReference()
+    {
+        // Four saturated HDR quadrants drive the encoder to a multi-partition shared-CEM block. Its
+        // bitstream layout is what must be spec-legal; we assert it really is multi-partition (not a
+        // 1-partition fallback) so the cross-check exercises that layout, then require ARM to agree.
+        var footprintType = FootprintType.Footprint12x12;
+        var (blockX, blockY) = ReferenceDecoder.ToBlockDimensions(footprintType);
+        Footprint footprint = Footprint.FromFootprintType(footprintType);
+        Half[] pixels = HdrFourQuadrant(blockX, blockY);
+
+        byte[] encoded = StreamCodec.EncodeHdr(pixels, blockX, blockY, footprint);
+
+        UInt128 bits = BinaryPrimitives.ReadUInt128LittleEndian(encoded.AsSpan(0, 16));
+        BlockInfo info = BlockModeDecoder.Decode(bits);
+        info.PartitionCount.Should().BeGreaterThan(1, because: "the four-quadrant HDR block should encode with multiple partitions");
+
+        float[] armDecoded = HalvesToFloats(ReferenceDecoder.DecompressHdr(encoded, blockX, blockY, blockX, blockY));
+        float[] ourDecoded = StreamCodec.DecodeHdr(encoded, blockX, blockY, footprint);
+
+        CompareF16(ourDecoded, armDecoded, "HdrMultiPartition");
+    }
+
+    [Theory]
+    [MemberData(nameof(AllFootprintTypes))]
+    public void EncodedHdrVaryingAlpha_DecodesUnderArmReference(FootprintType footprintType)
+    {
+        // HDR content whose alpha varies drives the RGB+HDR-alpha search (CEM 15). The block must be
+        // spec-legal: ARM's decoder must read the alpha pair back in agreement with ours.
+        var (blockX, blockY) = ReferenceDecoder.ToBlockDimensions(footprintType);
+        Footprint footprint = Footprint.FromFootprintType(footprintType);
+        int width = blockX * 2;
+        int height = blockY * 2;
+        Half[] pixels = HdrVaryingAlpha(width, height);
+
+        byte[] encoded = StreamCodec.EncodeHdr(pixels, width, height, footprint);
+        float[] armDecoded = HalvesToFloats(ReferenceDecoder.DecompressHdr(encoded, width, height, blockX, blockY));
+        float[] ourDecoded = StreamCodec.DecodeHdr(encoded, width, height, footprint);
+
+        CompareF16(ourDecoded, armDecoded, $"HdrVaryingAlpha_{footprintType}");
+    }
+
+    // A colinear HDR colour ramp with a co-varying HDR alpha ramp — content the RGB+alpha mode
+    // (CEM 15) can fit with a single endpoint line.
+    private static Half[] HdrVaryingAlpha(int width, int height)
+    {
+        Half[] pixels = new Half[width * height * 4];
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                int idx = ((y * width) + x) * 4;
+                float t = (float)(x + y) / Math.Max(1, width + height - 2);
+                pixels[idx] = (Half)(1.0f + (3.0f * t));
+                pixels[idx + 1] = (Half)(2.0f + (1.0f * t));
+                pixels[idx + 2] = (Half)(3.0f - (2.0f * t));
+                pixels[idx + 3] = (Half)(0.5f + (2.0f * t));
+            }
+        }
+
+        return pixels;
+    }
+
     private static Half[] HdrGradient(int width, int height)
     {
         Half[] pixels = new Half[width * height * 4];
@@ -144,6 +238,64 @@ public class HdrEncoderReferenceTests
             pixels[i + 1] = g;
             pixels[i + 2] = b;
             pixels[i + 3] = a;
+        }
+
+        return pixels;
+    }
+
+    // Two HDR colour regions split left/right, each a vertical ramp — poorly served by one endpoint
+    // line, so the encoder may partition.
+    private static Half[] HdrTwoRegion(int width, int height)
+    {
+        Half[] pixels = new Half[width * height * 4];
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                int idx = ((y * width) + x) * 4;
+                float t = (float)y / Math.Max(1, height - 1);
+                if (x < width / 2)
+                {
+                    pixels[idx] = (Half)4.0f;
+                    pixels[idx + 1] = (Half)(0.5f + (3.0f * t));
+                    pixels[idx + 2] = (Half)0.5f;
+                }
+                else
+                {
+                    pixels[idx] = (Half)0.5f;
+                    pixels[idx + 1] = (Half)(0.5f + (3.0f * t));
+                    pixels[idx + 2] = (Half)4.0f;
+                }
+
+                pixels[idx + 3] = (Half)1.0f;
+            }
+        }
+
+        return pixels;
+    }
+
+    // Four saturated solid HDR colours, one per quadrant — four well-separated points in RGB space
+    // that no single (or double) endpoint line covers, eliciting a multi-partition fit.
+    private static Half[] HdrFourQuadrant(int width, int height)
+    {
+        (float R, float G, float B)[] quadrant =
+        [
+            (4.0f, 0.25f, 0.25f), (0.25f, 4.0f, 0.25f), (0.25f, 0.25f, 4.0f), (4.0f, 4.0f, 0.25f),
+        ];
+
+        Half[] pixels = new Half[width * height * 4];
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                int idx = ((y * width) + x) * 4;
+                int cell = ((y < height / 2) ? 0 : 2) + ((x < width / 2) ? 0 : 1);
+                (float r, float g, float b) = quadrant[cell];
+                pixels[idx] = (Half)r;
+                pixels[idx + 1] = (Half)g;
+                pixels[idx + 2] = (Half)b;
+                pixels[idx + 3] = (Half)1.0f;
+            }
         }
 
         return pixels;

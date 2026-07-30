@@ -74,4 +74,19 @@ public class HdrEndpointEncoderTests
         Assert.Equal(low, recoveredLow);
         Assert.Equal(high, recoveredHigh);
     }
+
+    [Fact]
+    public void Encode_RgbDirectHdrAlpha_RecoversRgbAndAlpha()
+    {
+        // CEM 15: RGB as CEM 11 direct, plus an HDR alpha pair. Alpha is a 7-bit (value >> 9) field
+        // (low 9 bits discarded), so distinct alpha multiples of 0x200 recover exactly and pin the
+        // alpha slots (6/7) against an RGB mix-up.
+        var low = new RgbaHdrColor(0x1000, 0x2000, 0x2200, 0x2400);
+        var high = new RgbaHdrColor(0x4000, 0x5000, 0x6200, 0x7800);
+
+        (RgbaHdrColor recoveredLow, RgbaHdrColor recoveredHigh) = RoundTrip(ColorEndpointMode.HdrRgbDirectHdrAlpha, low, high);
+
+        Assert.Equal(low, recoveredLow);
+        Assert.Equal(high, recoveredHigh);
+    }
 }

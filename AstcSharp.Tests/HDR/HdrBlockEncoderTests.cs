@@ -22,6 +22,11 @@ public class HdrBlockEncoderTests
     // channel to inflate the ratio) and genuinely achievable by a single endpoint line.
     private const float MaxMeanRelError = 0.05f;
 
+    // The RGB+alpha mode (CEM 15) fits four channels and stores alpha in a coarser 7-bit (>> 9) field
+    // than RGB's (>> 8), so a colinear four-channel ramp reconstructs slightly less tightly than the
+    // RGB-only cases. A marginally looser bar keeps the test meaningful without masking a bad fit.
+    private const float MaxMeanRelErrorWithAlpha = 0.07f;
+
     [Theory]
     [MemberData(nameof(Footprints))]
     public void Encode_HdrColorRamp_ReconstructsCloselyViaRgbMode(FootprintType footprintType)
@@ -50,6 +55,21 @@ public class HdrBlockEncoderTests
         float[] decoded = StreamCodec.DecodeHdr(encoded, width, height, footprint);
 
         AssertMeanRelativeErrorAtMost(pixels, decoded, MaxMeanRelError);
+    }
+
+    [Theory]
+    [MemberData(nameof(Footprints))]
+    public void Encode_HdrColorRampWithAlpha_ReconstructsCloselyViaAlphaMode(FootprintType footprintType)
+    {
+        Footprint footprint = Footprint.FromFootprintType(footprintType);
+        int width = footprint.Width;
+        int height = footprint.Height;
+        Half[] pixels = ColorRampWithAlpha(width, height);
+
+        byte[] encoded = StreamCodec.EncodeHdr(pixels, width, height, footprint);
+        float[] decoded = StreamCodec.DecodeHdr(encoded, width, height, footprint);
+
+        AssertMeanRelativeErrorAtMost(pixels, decoded, MaxMeanRelErrorWithAlpha);
     }
 
     // Per-channel ramps between HDR values bounded away from zero, colinear in RGB space.
@@ -85,6 +105,27 @@ public class HdrBlockEncoderTests
                 pixels[idx + 1] = (Half)v;
                 pixels[idx + 2] = (Half)v;
                 pixels[idx + 3] = (Half)1.0f;
+            }
+        }
+
+        return pixels;
+    }
+
+    // A colinear RGB ramp plus a co-varying HDR alpha ramp, all bounded away from zero — content the
+    // CEM 15 RGB+alpha mode fits with a single endpoint line.
+    private static Half[] ColorRampWithAlpha(int width, int height)
+    {
+        Half[] pixels = new Half[width * height * 4];
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                int idx = ((y * width) + x) * 4;
+                float t = (float)(x + y) / Math.Max(1, width + height - 2);
+                pixels[idx] = (Half)(1.0f + (3.0f * t));
+                pixels[idx + 1] = (Half)(2.0f + (2.0f * t));
+                pixels[idx + 2] = (Half)(4.0f - (2.0f * t));
+                pixels[idx + 3] = (Half)(0.5f + (2.0f * t));
             }
         }
 

@@ -43,25 +43,35 @@ internal readonly struct HdrColorStrategy : IColorSpaceStrategy<RgbaHdrColor>
         => HdrEndpointFitter.FitSubsets(texels, assignment, partitionCount, subsetLow, subsetHigh);
 
     /// <summary>
-    /// Picks the HDR endpoint modes worth trying, cheapest-content-fit first. Grey blocks add the
-    /// luminance mode (CEM 2, 2 values); the RGB-direct mode (CEM 11) always applies and is the only
-    /// choice for chromatic content. Both force alpha to 1.0, so alpha does not affect the choice.
+    /// Picks the HDR endpoint modes worth trying, cheapest-content-fit first. Grey opaque blocks add
+    /// the luminance mode (CEM 2, 2 values), the RGB-direct mode (CEM 11) applies to any opaque
+    /// content. Blocks whose alpha is not a constant 1.0 use the RGB+HDR-alpha mode (CEM 15), the
+    /// only implemented mode that carries alpha. CEM 2 and CEM 11 force alpha to 1.0, so they are
+    /// offered only when the content is actually opaque.
     /// </summary>
     public int SelectCandidateModes(ReadOnlySpan<RgbaHdrColor> texels, Span<ColorEndpointMode> modes)
     {
         bool grey = true;
+        bool opaque = true;
         foreach (RgbaHdrColor texel in texels)
         {
             grey &= texel.R == texel.G && texel.G == texel.B;
+            opaque &= texel.A == Fp16.One;
         }
 
         int count = 0;
-        if (grey)
+        if (grey && opaque)
         {
             modes[count++] = ColorEndpointMode.HdrLumaLargeRange;
         }
 
-        modes[count++] = ColorEndpointMode.HdrRgbDirect;
+        if (opaque)
+        {
+            modes[count++] = ColorEndpointMode.HdrRgbDirect;
+        }
+
+        // The RGB+alpha mode always applies and is the only legal choice when alpha varies.
+        modes[count++] = ColorEndpointMode.HdrRgbDirectHdrAlpha;
         return count;
     }
 

@@ -24,6 +24,11 @@ internal static class HdrEndpointEncoder
     // CEM 11 direct blue is a 7-bit field: value = channel >> 9, low 7 bits kept.
     private const int BlueFieldMask = 0x7F;
 
+    // CEM 15 simple alpha sub-mode is selected when both v6[7] and v7[7] are set; each alpha value is
+    // then a 7-bit field (channel >> 9) in the low bits.
+    private const int SimpleAlphaSelectorFlag = 0x80;
+    private const int AlphaFieldMask = 0x7F;
+
     /// <summary>
     /// Encodes <paramref name="low"/>/<paramref name="high"/> for <paramref name="mode"/> into
     /// quantised colour values written to <paramref name="colorValues"/> (length must be at least
@@ -36,6 +41,7 @@ internal static class HdrEndpointEncoder
         {
             case ColorEndpointMode.HdrLumaLargeRange: EncodeLumaLargeRange(colorRange, colorValues, low, high); break;
             case ColorEndpointMode.HdrRgbDirect: EncodeRgbDirect(colorRange, colorValues, low, high); break;
+            case ColorEndpointMode.HdrRgbDirectHdrAlpha: EncodeRgbDirectHdrAlpha(colorRange, colorValues, low, high); break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(mode), mode, "Unsupported HDR endpoint mode for encoding");
         }
@@ -67,6 +73,20 @@ internal static class HdrEndpointEncoder
         colorValues[3] = QuantizeByte(high.G >> 8, colorRange);
         colorValues[4] = QuantizeByte(MajorComponentDirectFlag | ((low.B >> 9) & BlueFieldMask), colorRange);
         colorValues[5] = QuantizeByte(MajorComponentDirectFlag | ((high.B >> 9) & BlueFieldMask), colorRange);
+    }
+
+    /// <summary>
+    /// CEM 15 (HDR RGB + HDR alpha): RGB in values 0–5 exactly as CEM 11 direct, then the alpha pair
+    /// in v6/v7 via the simple alpha sub-mode. That sub-mode is selected when both v6[7] and v7[7] are
+    /// set, after which each alpha value is a 7-bit <c>(channel &gt;&gt; 9)</c> field, decoded as
+    /// <c>field &lt;&lt; 5</c> to the 12-bit intermediate (then <c>&lt;&lt; 4</c> to FP16). All four
+    /// channels blend in the LNS domain, so this needs no special reconstruction handling.
+    /// </summary>
+    private static void EncodeRgbDirectHdrAlpha(int colorRange, Span<int> colorValues, RgbaHdrColor low, RgbaHdrColor high)
+    {
+        EncodeRgbDirect(colorRange, colorValues, low, high);
+        colorValues[6] = QuantizeByte(SimpleAlphaSelectorFlag | ((low.A >> 9) & AlphaFieldMask), colorRange);
+        colorValues[7] = QuantizeByte(SimpleAlphaSelectorFlag | ((high.A >> 9) & AlphaFieldMask), colorRange);
     }
 
     /// <summary>
