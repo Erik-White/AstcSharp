@@ -75,12 +75,13 @@ public class HdrBlockEncoderTests
     }
 
     [Fact]
-    public void Encode_SmoothGradientBlock_UsesExtraSearchNotJustSinglePartition()
+    public void Encode_SmoothGradientBlock_SelectsDualPlane()
     {
-        // A smooth HDR gradient reconstructs several dB better with dual-plane than with a single
-        // partition (measured in HdrEarlyOutSweep), but its single-partition error is low. This guards
-        // the tuned early-out threshold: if it regresses upward the encoder would early-out to a
-        // single-partition block here, so requiring a non-single layout pins the fix in place.
+        // A smooth HDR gradient whose channels vary independently reconstructs several dB better with
+        // a dual-plane split than with a single partition (measured in HdrEarlyOutSweep), at low
+        // single-partition error. Asserting dual-plane specifically guards two things at once: the
+        // tuned early-out threshold (a regression upward would early-out to single-partition here) and
+        // that the dual-plane HDR search is reached and wins for independently-varying channels.
         Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint8x8);
         Half[] pixels = TestImages.SmoothGradientHdr(footprint.Width, footprint.Height);
 
@@ -88,8 +89,7 @@ public class HdrBlockEncoderTests
 
         UInt128 bits = BinaryPrimitives.ReadUInt128LittleEndian(encoded.AsSpan(0, 16));
         BlockInfo info = BlockModeDecoder.Decode(bits);
-        bool usedExtraSearch = info.PartitionCount > 1 || info.DualPlane.Enabled;
-        Assert.True(usedExtraSearch, $"expected a multi-partition or dual-plane block, got single-partition (mode {info.EndpointMode0})");
+        Assert.True(info.DualPlane.Enabled, $"expected a dual-plane block, got {(info.PartitionCount > 1 ? "multi-partition" : "single-partition")} (mode {info.EndpointMode0})");
     }
 
     // Per-channel ramps between HDR values bounded away from zero, colinear in RGB space.

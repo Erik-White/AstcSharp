@@ -201,6 +201,31 @@ public class HdrEncoderReferenceTests
         CompareF16(ourDecoded, armDecoded, "HdrMultiPartition");
     }
 
+    [Fact]
+    public void EncodedHdrDualPlane_DecodesUnderArmReference()
+    {
+        // A smooth HDR gradient whose channels vary independently drives the encoder to a
+        // single-partition dual-plane block (spec §C.2.20): one channel gets its own weight plane.
+        // Its bitstream — the dual-plane block mode, the 2-bit colour-component selector, and the two
+        // interleaved weight planes — must be spec-legal, so assert dual-plane was actually selected,
+        // then require ARM to read it back in agreement with our decoder.
+        var footprintType = FootprintType.Footprint8x8;
+        var (blockX, blockY) = ReferenceDecoder.ToBlockDimensions(footprintType);
+        Footprint footprint = Footprint.FromFootprintType(footprintType);
+        Half[] pixels = TestImages.SmoothGradientHdr(blockX, blockY);
+
+        byte[] encoded = StreamCodec.EncodeHdr(pixels, blockX, blockY, footprint);
+
+        UInt128 bits = BinaryPrimitives.ReadUInt128LittleEndian(encoded.AsSpan(0, 16));
+        BlockInfo info = BlockModeDecoder.Decode(bits);
+        info.DualPlane.Enabled.Should().BeTrue(because: "an independently-varying HDR gradient should encode as a dual-plane block");
+
+        float[] armDecoded = HalvesToFloats(ReferenceDecoder.DecompressHdr(encoded, blockX, blockY, blockX, blockY));
+        float[] ourDecoded = StreamCodec.DecodeHdr(encoded, blockX, blockY, footprint);
+
+        CompareF16(ourDecoded, armDecoded, "HdrDualPlane");
+    }
+
     [Theory]
     [MemberData(nameof(AllFootprintTypes))]
     public void EncodedHdrVaryingAlpha_DecodesUnderArmReference(FootprintType footprintType)
