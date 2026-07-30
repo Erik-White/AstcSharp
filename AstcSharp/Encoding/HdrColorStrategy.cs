@@ -45,11 +45,12 @@ internal readonly struct HdrColorStrategy : IColorSpaceStrategy<RgbaHdrColor>
 
     /// <summary>
     /// Picks the HDR endpoint modes worth trying, cheapest-content-fit first. Grey opaque blocks add
-    /// the luminance mode (CEM 2, 2 values). Opaque blocks add the RGB base+scale mode (CEM 7, 4
+    /// the two luminance modes (CEM 2 large-range and CEM 3 small-range, 2 values each — CEM 3 gives a
+    /// finer base step over a narrow luma span). Opaque blocks add the RGB base+scale mode (CEM 7, 4
     /// values — cheaper, so it can win on content whose dark endpoint is a uniformly dimmed version of
     /// the bright one) and the RGB-direct mode (CEM 11, 6 values). Blocks whose alpha is not a constant
-    /// 1.0 use the RGB+HDR-alpha mode (CEM 15), the only implemented mode that carries alpha. CEM 2,
-    /// CEM 7, and CEM 11 force alpha to 1.0, so they are offered only when the content is opaque.
+    /// 1.0 use the RGB+HDR-alpha mode (CEM 15), the only implemented mode that carries alpha. Every
+    /// mode except CEM 15 forces alpha to 1.0, so they are offered only when the content is opaque.
     /// </summary>
     public int SelectCandidateModes(ReadOnlySpan<RgbaHdrColor> texels, Span<ColorEndpointMode> modes)
     {
@@ -65,6 +66,7 @@ internal readonly struct HdrColorStrategy : IColorSpaceStrategy<RgbaHdrColor>
         if (grey && opaque)
         {
             modes[count++] = ColorEndpointMode.HdrLumaLargeRange;
+            modes[count++] = ColorEndpointMode.HdrLumaSmallRange;
         }
 
         if (opaque)

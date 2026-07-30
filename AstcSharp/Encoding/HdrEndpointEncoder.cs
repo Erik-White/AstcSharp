@@ -41,6 +41,17 @@ internal static class HdrEndpointEncoder
     private const int BaseScaleFieldShift = 9;
     private const int MaxSevenBitField = 0x7F;
 
+    // CEM 3 (HDR luma, small range) packs a base luma and a delta into two values, choosing between
+    // two layouts by the mode bit v0[7]. Luma is a 12-bit intermediate: value = channel >> 4.
+    private const int SmallRangeLumaShift = 4;
+    private const int SmallRangeModeBitFlag = 0x80;
+
+    // Mode-clear layout (v0[7] = 0): base is stored at step 2 (finer), delta at step 2, max delta 30.
+    private const int SmallRangeFineDeltaMax = 30;
+
+    // Largest 12-bit luma the decoder produces (spec §C.2.14 clamps y1 to this).
+    private const int MaxLuma12Bit = 0xFFF;
+
     /// <summary>
     /// Encodes <paramref name="low"/>/<paramref name="high"/> for <paramref name="mode"/> into
     /// quantised colour values written to <paramref name="colorValues"/> (length must be at least
@@ -52,6 +63,7 @@ internal static class HdrEndpointEncoder
         switch (mode)
         {
             case ColorEndpointMode.HdrLumaLargeRange: EncodeLumaLargeRange(colorRange, colorValues, low, high); break;
+            case ColorEndpointMode.HdrLumaSmallRange: EncodeLumaSmallRange(colorRange, colorValues, low, high); break;
             case ColorEndpointMode.HdrRgbBaseScale: EncodeRgbBaseScale(colorRange, colorValues, low, high); break;
             case ColorEndpointMode.HdrRgbDirect: EncodeRgbDirect(colorRange, colorValues, low, high); break;
             case ColorEndpointMode.HdrRgbDirectHdrAlpha: EncodeRgbDirectHdrAlpha(colorRange, colorValues, low, high); break;
@@ -71,6 +83,40 @@ internal static class HdrEndpointEncoder
         int lumaHigh = LnsLuma(high);
         colorValues[0] = QuantizeByte(lumaLow >> 8, colorRange);
         colorValues[1] = QuantizeByte(lumaHigh >> 8, colorRange);
+    }
+
+    /// <summary>
+    /// CEM 3 (HDR luminance, small range): a base luma plus a non-negative delta, giving a much finer
+    /// base step than CEM 2 (large range) over a narrow luma span. Two layouts are selected by the
+    /// mode bit v0[7]: the mode-clear layout stores an 11-bit base at step 2 with delta ≤ 30, the
+    /// mode-set layout a 10-bit base at step 4 with delta ≤ 124. This picks the finer (mode-clear)
+    /// layout whenever the luma delta fits it, matching the decoder's reconstruction exactly.
+    /// </summary>
+    private static void EncodeLumaSmallRange(int colorRange, Span<int> colorValues, RgbaHdrColor low, RgbaHdrColor high)
+    {
+        // 12-bit intermediate luma; endpoints ordered low-to-high so the delta is non-negative.
+        int baseLuma = Math.Clamp(LnsLuma(low) >> SmallRangeLumaShift, 0, MaxLuma12Bit);
+        int highLuma = Math.Clamp(LnsLuma(high) >> SmallRangeLumaShift, 0, MaxLuma12Bit);
+        int delta = highLuma - baseLuma;
+
+        int v0, v1;
+        if (delta <= SmallRangeFineDeltaMax)
+        {
+            // Mode-clear: y0 = (v1 & 0xF0) << 4 | (v0 & 0x7F) << 1; d = (v1 & 0x0F) << 1.
+            // Base and delta are at step 2, so drop the low bit of each.
+            v0 = (baseLuma >> 1) & 0x7F;
+            v1 = (((baseLuma >> 8) & 0x0F) << 4) | ((delta >> 1) & 0x0F);
+        }
+        else
+        {
+            // Mode-set: y0 = (v1 & 0xE0) << 4 | (v0 & 0x7F) << 2; d = (v1 & 0x1F) << 2.
+            // Base and delta are at step 4, so drop the low two bits of each.
+            v0 = SmallRangeModeBitFlag | ((baseLuma >> 2) & 0x7F);
+            v1 = (((baseLuma >> 9) & 0x07) << 5) | ((delta >> 2) & 0x1F);
+        }
+
+        colorValues[0] = QuantizeByte(v0, colorRange);
+        colorValues[1] = QuantizeByte(v1, colorRange);
     }
 
     /// <summary>

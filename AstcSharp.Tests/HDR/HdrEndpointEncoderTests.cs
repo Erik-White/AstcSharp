@@ -47,6 +47,35 @@ public class HdrEndpointEncoderTests
     }
 
     [Fact]
+    public void Encode_LumaSmallRange_FineDelta_RecoversGreyEndpoints()
+    {
+        // CEM 3 mode-clear layout: 11-bit base at step 2, delta ≤ 30. Exact recovery needs the 16-bit
+        // luma's low 5 bits zero (base step 2 → << 4). base 12-bit 0x400 (→ 0x4000), delta 20 (→ high
+        // 12-bit 0x414 → 0x4140), both even and within the fine-delta range.
+        var low = new RgbaHdrColor(0x4000, 0x4000, 0x4000, AlphaOne);
+        var high = new RgbaHdrColor(0x4140, 0x4140, 0x4140, AlphaOne);
+
+        (RgbaHdrColor recoveredLow, RgbaHdrColor recoveredHigh) = RoundTrip(ColorEndpointMode.HdrLumaSmallRange, low, high);
+
+        Assert.Equal(low, recoveredLow);
+        Assert.Equal(high, recoveredHigh);
+    }
+
+    [Fact]
+    public void Encode_LumaSmallRange_WideDelta_RecoversGreyEndpoints()
+    {
+        // CEM 3 mode-set layout (delta > 30): 10-bit base at step 4, delta ≤ 124 at step 4. base
+        // 12-bit 0x400 (→ 0x4000), delta 40 (→ high 12-bit 0x428 → 0x4280), both multiples of 4.
+        var low = new RgbaHdrColor(0x4000, 0x4000, 0x4000, AlphaOne);
+        var high = new RgbaHdrColor(0x4280, 0x4280, 0x4280, AlphaOne);
+
+        (RgbaHdrColor recoveredLow, RgbaHdrColor recoveredHigh) = RoundTrip(ColorEndpointMode.HdrLumaSmallRange, low, high);
+
+        Assert.Equal(low, recoveredLow);
+        Assert.Equal(high, recoveredHigh);
+    }
+
+    [Fact]
     public void Encode_RgbDirect_RecoversRgbEndpoints()
     {
         // CEM 11 direct sub-mode: R/G store the top byte (low 8 bits discarded), B stores a 7-bit

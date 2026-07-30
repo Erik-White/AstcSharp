@@ -126,6 +126,30 @@ public class HdrEncoderReferenceTests
         CompareF16(ourDecoded, armDecoded, "HdrUniformDarkening");
     }
 
+    [Fact]
+    public void EncodedHdrNarrowGrayRange_SelectsLumaSmallRangeAndDecodesUnderArmReference()
+    {
+        // A grey block whose luma spans only a narrow range is what CEM 3 (small range) is for: its
+        // finer base step beats CEM 2 (large range) here. Assert the small-range mode is chosen, then
+        // require ARM to read the bitstream in agreement with our decoder.
+        var footprintType = FootprintType.Footprint6x6;
+        var (blockX, blockY) = ReferenceDecoder.ToBlockDimensions(footprintType);
+        Footprint footprint = Footprint.FromFootprintType(footprintType);
+        Half[] pixels = HdrNarrowGrayRamp(blockX, blockY);
+
+        byte[] encoded = StreamCodec.EncodeHdr(pixels, blockX, blockY, footprint);
+
+        UInt128 bits = BinaryPrimitives.ReadUInt128LittleEndian(encoded.AsSpan(0, 16));
+        BlockInfo info = BlockModeDecoder.Decode(bits);
+        info.EndpointMode0.Should().Be(
+            ColorEndpointMode.HdrLumaSmallRange, because: "a narrow grey luma span is the small-range luminance mode's ideal content");
+
+        float[] armDecoded = HalvesToFloats(ReferenceDecoder.DecompressHdr(encoded, blockX, blockY, blockX, blockY));
+        float[] ourDecoded = StreamCodec.DecodeHdr(encoded, blockX, blockY, footprint);
+
+        CompareF16(ourDecoded, armDecoded, "HdrNarrowGrayRange");
+    }
+
     // Footprints large enough to host distinct colour regions, where the encoder may pick a
     // multi-partition encoding (the HDR analogue of the LDR PartitionableFootprints set).
     public static TheoryData<FootprintType> PartitionableFootprints =>
@@ -327,6 +351,27 @@ public class HdrEncoderReferenceTests
             {
                 int idx = ((y * width) + x) * 4;
                 float v = 8.0f * (x + y) / Math.Max(1, width + height - 2);
+                pixels[idx] = (Half)v;
+                pixels[idx + 1] = (Half)v;
+                pixels[idx + 2] = (Half)v;
+                pixels[idx + 3] = (Half)1.0f;
+            }
+        }
+
+        return pixels;
+    }
+
+    // A grey ramp over a narrow HDR luma span (2.0 to ~2.25), where CEM 3's finer base step wins over
+    // CEM 2's coarse large-range step.
+    private static Half[] HdrNarrowGrayRamp(int width, int height)
+    {
+        Half[] pixels = new Half[width * height * 4];
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                int idx = ((y * width) + x) * 4;
+                float v = 2.0f + (0.25f * (x + y) / Math.Max(1, width + height - 2));
                 pixels[idx] = (Half)v;
                 pixels[idx + 1] = (Half)v;
                 pixels[idx + 2] = (Half)v;
