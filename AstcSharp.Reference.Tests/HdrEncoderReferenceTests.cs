@@ -34,7 +34,7 @@ public class HdrEncoderReferenceTests
         int height = blockY;
 
         // A constant HDR colour above the LDR range drives the HDR void-extent path.
-        Half[] pixels = SolidImage(width, height, (Half)2.5f, (Half)1.25f, (Half)3.75f, (Half)1.0f);
+        Half[] pixels = TestImages.SolidHdr(width, height, (Half)2.5f, (Half)1.25f, (Half)3.75f, (Half)1.0f);
         byte[] encoded = StreamCodec.EncodeHdr(pixels, width, height, footprint);
 
         float[] armDecoded = HalvesToFloats(ReferenceDecoder.DecompressHdr(encoded, width, height, blockX, blockY));
@@ -54,7 +54,7 @@ public class HdrEncoderReferenceTests
         int width = footprint.Width;
         int height = footprint.Height;
 
-        Half[] pixels = SolidImage(width, height, (Half)r, (Half)g, (Half)b, (Half)a);
+        Half[] pixels = TestImages.SolidHdr(width, height, (Half)r, (Half)g, (Half)b, (Half)a);
         byte[] encoded = StreamCodec.EncodeHdr(pixels, width, height, footprint);
 
         float[] armDecoded = HalvesToFloats(ReferenceDecoder.DecompressHdr(encoded, width, height, 6, 6));
@@ -74,7 +74,7 @@ public class HdrEncoderReferenceTests
         Footprint footprint = Footprint.FromFootprintType(footprintType);
         int width = blockX * 2;
         int height = blockY * 2;
-        Half[] pixels = HdrGradient(width, height);
+        Half[] pixels = TestImages.ChromaticGradientHdr(width, height);
 
         byte[] encoded = StreamCodec.EncodeHdr(pixels, width, height, footprint);
         float[] armDecoded = HalvesToFloats(ReferenceDecoder.DecompressHdr(encoded, width, height, blockX, blockY));
@@ -169,7 +169,7 @@ public class HdrEncoderReferenceTests
         Footprint footprint = Footprint.FromFootprintType(footprintType);
         int width = blockX * 2;
         int height = blockY * 2;
-        Half[] pixels = HdrTwoRegion(width, height);
+        Half[] pixels = TestImages.TwoRegionHdr(width, height);
 
         byte[] encoded = StreamCodec.EncodeHdr(pixels, width, height, footprint);
         float[] armDecoded = HalvesToFloats(ReferenceDecoder.DecompressHdr(encoded, width, height, blockX, blockY));
@@ -187,7 +187,7 @@ public class HdrEncoderReferenceTests
         var footprintType = FootprintType.Footprint12x12;
         var (blockX, blockY) = ReferenceDecoder.ToBlockDimensions(footprintType);
         Footprint footprint = Footprint.FromFootprintType(footprintType);
-        Half[] pixels = HdrFourQuadrant(blockX, blockY);
+        Half[] pixels = TestImages.FourQuadrantHdr(blockX, blockY);
 
         byte[] encoded = StreamCodec.EncodeHdr(pixels, blockX, blockY, footprint);
 
@@ -231,7 +231,7 @@ public class HdrEncoderReferenceTests
         Footprint footprint = Footprint.FromFootprintType(footprintType);
         int width = blockX * 2;
         int height = blockY * 2;
-        Half[] pixels = HdrGradient(width, height);
+        Half[] pixels = TestImages.ChromaticGradientHdr(width, height);
 
         // Our encoder, decoded by our decoder.
         byte[] ourEncoded = StreamCodec.EncodeHdr(pixels, width, height, footprint);
@@ -323,25 +323,6 @@ public class HdrEncoderReferenceTests
         return pixels;
     }
 
-    private static Half[] HdrGradient(int width, int height)
-    {
-        Half[] pixels = new Half[width * height * 4];
-        for (int y = 0; y < height; y++)
-        {
-            for (int x = 0; x < width; x++)
-            {
-                int idx = ((y * width) + x) * 4;
-                float t = (float)x / Math.Max(1, width - 1);
-                pixels[idx] = (Half)(4.0f * t);
-                pixels[idx + 1] = (Half)(2.0f * (1.0f - t));
-                pixels[idx + 2] = (Half)(1.0f + (3.0f * t));
-                pixels[idx + 3] = (Half)1.0f;
-            }
-        }
-
-        return pixels;
-    }
-
     private static Half[] HdrGrayscaleRamp(int width, int height)
     {
         Half[] pixels = new Half[width * height * 4];
@@ -375,78 +356,6 @@ public class HdrEncoderReferenceTests
                 pixels[idx] = (Half)v;
                 pixels[idx + 1] = (Half)v;
                 pixels[idx + 2] = (Half)v;
-                pixels[idx + 3] = (Half)1.0f;
-            }
-        }
-
-        return pixels;
-    }
-
-    private static Half[] SolidImage(int width, int height, Half r, Half g, Half b, Half a)
-    {
-        Half[] pixels = new Half[width * height * 4];
-        for (int i = 0; i < pixels.Length; i += 4)
-        {
-            pixels[i] = r;
-            pixels[i + 1] = g;
-            pixels[i + 2] = b;
-            pixels[i + 3] = a;
-        }
-
-        return pixels;
-    }
-
-    // Two HDR colour regions split left/right, each a vertical ramp — poorly served by one endpoint
-    // line, so the encoder may partition.
-    private static Half[] HdrTwoRegion(int width, int height)
-    {
-        Half[] pixels = new Half[width * height * 4];
-        for (int y = 0; y < height; y++)
-        {
-            for (int x = 0; x < width; x++)
-            {
-                int idx = ((y * width) + x) * 4;
-                float t = (float)y / Math.Max(1, height - 1);
-                if (x < width / 2)
-                {
-                    pixels[idx] = (Half)4.0f;
-                    pixels[idx + 1] = (Half)(0.5f + (3.0f * t));
-                    pixels[idx + 2] = (Half)0.5f;
-                }
-                else
-                {
-                    pixels[idx] = (Half)0.5f;
-                    pixels[idx + 1] = (Half)(0.5f + (3.0f * t));
-                    pixels[idx + 2] = (Half)4.0f;
-                }
-
-                pixels[idx + 3] = (Half)1.0f;
-            }
-        }
-
-        return pixels;
-    }
-
-    // Four saturated solid HDR colours, one per quadrant — four well-separated points in RGB space
-    // that no single (or double) endpoint line covers, eliciting a multi-partition fit.
-    private static Half[] HdrFourQuadrant(int width, int height)
-    {
-        (float R, float G, float B)[] quadrant =
-        [
-            (4.0f, 0.25f, 0.25f), (0.25f, 4.0f, 0.25f), (0.25f, 0.25f, 4.0f), (4.0f, 4.0f, 0.25f),
-        ];
-
-        Half[] pixels = new Half[width * height * 4];
-        for (int y = 0; y < height; y++)
-        {
-            for (int x = 0; x < width; x++)
-            {
-                int idx = ((y * width) + x) * 4;
-                int cell = ((y < height / 2) ? 0 : 2) + ((x < width / 2) ? 0 : 1);
-                (float r, float g, float b) = quadrant[cell];
-                pixels[idx] = (Half)r;
-                pixels[idx + 1] = (Half)g;
-                pixels[idx + 2] = (Half)b;
                 pixels[idx + 3] = (Half)1.0f;
             }
         }

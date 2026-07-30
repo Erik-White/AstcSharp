@@ -82,7 +82,7 @@ public class HdrBlockEncoderTests
         // the tuned early-out threshold: if it regresses upward the encoder would early-out to a
         // single-partition block here, so requiring a non-single layout pins the fix in place.
         Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint8x8);
-        Half[] pixels = SmoothGradient(footprint.Width, footprint.Height);
+        Half[] pixels = TestImages.SmoothGradientHdr(footprint.Width, footprint.Height);
 
         byte[] encoded = StreamCodec.EncodeHdr(pixels, footprint.Width, footprint.Height, footprint);
 
@@ -146,27 +146,6 @@ public class HdrBlockEncoderTests
                 pixels[idx + 1] = (Half)(2.0f + (2.0f * t));
                 pixels[idx + 2] = (Half)(4.0f - (2.0f * t));
                 pixels[idx + 3] = (Half)(0.5f + (2.0f * t));
-            }
-        }
-
-        return pixels;
-    }
-
-    // A smooth chromatic HDR gradient whose channels vary independently — a single endpoint line
-    // leaves error a second weight plane removes, so the encoder should choose dual-plane.
-    private static Half[] SmoothGradient(int width, int height)
-    {
-        Half[] pixels = new Half[width * height * 4];
-        for (int y = 0; y < height; y++)
-        {
-            for (int x = 0; x < width; x++)
-            {
-                int idx = ((y * width) + x) * 4;
-                float t = (float)(x + y) / Math.Max(1, width + height - 2);
-                pixels[idx] = (Half)(1.0f + (3.0f * t));
-                pixels[idx + 1] = (Half)(2.0f + (1.0f * t));
-                pixels[idx + 2] = (Half)(3.0f - (2.0f * t));
-                pixels[idx + 3] = (Half)1.0f;
             }
         }
 

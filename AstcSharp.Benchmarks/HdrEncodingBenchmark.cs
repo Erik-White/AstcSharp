@@ -32,10 +32,10 @@ public class HdrEncodingBenchmark
         int w = footprint.Width;
         int h = footprint.Height;
 
-        constant = Solid(w, h);
-        gradient = Gradient(w, h);
-        fourQuadrant = FourQuadrant(w, h);
-        decorrelatedAlpha = DecorrelatedAlpha(w, h);
+        constant = TestImages.SolidHdr(w, h, (Half)2.5f, (Half)1.25f, (Half)3.75f, (Half)1.0f);
+        gradient = TestImages.ChromaticGradientHdr(w, h);
+        fourQuadrant = TestImages.FourQuadrantHdr(w, h);
+        decorrelatedAlpha = TestImages.DecorrelatedAlphaHdr(w, h);
     }
 
     // Constant block -> void-extent fast path (no search).
@@ -57,66 +57,4 @@ public class HdrEncodingBenchmark
     [Benchmark]
     public int EncodeDecorrelatedAlpha()
         => StreamCodec.EncodeHdr(decorrelatedAlpha, footprint.Width, footprint.Height, footprint).Length;
-
-    private static Half[] Solid(int width, int height)
-    {
-        Half[] pixels = new Half[width * height * 4];
-        for (int i = 0; i < pixels.Length; i += 4)
-        {
-            pixels[i] = (Half)2.5f; pixels[i + 1] = (Half)1.25f; pixels[i + 2] = (Half)3.75f; pixels[i + 3] = (Half)1.0f;
-        }
-
-        return pixels;
-    }
-
-    private static Half[] Gradient(int width, int height)
-    {
-        Half[] pixels = new Half[width * height * 4];
-        for (int y = 0; y < height; y++)
-        {
-            for (int x = 0; x < width; x++)
-            {
-                int idx = ((y * width) + x) * 4;
-                float t = (float)x / Math.Max(1, width - 1);
-                pixels[idx] = (Half)(4.0f * t); pixels[idx + 1] = (Half)(2.0f * (1.0f - t)); pixels[idx + 2] = (Half)(1.0f + (2.0f * t)); pixels[idx + 3] = (Half)1.0f;
-            }
-        }
-
-        return pixels;
-    }
-
-    private static Half[] FourQuadrant(int width, int height)
-    {
-        (float R, float G, float B)[] quadrant = [(4.0f, 0.25f, 0.25f), (0.25f, 4.0f, 0.25f), (0.25f, 0.25f, 4.0f), (4.0f, 4.0f, 0.25f)];
-        Half[] pixels = new Half[width * height * 4];
-        for (int y = 0; y < height; y++)
-        {
-            for (int x = 0; x < width; x++)
-            {
-                int idx = ((y * width) + x) * 4;
-                int cell = ((y < height / 2) ? 0 : 2) + ((x < width / 2) ? 0 : 1);
-                (float r, float g, float b) = quadrant[cell];
-                pixels[idx] = (Half)r; pixels[idx + 1] = (Half)g; pixels[idx + 2] = (Half)b; pixels[idx + 3] = (Half)1.0f;
-            }
-        }
-
-        return pixels;
-    }
-
-    private static Half[] DecorrelatedAlpha(int width, int height)
-    {
-        Half[] pixels = new Half[width * height * 4];
-        for (int y = 0; y < height; y++)
-        {
-            for (int x = 0; x < width; x++)
-            {
-                int idx = ((y * width) + x) * 4;
-                float t = (float)(x + y) / Math.Max(1, width + height - 2);
-                Half up = (Half)(4.0f * t);
-                pixels[idx] = up; pixels[idx + 1] = up; pixels[idx + 2] = up; pixels[idx + 3] = (Half)(4.0f * (1.0f - t));
-            }
-        }
-
-        return pixels;
-    }
 }

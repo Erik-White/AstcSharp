@@ -38,11 +38,11 @@ public class HdrEarlyOutSweep
         [
             ("near-lossless", NearLossless(footprint.Width, footprint.Height)),
             ("gentle-ramp", GentleRamp(footprint.Width, footprint.Height)),
-            ("smooth-gradient", SmoothGradient(footprint.Width, footprint.Height)),
+            ("smooth-gradient", TestImages.SmoothGradientHdr(footprint.Width, footprint.Height)),
             ("subtle-two-region", SubtleTwoRegion(footprint.Width, footprint.Height)),
-            ("two-region", TwoRegion(footprint.Width, footprint.Height)),
-            ("four-quadrant", FourQuadrant(footprint.Width, footprint.Height)),
-            ("decorrelated-alpha", DecorrelatedAlpha(footprint.Width, footprint.Height)),
+            ("two-region", TestImages.TwoRegionHdr(footprint.Width, footprint.Height)),
+            ("four-quadrant", TestImages.FourQuadrantHdr(footprint.Width, footprint.Height)),
+            ("decorrelated-alpha", TestImages.DecorrelatedAlphaHdr(footprint.Width, footprint.Height)),
         ];
 
         this.output.WriteLine($"footprint={footprintType} (earlyOutError = threshold * {footprint.PixelCount * 4})");
@@ -181,27 +181,6 @@ public class HdrEarlyOutSweep
         return pixels;
     }
 
-    // A smooth chromatic HDR gradient: a single endpoint line fits well, so multi-partition should
-    // add little — the case where the early-out should fire.
-    private static Half[] SmoothGradient(int width, int height)
-    {
-        Half[] pixels = new Half[width * height * 4];
-        for (int y = 0; y < height; y++)
-        {
-            for (int x = 0; x < width; x++)
-            {
-                int idx = ((y * width) + x) * 4;
-                float t = (float)(x + y) / Math.Max(1, width + height - 2);
-                pixels[idx] = (Half)(1.0f + (3.0f * t));
-                pixels[idx + 1] = (Half)(2.0f + (1.0f * t));
-                pixels[idx + 2] = (Half)(3.0f - (2.0f * t));
-                pixels[idx + 3] = (Half)1.0f;
-            }
-        }
-
-        return pixels;
-    }
-
     // Two HDR regions that differ only slightly: single-partition error is moderate, so this is where
     // the threshold's exact value could plausibly decide whether the multi-partition search runs.
     private static Half[] SubtleTwoRegion(int width, int height)
@@ -217,66 +196,6 @@ public class HdrEarlyOutSweep
                 pixels[idx + 1] = (Half)(left ? 1.5f : 1.3f);
                 pixels[idx + 2] = (Half)(left ? 1.0f : 1.2f);
                 pixels[idx + 3] = (Half)1.0f;
-            }
-        }
-
-        return pixels;
-    }
-
-    private static Half[] TwoRegion(int width, int height)
-    {
-        Half[] pixels = new Half[width * height * 4];
-        for (int y = 0; y < height; y++)
-        {
-            for (int x = 0; x < width; x++)
-            {
-                int idx = ((y * width) + x) * 4;
-                float t = (float)y / Math.Max(1, height - 1);
-                if (x < width / 2)
-                {
-                    pixels[idx] = (Half)4.0f; pixels[idx + 1] = (Half)(0.5f + (3.0f * t)); pixels[idx + 2] = (Half)0.5f;
-                }
-                else
-                {
-                    pixels[idx] = (Half)0.5f; pixels[idx + 1] = (Half)(0.5f + (3.0f * t)); pixels[idx + 2] = (Half)4.0f;
-                }
-
-                pixels[idx + 3] = (Half)1.0f;
-            }
-        }
-
-        return pixels;
-    }
-
-    private static Half[] FourQuadrant(int width, int height)
-    {
-        (float R, float G, float B)[] quadrant = [(4.0f, 0.25f, 0.25f), (0.25f, 4.0f, 0.25f), (0.25f, 0.25f, 4.0f), (4.0f, 4.0f, 0.25f)];
-        Half[] pixels = new Half[width * height * 4];
-        for (int y = 0; y < height; y++)
-        {
-            for (int x = 0; x < width; x++)
-            {
-                int idx = ((y * width) + x) * 4;
-                int cell = ((y < height / 2) ? 0 : 2) + ((x < width / 2) ? 0 : 1);
-                (float r, float g, float b) = quadrant[cell];
-                pixels[idx] = (Half)r; pixels[idx + 1] = (Half)g; pixels[idx + 2] = (Half)b; pixels[idx + 3] = (Half)1.0f;
-            }
-        }
-
-        return pixels;
-    }
-
-    private static Half[] DecorrelatedAlpha(int width, int height)
-    {
-        Half[] pixels = new Half[width * height * 4];
-        for (int y = 0; y < height; y++)
-        {
-            for (int x = 0; x < width; x++)
-            {
-                int idx = ((y * width) + x) * 4;
-                float t = (float)(x + y) / Math.Max(1, width + height - 2);
-                Half up = (Half)(4.0f * t);
-                pixels[idx] = up; pixels[idx + 1] = up; pixels[idx + 2] = up; pixels[idx + 3] = (Half)(4.0f * (1.0f - t));
             }
         }
 
