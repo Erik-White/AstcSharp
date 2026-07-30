@@ -45,7 +45,7 @@ public class HdrEarlyOutSweep
             ("decorrelated-alpha", TestImages.DecorrelatedAlphaHdr(footprint.Width, footprint.Height)),
         ];
 
-        this.output.WriteLine($"footprint={footprintType} (earlyOutError = threshold * {footprint.PixelCount * 4})");
+        this.output.WriteLine($"footprint={footprintType} (earlyOutError = threshold * {footprint.PixelCount * BlockInfo.ChannelsPerPixel})");
         this.output.WriteLine("  content              singleErr        singlePSNR   fullPSNR   gain   fullLayout");
         foreach ((string name, Half[] pixels) in content)
         {
@@ -78,9 +78,9 @@ public class HdrEarlyOutSweep
         long error = 0;
         for (int t = 0; t < lnsTexels.Length; t++)
         {
-            for (int c = 0; c < 4; c++)
+            for (int c = 0; c < BlockInfo.ChannelsPerPixel; c++)
             {
-                int decodedLns = Fp16.ToLns(BitConverter.HalfToUInt16Bits((Half)decoded[(t * 4) + c]));
+                int decodedLns = Fp16.ToLns(BitConverter.HalfToUInt16Bits((Half)decoded[(t * BlockInfo.ChannelsPerPixel) + c]));
                 int sourceLns = c switch { 0 => lnsTexels[t].R, 1 => lnsTexels[t].G, 2 => lnsTexels[t].B, _ => lnsTexels[t].A };
                 long diff = decodedLns - sourceLns;
                 error += diff * diff;
@@ -99,10 +99,10 @@ public class HdrEarlyOutSweep
         RgbaHdrColor[] texels = new RgbaHdrColor[footprint.PixelCount];
         for (int i = 0; i < texels.Length; i++)
         {
-            ushort r = BitConverter.HalfToUInt16Bits(pixels[(i * 4) + 0]);
-            ushort g = BitConverter.HalfToUInt16Bits(pixels[(i * 4) + 1]);
-            ushort b = BitConverter.HalfToUInt16Bits(pixels[(i * 4) + 2]);
-            ushort a = BitConverter.HalfToUInt16Bits(pixels[(i * 4) + 3]);
+            ushort r = BitConverter.HalfToUInt16Bits(pixels[(i * BlockInfo.ChannelsPerPixel) + 0]);
+            ushort g = BitConverter.HalfToUInt16Bits(pixels[(i * BlockInfo.ChannelsPerPixel) + 1]);
+            ushort b = BitConverter.HalfToUInt16Bits(pixels[(i * BlockInfo.ChannelsPerPixel) + 2]);
+            ushort a = BitConverter.HalfToUInt16Bits(pixels[(i * BlockInfo.ChannelsPerPixel) + 3]);
             texels[i] = new RgbaHdrColor(
                 (ushort)Fp16.ToLns(r), (ushort)Fp16.ToLns(g), (ushort)Fp16.ToLns(b), (ushort)Fp16.ToLns(a));
         }
@@ -143,12 +143,12 @@ public class HdrEarlyOutSweep
     // error, so the extra search should add essentially nothing (the early-out's ideal case).
     private static Half[] NearLossless(int width, int height)
     {
-        Half[] pixels = new Half[width * height * 4];
+        Half[] pixels = new Half[width * height * BlockInfo.ChannelsPerPixel];
         for (int y = 0; y < height; y++)
         {
             for (int x = 0; x < width; x++)
             {
-                int idx = ((y * width) + x) * 4;
+                int idx = ((y * width) + x) * BlockInfo.ChannelsPerPixel;
                 float d = ((x + y) & 1) * 0.01f;
                 pixels[idx] = (Half)(2.0f + d);
                 pixels[idx + 1] = (Half)(1.5f + d);
@@ -164,12 +164,12 @@ public class HdrEarlyOutSweep
     // near-lossless and the smooth gradient.
     private static Half[] GentleRamp(int width, int height)
     {
-        Half[] pixels = new Half[width * height * 4];
+        Half[] pixels = new Half[width * height * BlockInfo.ChannelsPerPixel];
         for (int y = 0; y < height; y++)
         {
             for (int x = 0; x < width; x++)
             {
-                int idx = ((y * width) + x) * 4;
+                int idx = ((y * width) + x) * BlockInfo.ChannelsPerPixel;
                 float t = (float)(x + y) / Math.Max(1, width + height - 2);
                 pixels[idx] = (Half)(2.0f + (0.5f * t));
                 pixels[idx + 1] = (Half)(1.5f + (0.25f * t));
@@ -185,12 +185,12 @@ public class HdrEarlyOutSweep
     // the threshold's exact value could plausibly decide whether the multi-partition search runs.
     private static Half[] SubtleTwoRegion(int width, int height)
     {
-        Half[] pixels = new Half[width * height * 4];
+        Half[] pixels = new Half[width * height * BlockInfo.ChannelsPerPixel];
         for (int y = 0; y < height; y++)
         {
             for (int x = 0; x < width; x++)
             {
-                int idx = ((y * width) + x) * 4;
+                int idx = ((y * width) + x) * BlockInfo.ChannelsPerPixel;
                 bool left = x < width / 2;
                 pixels[idx] = (Half)(left ? 2.0f : 2.4f);
                 pixels[idx + 1] = (Half)(left ? 1.5f : 1.3f);

@@ -95,12 +95,12 @@ public class HdrBlockEncoderTests
     // Per-channel ramps between HDR values bounded away from zero, colinear in RGB space.
     private static Half[] ColorRamp(int width, int height)
     {
-        Half[] pixels = new Half[width * height * 4];
+        Half[] pixels = new Half[width * height * BlockInfo.ChannelsPerPixel];
         for (int y = 0; y < height; y++)
         {
             for (int x = 0; x < width; x++)
             {
-                int idx = ((y * width) + x) * 4;
+                int idx = ((y * width) + x) * BlockInfo.ChannelsPerPixel;
                 float t = (float)(x + y) / Math.Max(1, width + height - 2);
                 pixels[idx] = (Half)(1.0f + (3.0f * t));
                 pixels[idx + 1] = (Half)(2.0f + (2.0f * t));
@@ -114,12 +114,12 @@ public class HdrBlockEncoderTests
 
     private static Half[] GrayscaleRamp(int width, int height)
     {
-        Half[] pixels = new Half[width * height * 4];
+        Half[] pixels = new Half[width * height * BlockInfo.ChannelsPerPixel];
         for (int y = 0; y < height; y++)
         {
             for (int x = 0; x < width; x++)
             {
-                int idx = ((y * width) + x) * 4;
+                int idx = ((y * width) + x) * BlockInfo.ChannelsPerPixel;
                 float v = 1.0f + (5.0f * (x + y) / Math.Max(1, width + height - 2));
                 pixels[idx] = (Half)v;
                 pixels[idx + 1] = (Half)v;
@@ -135,12 +135,12 @@ public class HdrBlockEncoderTests
     // CEM 15 RGB+alpha mode fits with a single endpoint line.
     private static Half[] ColorRampWithAlpha(int width, int height)
     {
-        Half[] pixels = new Half[width * height * 4];
+        Half[] pixels = new Half[width * height * BlockInfo.ChannelsPerPixel];
         for (int y = 0; y < height; y++)
         {
             for (int x = 0; x < width; x++)
             {
-                int idx = ((y * width) + x) * 4;
+                int idx = ((y * width) + x) * BlockInfo.ChannelsPerPixel;
                 float t = (float)(x + y) / Math.Max(1, width + height - 2);
                 pixels[idx] = (Half)(1.0f + (3.0f * t));
                 pixels[idx + 1] = (Half)(2.0f + (2.0f * t));

@@ -1,3 +1,4 @@
+using AstcSharp.Core;
 using AstcSharp.IO;
 using AstcSharp.Tests.Utils;
 
@@ -78,7 +79,7 @@ public class UastcDecoderTests
 
     private static void AssertAllMagenta(byte[] buffer)
     {
-        for (int i = 0; i < buffer.Length; i += 4)
+        for (int i = 0; i < buffer.Length; i += BlockInfo.ChannelsPerPixel)
         {
             Assert.Equal(0xFF, buffer[i]);
             Assert.Equal(0x00, buffer[i + 1]);

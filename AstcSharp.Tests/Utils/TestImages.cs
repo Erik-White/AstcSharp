@@ -1,3 +1,5 @@
+using AstcSharp.Core;
+
 namespace AstcSharp.Tests.Utils;
 
 /// <summary>
@@ -14,17 +16,14 @@ namespace AstcSharp.Tests.Utils;
 /// </remarks>
 internal static class TestImages
 {
-    private const int Channels = 4;
-
-    // ---- LDR (byte / UNORM8) ----
 
     /// <summary>
     /// A constant colour filling the whole image.
     /// </summary>
     public static byte[] Solid(int width, int height, byte r, byte g, byte b, byte a)
     {
-        byte[] pixels = new byte[width * height * Channels];
-        for (int i = 0; i < pixels.Length; i += Channels)
+        byte[] pixels = new byte[width * height * BlockInfo.ChannelsPerPixel];
+        for (int i = 0; i < pixels.Length; i += BlockInfo.ChannelsPerPixel)
         {
             pixels[i] = r;
             pixels[i + 1] = g;
@@ -41,12 +40,12 @@ internal static class TestImages
     /// </summary>
     public static byte[] ChromaticGradient(int width, int height)
     {
-        byte[] pixels = new byte[width * height * Channels];
+        byte[] pixels = new byte[width * height * BlockInfo.ChannelsPerPixel];
         for (int y = 0; y < height; y++)
         {
             for (int x = 0; x < width; x++)
             {
-                int idx = ((y * width) + x) * Channels;
+                int idx = ((y * width) + x) * BlockInfo.ChannelsPerPixel;
                 byte v = (byte)(255 * x / Math.Max(1, width - 1));
                 pixels[idx] = v;
                 pixels[idx + 1] = (byte)(255 - v);
@@ -64,12 +63,12 @@ internal static class TestImages
     /// </summary>
     public static byte[] GrayscaleRamp(int width, int height)
     {
-        byte[] pixels = new byte[width * height * Channels];
+        byte[] pixels = new byte[width * height * BlockInfo.ChannelsPerPixel];
         for (int y = 0; y < height; y++)
         {
             for (int x = 0; x < width; x++)
             {
-                int idx = ((y * width) + x) * Channels;
+                int idx = ((y * width) + x) * BlockInfo.ChannelsPerPixel;
                 byte v = (byte)(255 * (x + y) / Math.Max(1, width + height - 2));
                 pixels[idx] = v;
                 pixels[idx + 1] = v;
@@ -88,12 +87,12 @@ internal static class TestImages
     /// </summary>
     public static byte[] TwoRegion(int width, int height)
     {
-        byte[] pixels = new byte[width * height * Channels];
+        byte[] pixels = new byte[width * height * BlockInfo.ChannelsPerPixel];
         for (int y = 0; y < height; y++)
         {
             for (int x = 0; x < width; x++)
             {
-                int idx = ((y * width) + x) * Channels;
+                int idx = ((y * width) + x) * BlockInfo.ChannelsPerPixel;
                 float t = (float)y / Math.Max(1, height - 1);
                 if (x < width / 2)
                 {
@@ -126,12 +125,12 @@ internal static class TestImages
             (240, 20, 20), (20, 240, 20), (20, 20, 240), (240, 240, 20),
         ];
 
-        byte[] pixels = new byte[width * height * Channels];
+        byte[] pixels = new byte[width * height * BlockInfo.ChannelsPerPixel];
         for (int y = 0; y < height; y++)
         {
             for (int x = 0; x < width; x++)
             {
-                int idx = ((y * width) + x) * Channels;
+                int idx = ((y * width) + x) * BlockInfo.ChannelsPerPixel;
                 int cell = ((y < height / 2) ? 0 : 2) + ((x < width / 2) ? 0 : 1);
                 (byte r, byte g, byte b) = quadrant[cell];
                 pixels[idx] = r; pixels[idx + 1] = g; pixels[idx + 2] = b; pixels[idx + 3] = 255;
@@ -147,12 +146,12 @@ internal static class TestImages
     /// </summary>
     public static byte[] DecorrelatedAlpha(int width, int height)
     {
-        byte[] pixels = new byte[width * height * Channels];
+        byte[] pixels = new byte[width * height * BlockInfo.ChannelsPerPixel];
         for (int y = 0; y < height; y++)
         {
             for (int x = 0; x < width; x++)
             {
-                int idx = ((y * width) + x) * Channels;
+                int idx = ((y * width) + x) * BlockInfo.ChannelsPerPixel;
                 float t = (float)(x + y) / Math.Max(1, width + height - 2);
                 byte up = (byte)(t * 255);
                 pixels[idx] = up; pixels[idx + 1] = up; pixels[idx + 2] = up;
@@ -163,15 +162,13 @@ internal static class TestImages
         return pixels;
     }
 
-    // ---- HDR (Half / FP16) ----
-
     /// <summary>
     /// A constant HDR colour filling the whole image.
     /// </summary>
     public static Half[] SolidHdr(int width, int height, Half r, Half g, Half b, Half a)
     {
-        Half[] pixels = new Half[width * height * Channels];
-        for (int i = 0; i < pixels.Length; i += Channels)
+        Half[] pixels = new Half[width * height * BlockInfo.ChannelsPerPixel];
+        for (int i = 0; i < pixels.Length; i += BlockInfo.ChannelsPerPixel)
         {
             pixels[i] = r;
             pixels[i + 1] = g;
@@ -188,12 +185,12 @@ internal static class TestImages
     /// </summary>
     public static Half[] ChromaticGradientHdr(int width, int height)
     {
-        Half[] pixels = new Half[width * height * Channels];
+        Half[] pixels = new Half[width * height * BlockInfo.ChannelsPerPixel];
         for (int y = 0; y < height; y++)
         {
             for (int x = 0; x < width; x++)
             {
-                int idx = ((y * width) + x) * Channels;
+                int idx = ((y * width) + x) * BlockInfo.ChannelsPerPixel;
                 float t = (float)x / Math.Max(1, width - 1);
                 pixels[idx] = (Half)(4.0f * t);
                 pixels[idx + 1] = (Half)(2.0f * (1.0f - t));
@@ -212,12 +209,12 @@ internal static class TestImages
     /// </summary>
     public static Half[] SmoothGradientHdr(int width, int height)
     {
-        Half[] pixels = new Half[width * height * Channels];
+        Half[] pixels = new Half[width * height * BlockInfo.ChannelsPerPixel];
         for (int y = 0; y < height; y++)
         {
             for (int x = 0; x < width; x++)
             {
-                int idx = ((y * width) + x) * Channels;
+                int idx = ((y * width) + x) * BlockInfo.ChannelsPerPixel;
                 float t = (float)(x + y) / Math.Max(1, width + height - 2);
                 pixels[idx] = (Half)(1.0f + (3.0f * t));
                 pixels[idx + 1] = (Half)(2.0f + (1.0f * t));
@@ -235,12 +232,12 @@ internal static class TestImages
     /// </summary>
     public static Half[] TwoRegionHdr(int width, int height)
     {
-        Half[] pixels = new Half[width * height * Channels];
+        Half[] pixels = new Half[width * height * BlockInfo.ChannelsPerPixel];
         for (int y = 0; y < height; y++)
         {
             for (int x = 0; x < width; x++)
             {
-                int idx = ((y * width) + x) * Channels;
+                int idx = ((y * width) + x) * BlockInfo.ChannelsPerPixel;
                 float t = (float)y / Math.Max(1, height - 1);
                 if (x < width / 2)
                 {
@@ -269,12 +266,12 @@ internal static class TestImages
             (4.0f, 0.25f, 0.25f), (0.25f, 4.0f, 0.25f), (0.25f, 0.25f, 4.0f), (4.0f, 4.0f, 0.25f),
         ];
 
-        Half[] pixels = new Half[width * height * Channels];
+        Half[] pixels = new Half[width * height * BlockInfo.ChannelsPerPixel];
         for (int y = 0; y < height; y++)
         {
             for (int x = 0; x < width; x++)
             {
-                int idx = ((y * width) + x) * Channels;
+                int idx = ((y * width) + x) * BlockInfo.ChannelsPerPixel;
                 int cell = ((y < height / 2) ? 0 : 2) + ((x < width / 2) ? 0 : 1);
                 (float r, float g, float b) = quadrant[cell];
                 pixels[idx] = (Half)r; pixels[idx + 1] = (Half)g; pixels[idx + 2] = (Half)b; pixels[idx + 3] = (Half)1.0f;
@@ -290,12 +287,12 @@ internal static class TestImages
     /// </summary>
     public static Half[] DecorrelatedAlphaHdr(int width, int height)
     {
-        Half[] pixels = new Half[width * height * Channels];
+        Half[] pixels = new Half[width * height * BlockInfo.ChannelsPerPixel];
         for (int y = 0; y < height; y++)
         {
             for (int x = 0; x < width; x++)
             {
-                int idx = ((y * width) + x) * Channels;
+                int idx = ((y * width) + x) * BlockInfo.ChannelsPerPixel;
                 float t = (float)(x + y) / Math.Max(1, width + height - 2);
                 Half up = (Half)(4.0f * t);
                 pixels[idx] = up; pixels[idx + 1] = up; pixels[idx + 2] = up; pixels[idx + 3] = (Half)(4.0f * (1.0f - t));

@@ -235,12 +235,12 @@ public class LdrBlockEncoderTests
 
     private static byte[] GradientImage(int width, int height)
     {
-        byte[] pixels = new byte[width * height * 4];
+        byte[] pixels = new byte[width * height * BlockInfo.ChannelsPerPixel];
         for (int y = 0; y < height; y++)
         {
             for (int x = 0; x < width; x++)
             {
-                int idx = ((y * width) + x) * 4;
+                int idx = ((y * width) + x) * BlockInfo.ChannelsPerPixel;
                 byte v = (byte)(255 * x / (width - 1));
                 pixels[idx] = v;
                 pixels[idx + 1] = v;
@@ -256,12 +256,12 @@ public class LdrBlockEncoderTests
     // (20,200,0,255) -> (220,20,255,255) — the ideal case for a single-partition, single-line block.
     private static byte[] SingleColorLineRamp(int width, int height)
     {
-        byte[] pixels = new byte[width * height * 4];
+        byte[] pixels = new byte[width * height * BlockInfo.ChannelsPerPixel];
         for (int y = 0; y < height; y++)
         {
             for (int x = 0; x < width; x++)
             {
-                int idx = ((y * width) + x) * 4;
+                int idx = ((y * width) + x) * BlockInfo.ChannelsPerPixel;
                 float t = (float)(x + y) / (width + height - 2);
                 pixels[idx] = (byte)(20 + (t * 200));
                 pixels[idx + 1] = (byte)(200 - (t * 180));
@@ -276,12 +276,12 @@ public class LdrBlockEncoderTests
     // A ramp whose alpha varies across the block (RGB fixed-ish), forcing a full RGBA endpoint mode.
     private static byte[] VaryingAlphaRamp(int width, int height)
     {
-        byte[] pixels = new byte[width * height * 4];
+        byte[] pixels = new byte[width * height * BlockInfo.ChannelsPerPixel];
         for (int y = 0; y < height; y++)
         {
             for (int x = 0; x < width; x++)
             {
-                int idx = ((y * width) + x) * 4;
+                int idx = ((y * width) + x) * BlockInfo.ChannelsPerPixel;
                 float t = (float)(x + y) / (width + height - 2);
                 pixels[idx] = (byte)(40 + (t * 160));
                 pixels[idx + 1] = 90;
@@ -316,12 +316,12 @@ public class LdrBlockEncoderTests
             colors[i] = ((byte)rng.Next(256), (byte)rng.Next(256), (byte)rng.Next(256));
         }
 
-        byte[] pixels = new byte[width * height * 4];
+        byte[] pixels = new byte[width * height * BlockInfo.ChannelsPerPixel];
         for (int y = 0; y < height; y++)
         {
             for (int x = 0; x < width; x++)
             {
-                int idx = ((y * width) + x) * 4;
+                int idx = ((y * width) + x) * BlockInfo.ChannelsPerPixel;
                 int cell = (Math.Min(y * rows / height, rows - 1) * cols) + Math.Min(x * cols / width, cols - 1);
                 (byte r, byte g, byte b) = colors[cell];
                 pixels[idx] = r;
@@ -353,10 +353,10 @@ public class LdrBlockEncoderTests
 
     private static void AssertNoMagentaBlocks(ReadOnlySpan<byte> decoded)
     {
-        for (int i = 0; i < decoded.Length; i += 4)
+        for (int i = 0; i < decoded.Length; i += BlockInfo.ChannelsPerPixel)
         {
             bool isMagenta = decoded[i] == 255 && decoded[i + 1] == 0 && decoded[i + 2] == 255 && decoded[i + 3] == 255;
-            Assert.False(isMagenta, $"Found error-colour (magenta) texel at index {i / 4}; a block was encoded illegally.");
+            Assert.False(isMagenta, $"Found error-colour (magenta) texel at index {i / BlockInfo.ChannelsPerPixel}; a block was encoded illegally.");
         }
     }
 }

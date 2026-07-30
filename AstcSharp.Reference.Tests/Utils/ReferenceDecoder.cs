@@ -51,7 +51,7 @@ internal static class ReferenceDecoder
         try
         {
             int pixelCount = w * h;
-            var outputBytes = new byte[pixelCount * 4]; // RGBA8
+            var outputBytes = new byte[pixelCount * BlockInfo.ChannelsPerPixel]; // RGBA8
 
             var image = new AstcencImage
             {
@@ -94,7 +94,7 @@ internal static class ReferenceDecoder
         try
         {
             int pixelCount = w * h;
-            var outputHalves = new Half[pixelCount * 4]; // RGBA FP16
+            var outputHalves = new Half[pixelCount * BlockInfo.ChannelsPerPixel]; // RGBA FP16
             var outputBytes = MemoryMarshal.AsBytes(outputHalves.AsSpan()).ToArray();
 
             var image = new AstcencImage

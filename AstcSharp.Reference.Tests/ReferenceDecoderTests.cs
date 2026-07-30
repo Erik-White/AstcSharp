@@ -95,10 +95,10 @@ public class ReferenceDecoderTests
         var pixels = new byte[width * height * RgbaColor.BytesPerPixel];
         for (int index = 0; index < width * height; index++)
         {
-            pixels[index * 4 + 0] = 128; // R
-            pixels[index * 4 + 1] = 64; // G
-            pixels[index * 4 + 2] = 200; // B
-            pixels[index * 4 + 3] = 255; // A
+            pixels[index * RgbaColor.BytesPerPixel + 0] = 128; // R
+            pixels[index * RgbaColor.BytesPerPixel + 1] = 64; // G
+            pixels[index * RgbaColor.BytesPerPixel + 2] = 200; // B
+            pixels[index * RgbaColor.BytesPerPixel + 3] = 255; // A
         }
 
         var compressed = ReferenceDecoder.CompressLdr(pixels, width, height, blockX, blockY);
@@ -124,7 +124,7 @@ public class ReferenceDecoderTests
         {
             for (int col = 0; col < width; col++)
             {
-                int idx = (row * width + col) * 4;
+                int idx = (row * width + col) * RgbaColor.BytesPerPixel;
                 pixels[idx + 0] = (byte)(255 * col / (width - 1)); // R: left-to-right
                 pixels[idx + 1] = (byte)(255 * row / (height - 1)); // G: top-to-bottom
                 pixels[idx + 2] = (byte)(255 - 255 * col / (width - 1)); // B: inverse of R
@@ -333,7 +333,7 @@ public class ReferenceDecoderTests
             Assert.Fail(
                 $"[{label}] {mismatches} channel mismatches exceed tolerance ±{Ldr8BitTolerance}. " +
                 $"Worst: pixel ({pixelX},{pixelY}) channel {channelName}, " +
-                $"actual={actual[worstPixel * 4 + worstChannel]} vs expected={expected[worstPixel * 4 + worstChannel]} (diff={worstDiff})");
+                $"actual={actual[worstPixel * RgbaColor.BytesPerPixel + worstChannel]} vs expected={expected[worstPixel * RgbaColor.BytesPerPixel + worstChannel]} (diff={worstDiff})");
         }
     }
 }

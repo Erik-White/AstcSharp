@@ -53,7 +53,7 @@ public class AstcDecoderTests
 
         byte[] result = StreamCodec.DecodeLdr(astc.Blocks, astc.Width, astc.Height, astc.Footprint);
 
-        Assert.Equal(astc.Width * astc.Height * 4, result.Length);
+        Assert.Equal(astc.Width * astc.Height * BlockInfo.ChannelsPerPixel, result.Length);
     }
 
     [Theory]

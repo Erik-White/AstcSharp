@@ -306,12 +306,12 @@ public class HdrEncoderReferenceTests
     // (CEM 15) can fit with a single endpoint line.
     private static Half[] HdrVaryingAlpha(int width, int height)
     {
-        Half[] pixels = new Half[width * height * 4];
+        Half[] pixels = new Half[width * height * BlockInfo.ChannelsPerPixel];
         for (int y = 0; y < height; y++)
         {
             for (int x = 0; x < width; x++)
             {
-                int idx = ((y * width) + x) * 4;
+                int idx = ((y * width) + x) * BlockInfo.ChannelsPerPixel;
                 float t = (float)(x + y) / Math.Max(1, width + height - 2);
                 pixels[idx] = (Half)(1.0f + (3.0f * t));
                 pixels[idx + 1] = (Half)(2.0f + (1.0f * t));
@@ -325,12 +325,12 @@ public class HdrEncoderReferenceTests
 
     private static Half[] HdrGrayscaleRamp(int width, int height)
     {
-        Half[] pixels = new Half[width * height * 4];
+        Half[] pixels = new Half[width * height * BlockInfo.ChannelsPerPixel];
         for (int y = 0; y < height; y++)
         {
             for (int x = 0; x < width; x++)
             {
-                int idx = ((y * width) + x) * 4;
+                int idx = ((y * width) + x) * BlockInfo.ChannelsPerPixel;
                 float v = 8.0f * (x + y) / Math.Max(1, width + height - 2);
                 pixels[idx] = (Half)v;
                 pixels[idx + 1] = (Half)v;
@@ -346,12 +346,12 @@ public class HdrEncoderReferenceTests
     // CEM 2's coarse large-range step.
     private static Half[] HdrNarrowGrayRamp(int width, int height)
     {
-        Half[] pixels = new Half[width * height * 4];
+        Half[] pixels = new Half[width * height * BlockInfo.ChannelsPerPixel];
         for (int y = 0; y < height; y++)
         {
             for (int x = 0; x < width; x++)
             {
-                int idx = ((y * width) + x) * 4;
+                int idx = ((y * width) + x) * BlockInfo.ChannelsPerPixel;
                 float v = 2.0f + (0.25f * (x + y) / Math.Max(1, width + height - 2));
                 pixels[idx] = (Half)v;
                 pixels[idx + 1] = (Half)v;
@@ -367,12 +367,12 @@ public class HdrEncoderReferenceTests
     // difference per channel) — the log-space uniform darkening CEM 7 mode 5 reconstructs exactly.
     private static Half[] HdrUniformDarkening(int width, int height)
     {
-        Half[] pixels = new Half[width * height * 4];
+        Half[] pixels = new Half[width * height * BlockInfo.ChannelsPerPixel];
         for (int y = 0; y < height; y++)
         {
             for (int x = 0; x < width; x++)
             {
-                int idx = ((y * width) + x) * 4;
+                int idx = ((y * width) + x) * BlockInfo.ChannelsPerPixel;
                 // Scale in the FP16 bit-pattern (log) domain by subtracting a per-texel field offset
                 // uniformly from each channel's high value, so all texels lie on one base+scale line.
                 int offset = 0x200 * ((x + y) % 4);
@@ -399,12 +399,12 @@ public class HdrEncoderReferenceTests
             regions[i] = (RandomHdrChannel(rng), RandomHdrChannel(rng), RandomHdrChannel(rng), RandomHdrChannel(rng));
         }
 
-        Half[] pixels = new Half[width * height * 4];
+        Half[] pixels = new Half[width * height * BlockInfo.ChannelsPerPixel];
         for (int y = 0; y < height; y++)
         {
             for (int x = 0; x < width; x++)
             {
-                int idx = ((y * width) + x) * 4;
+                int idx = ((y * width) + x) * BlockInfo.ChannelsPerPixel;
                 (Half r, Half g, Half b, Half a) = regions[rng.Next(regionCount)];
                 pixels[idx] = r;
                 pixels[idx + 1] = g;

@@ -67,7 +67,7 @@ public class VoidExtentEncoderTests
         byte[] decoded = StreamCodec.DecodeLdr(encoded, 4, 4, footprint);
 
         Assert.Equal(pixels.Length, decoded.Length);
-        for (int i = 0; i < decoded.Length; i += 4)
+        for (int i = 0; i < decoded.Length; i += BlockInfo.ChannelsPerPixel)
         {
             bool isMagenta = decoded[i] == 255 && decoded[i + 1] == 0 && decoded[i + 2] == 255 && decoded[i + 3] == 255;
             Assert.False(isMagenta, "near-constant block should encode to a legal (non-magenta) block");

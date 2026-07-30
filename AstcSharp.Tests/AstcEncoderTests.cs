@@ -14,7 +14,7 @@ public class AstcEncoderTests
     [InlineData(4, -1)]
     public void CompressImage_NonPositiveDimension_Throws(int width, int height)
     {
-        using MemoryStream source = new(new byte[Math.Max(1, width) * Math.Max(1, height) * 4]);
+        using MemoryStream source = new(new byte[Math.Max(1, width) * Math.Max(1, height) * BlockInfo.ChannelsPerPixel]);
         using MemoryStream destination = new();
 
         Assert.Throws<ArgumentOutOfRangeException>(() => AstcEncoder.CompressImage(source, destination, width, height, Footprint4x4));
@@ -33,7 +33,7 @@ public class AstcEncoderTests
     [Fact]
     public void CompressImage_SourceExactlyImageSize_EncodesOneBlock()
     {
-        byte[] encoded = StreamCodec.Encode(new byte[4 * 4 * 4], 4, 4, Footprint4x4);
+        byte[] encoded = StreamCodec.Encode(new byte[4 * 4 * BlockInfo.ChannelsPerPixel], 4, 4, Footprint4x4);
 
         Assert.Equal(BlockInfo.SizeInBytes, encoded.Length);
     }

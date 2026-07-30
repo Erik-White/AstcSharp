@@ -1,3 +1,5 @@
+using AstcSharp.Core;
+
 namespace AstcSharp.Tests.Utils;
 
 /// <summary>
@@ -7,8 +9,6 @@ namespace AstcSharp.Tests.Utils;
 /// </summary>
 internal static class TestImage
 {
-    private const int ChannelsPerPixel = 4;
-
     /// <summary>
     /// Returns the top-left <paramref name="cropWidth"/> × <paramref name="cropHeight"/> region of an
     /// RGBA32 image, row-major, where <paramref name="sourceWidth"/> is the source row stride in
@@ -17,12 +17,12 @@ internal static class TestImage
     /// </summary>
     public static byte[] CropTopLeft(ReadOnlySpan<byte> rgba, int sourceWidth, int cropWidth, int cropHeight)
     {
-        byte[] cropped = new byte[cropWidth * cropHeight * ChannelsPerPixel];
+        byte[] cropped = new byte[cropWidth * cropHeight * BlockInfo.ChannelsPerPixel];
         for (int y = 0; y < cropHeight; y++)
         {
-            int srcOffset = y * sourceWidth * ChannelsPerPixel;
-            int dstOffset = y * cropWidth * ChannelsPerPixel;
-            rgba.Slice(srcOffset, cropWidth * ChannelsPerPixel).CopyTo(cropped.AsSpan(dstOffset));
+            int srcOffset = y * sourceWidth * BlockInfo.ChannelsPerPixel;
+            int dstOffset = y * cropWidth * BlockInfo.ChannelsPerPixel;
+            rgba.Slice(srcOffset, cropWidth * BlockInfo.ChannelsPerPixel).CopyTo(cropped.AsSpan(dstOffset));
         }
 
         return cropped;
