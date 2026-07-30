@@ -50,7 +50,8 @@ internal static class Fp16
     /// <summary>
     /// Maps a non-negative finite FP16 bit pattern back to a 16-bit LNS value — a right inverse of
     /// <see cref="FromLns"/>: <c>FromLns(ToLns(y)) == y</c> for every <paramref name="fp16Bits"/> in
-    /// [0, <see cref="MaxFinite"/>].
+    /// [0, <see cref="MaxFinite"/>]. Negative, infinite, and NaN inputs are clamped into that range
+    /// first, so the result is always a valid LNS value.
     /// </summary>
     /// <remarks>
     /// <see cref="FromLns"/> is many-to-one (its <c>&gt;&gt; 3</c> discards the low mantissa bits), so
@@ -58,11 +59,23 @@ internal static class Fp16
     /// transform reproduces the FP16 pattern exactly. The FP16 exponent maps straight to the LNS
     /// exponent; the 10-bit FP16 mantissa is lifted back through whichever of the three linear
     /// mantissa pieces (slope 3 / 4 / 5, spec §C.2.15) covers it, by ceiling division so the forward
-    /// <c>&gt;&gt; 3</c> lands in the intended bucket. The sign bit is ignored (HDR endpoints are
-    /// non-negative).
+    /// <c>&gt;&gt; 3</c> lands in the intended bucket.
     /// </remarks>
     public static int ToLns(ushort fp16Bits)
     {
+        // Sanitise out-of-domain inputs to the [0, MaxFinite] range the inverse is defined on.
+        bool negative = (fp16Bits & 0x8000) != 0;
+        if (negative)
+        {
+            return 0;
+        }
+
+        if (fp16Bits > MaxFinite)
+        {
+            // +Inf / NaN: the largest finite magnitude.
+            fp16Bits = MaxFinite;
+        }
+
         int exponentComponent = (fp16Bits >> 10) & 0x1F;
         int mantissaFp16 = fp16Bits & 0x3FF;
 
