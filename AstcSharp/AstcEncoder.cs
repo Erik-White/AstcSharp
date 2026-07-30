@@ -7,8 +7,8 @@ using AstcSharp.Encoding;
 namespace AstcSharp;
 
 /// <summary>
-/// Encodes uncompressed RGBA pixel data into ASTC-compressed blocks, streaming from a source
-/// <see cref="Stream"/> of RGBA32 pixels to a destination <see cref="Stream"/> of ASTC blocks one
+/// Encodes uncompressed pixel data into ASTC-compressed blocks, streaming from a source
+/// <see cref="Stream"/> of pixels to a destination <see cref="Stream"/> of ASTC blocks one
 /// block-row band at a time so peak memory is independent of the image height.
 /// </summary>
 /// <remarks>
@@ -20,10 +20,17 @@ namespace AstcSharp;
 /// </para>
 /// <para>
 /// Constant-colour blocks are encoded as void-extent blocks (spec §C.2.23). Other blocks are fit
-/// per block: the endpoint colour mode (luminance, RGB, or RGBA — direct or base+offset) and the
-/// partition count (1 to 4, spec §C.2.21, all partitions sharing one colour mode) are chosen by
-/// search, with a weight grid (decimated below the footprint size as needed, spec §C.2.18) fitted
-/// to the texels. Every 2D footprint is supported.
+/// per block: the endpoint colour mode and the partition count (1 to 4, spec §C.2.21, all partitions
+/// sharing one colour mode) are chosen by search, with a weight grid (decimated below the footprint
+/// size as needed, spec §C.2.18) fitted to the texels. Every 2D footprint is supported.
+/// </para>
+/// <para>
+/// The LDR path fits endpoints in the byte domain and searches the LDR colour modes (luminance, RGB,
+/// or RGBA — direct or base+offset). The HDR path fits endpoints in the LNS (log) domain the HDR
+/// decoder interpolates in (spec §C.2.15) and searches a subset of the HDR colour modes: CEM 2
+/// (luminance), CEM 11 (RGB direct), and CEM 15 (RGB + HDR alpha). Both paths share one search core:
+/// the HDR mode/sub-mode coverage is a deliberate subset (see the encoder source for the current
+/// limits), so HDR quality is within a wider margin of a production encoder than the LDR path.
 /// </para>
 /// </remarks>
 public static class AstcEncoder

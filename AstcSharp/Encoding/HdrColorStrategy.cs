@@ -19,9 +19,10 @@ namespace AstcSharp.Encoding;
 /// perceived HDR error rather than raw magnitude.
 /// </para>
 /// <para>
-/// Coverage matches <see cref="HdrEndpointEncoder"/>: CEM 2 (luminance) for grey content and CEM 11
-/// (RGB direct) otherwise. Both decode alpha to <see cref="Fp16.One"/>; opaque input alpha (1.0)
-/// converts to that same LNS value, so opaque blocks incur no alpha error.
+/// Coverage matches <see cref="HdrEndpointEncoder"/>: CEM 2 (luminance) for grey opaque content,
+/// CEM 11 (RGB direct) for opaque content, and CEM 15 (RGB + HDR alpha) when alpha varies. CEM 2 and
+/// CEM 11 force alpha to 1.0, opaque input alpha (1.0) converts to that same LNS value
+/// (<see cref="Fp16.One"/>), so opaque blocks incur no alpha error.
 /// </para>
 /// </remarks>
 internal readonly struct HdrColorStrategy : IColorSpaceStrategy<RgbaHdrColor>
