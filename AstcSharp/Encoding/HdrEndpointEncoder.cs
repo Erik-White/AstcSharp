@@ -122,7 +122,8 @@ internal static class HdrEndpointEncoder
     /// <summary>
     /// CEM 11 (HDR RGB, direct) via the <c>majcomp == 3</c> direct sub-mode: R/G store the top byte
     /// of the channel (<c>v &lt;&lt; 8</c>), B stores a 7-bit field (<c>(v &amp; 0x7F) &lt;&lt; 9</c>),
-    /// and both v4/v5 carry the major-component flag bit that selects this sub-mode.
+    /// and both v4/v5 carry the major-component flag bit that selects this sub-mode. Also used for the
+    /// RGB half of CEM 15, whose decoder decodes v0..v5 identically.
     /// </summary>
     private static void EncodeRgbDirect(int colorRange, Span<int> colorValues, RgbaHdrColor low, RgbaHdrColor high)
     {
