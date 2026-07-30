@@ -29,10 +29,8 @@ internal readonly struct HdrColorStrategy : IColorSpaceStrategy<RgbaHdrColor>
 {
     private const int ChannelCount = BlockInfo.ChannelsPerPixel;
 
-    // Per-channel-sample squared-error early-out target in the LNS domain. Scaled from the LDR value
-    // (4 on the 0-255 byte domain) by the domain-width ratio squared (~256^2), since LNS channels
-    // span the full 16-bit range. Not yet tuned against a quality metric — see the HDR encoding plan.
-    private const long LnsEarlyOutPerSampleError = 4L * 256 * 256;
+    // Per-channel-sample squared-error early-out target in the LNS domain. Tuned by measurement of HdrEarlyOutSweep
+    private const long LnsEarlyOutPerSampleError = 64;
 
     public long EarlyOutPerSampleError => LnsEarlyOutPerSampleError;
 
