@@ -92,6 +92,29 @@ public class HdrBlockEncoderTests
         Assert.True(info.DualPlane.Enabled, $"expected a dual-plane block, got {(info.PartitionCount > 1 ? "multi-partition" : "single-partition")} (mode {info.EndpointMode0})");
     }
 
+    [Fact]
+    public void Encode_ConstantBlockWithNonFiniteChannels_SanitizesToMatchSearchPath()
+    {
+        // A constant block takes the void-extent path, which stores FP16 bits verbatim — but a
+        // non-constant block's search path clamps out-of-domain channels via Fp16.ToLns. The encoder
+        // sanitises the void-extent constant the same way so both paths reconstruct alike: +Inf and
+        // positive NaN become the largest finite magnitude, negatives become zero, and finite channels
+        // (alpha) are untouched.
+        Half positiveNaN = BitConverter.UInt16BitsToHalf(0x7E00);
+        Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint4x4);
+        Half[] pixels = ConstantBlock(
+            footprint.Width, footprint.Height, Half.PositiveInfinity, positiveNaN, (Half)(-2.0f), (Half)1.0f);
+
+        byte[] encoded = StreamCodec.EncodeHdr(pixels, footprint.Width, footprint.Height, footprint);
+        float[] decoded = StreamCodec.DecodeHdr(encoded, footprint.Width, footprint.Height, footprint);
+
+        float maxFinite = (float)Half.MaxValue;
+        Assert.Equal(maxFinite, decoded[0]);
+        Assert.Equal(maxFinite, decoded[1]);
+        Assert.Equal(0.0f, decoded[2]);
+        Assert.Equal(1.0f, decoded[3]);
+    }
+
     // Per-channel ramps between HDR values bounded away from zero, colinear in RGB space.
     private static Half[] ColorRamp(int width, int height)
     {
@@ -168,5 +191,20 @@ public class HdrBlockEncoderTests
 
         double meanRelError = sum / original.Length;
         Assert.True(meanRelError <= maxRelError, $"mean relative error {meanRelError:F4} exceeded {maxRelError:F4}");
+    }
+
+    private static Half[] ConstantBlock(int width, int height, Half r, Half g, Half b, Half a)
+    {
+        Half[] pixels = new Half[width * height * BlockInfo.ChannelsPerPixel];
+        for (int i = 0; i < width * height; i++)
+        {
+            int idx = i * BlockInfo.ChannelsPerPixel;
+            pixels[idx] = r;
+            pixels[idx + 1] = g;
+            pixels[idx + 2] = b;
+            pixels[idx + 3] = a;
+        }
+
+        return pixels;
     }
 }

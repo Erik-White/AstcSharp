@@ -20,10 +20,9 @@ public class HdrEarlyOutSweep
 
     public HdrEarlyOutSweep(ITestOutputHelper output) => this.output = output;
 
-    // Candidate thresholds spanning the plausible LNS-domain range, from "always run the full search"
-    // (0) to the current shipped guess (4 * 256^2). Each needs its own type (see TunedHdrStrategy).
-    // Full search (never early-out) vs. single-partition only (always early-out): the gap between the
-    // two PSNRs is exactly what the multi-partition / dual-plane search buys for that content.
+    // Two bracketing thresholds (each needs its own type — see TunedHdrStrategy): full search (never
+    // early-out) vs. single-partition only (always early-out). The gap between their PSNRs is exactly
+    // what the multi-partition / dual-plane search buys for that content.
     private struct TFull : IEarlyOutThreshold { public static long Value => 0; }
     private struct TSingleOnly : IEarlyOutThreshold { public static long Value => long.MaxValue / 1024; }
 

@@ -37,4 +37,27 @@ public class AstcEncoderTests
 
         Assert.Equal(BlockInfo.SizeInBytes, encoded.Length);
     }
+
+    [Fact]
+    public void CompressImage_BandBufferSizeOverflowsInt_Throws()
+    {
+        // width * footprint.Height * 4 overflows int; the guard must reject it before allocating a
+        // band buffer, so an empty source is fine (validation runs first).
+        using MemoryStream source = new();
+        using MemoryStream destination = new();
+
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => AstcEncoder.CompressImage(source, destination, int.MaxValue, 4, Footprint4x4));
+    }
+
+    [Fact]
+    public void CompressHdrImage_BandBufferSizeOverflowsInt_Throws()
+    {
+        // HDR is 8 bytes/pixel, so the band buffer overflows at half the LDR width.
+        using MemoryStream source = new();
+        using MemoryStream destination = new();
+
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => AstcEncoder.CompressHdrImage(source, destination, int.MaxValue / 4, 4, Footprint4x4));
+    }
 }
