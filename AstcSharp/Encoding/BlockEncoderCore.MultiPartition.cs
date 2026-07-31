@@ -165,7 +165,15 @@ internal static partial class BlockEncoderCore
             idealWeights: stackalloc int[texelCount],
             fittedGrid: stackalloc double[MaxGridWeights],
             effectiveGrid: stackalloc int[MaxGridWeights],
-            perTexelWeights: stackalloc int[texelCount]);
+            perTexelWeights: stackalloc int[texelCount],
+            altColorValues: stackalloc int[MaxColorValueCount],
+            altEffectiveLow: stackalloc int[ChannelCount],
+            altEffectiveHigh: stackalloc int[ChannelCount],
+            altIdealWeights: stackalloc int[texelCount],
+            altFittedGrid: stackalloc double[MaxGridWeights],
+            altGridWeights: stackalloc int[MaxGridWeights],
+            altEffectiveGrid: stackalloc int[MaxGridWeights],
+            altPerTexelWeights: stackalloc int[texelCount]);
 
         // All partitions share one colour endpoint mode (the simplest legal multi-partition layout).
         // SearchConfigs keeps only those that fit the colour-value budget (see MaxColorValuesPerBlock).

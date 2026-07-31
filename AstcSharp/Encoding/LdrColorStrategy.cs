@@ -85,6 +85,12 @@ internal readonly struct LdrColorStrategy : IColorSpaceStrategy<RgbaColor>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public int GetChannel(RgbaColor texel, int channel) => texel.GetChannel(channel);
 
+    public RgbaColor EndpointFromChannels(ReadOnlySpan<double> channels)
+        => new(ClampChannel(channels[0]), ClampChannel(channels[1]), ClampChannel(channels[2]), ClampChannel(channels[3]));
+
+    private static byte ClampChannel(double value)
+        => (byte)Math.Clamp(Math.Round(value, MidpointRounding.AwayFromZero), 0, byte.MaxValue);
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public int Reconstruct(int low, int high, int weight)
         => (Interpolation.BlendLdrReplicated(low, high, weight) >> 8) & byte.MaxValue;

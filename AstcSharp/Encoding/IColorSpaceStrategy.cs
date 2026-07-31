@@ -72,4 +72,20 @@ internal interface IColorSpaceStrategy<TTexel>
     /// <see cref="GetChannel"/> so their difference is the reconstruction error.
     /// </summary>
     int Reconstruct(int low, int high, int weight);
+
+    /// <summary>
+    /// Whether the single-partition search should run the iterative endpoint/weight co-refinement
+    /// candidate: repeatedly re-solve endpoints at the quantised weights and re-fit the weights at
+    /// those endpoints, converging toward the endpoint line's joint optimum. Kept only when it lowers
+    /// measured error, so it is purely additive.
+    /// </summary>
+    bool TryIterativeRefinement => false;
+
+    /// <summary>
+    /// Builds an endpoint value of this colour space from per-channel values in the working domain
+    /// (the domain <see cref="GetChannel"/> returns), rounding and clamping as needed. Used by the
+    /// iterative refinement's least-squares endpoint solve to turn a solved float endpoint back into
+    /// an encodable value.
+    /// </summary>
+    TTexel EndpointFromChannels(ReadOnlySpan<double> channels);
 }

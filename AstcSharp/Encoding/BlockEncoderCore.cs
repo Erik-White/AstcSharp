@@ -133,6 +133,100 @@ internal static partial class BlockEncoderCore
     }
 
     /// <summary>
+    /// Diagnostic-only entry: encodes <paramref name="texels"/> using the single-partition search
+    /// alone, bypassing the multi-partition and dual-plane candidates. Lets a harness measure how much
+    /// of the HDR quality gap is layout *selection* versus within-layout search quality, by comparing
+    /// this against the full <see cref="Encode{TTexel, TStrategy}"/> and against ARM.
+    /// </summary>
+    internal static UInt128 EncodeSinglePartitionOnly<TTexel, TStrategy>(ReadOnlySpan<TTexel> texels, Footprint footprint)
+        where TTexel : unmanaged
+        where TStrategy : struct, IColorSpaceStrategy<TTexel>
+        => EncodeSinglePartition<TTexel, TStrategy>(texels, footprint, out _);
+
+    /// <summary>
+    /// Diagnostic-only entry: encodes <paramref name="texels"/> as a
+    /// single-partition block forced to the given weight-grid size and weight range, choosing only the
+    /// best legal endpoint mode / colour range for that fixed weight config. Returns false (leaving
+    /// <paramref name="block"/> default) if no legal endpoint encoding fits that config. Lets a harness
+    /// force our encoder to ARM's exact per-block (grid, range) and measure the resulting quality,
+    /// separating a config-*selection* gap from a within-config *fit-quality* gap.
+    /// </summary>
+    internal static bool EncodeForcedConfig<TTexel, TStrategy>(
+        ReadOnlySpan<TTexel> texels, Footprint footprint, int gridWidth, int gridHeight, int weightRange, out UInt128 block)
+        where TTexel : unmanaged
+        where TStrategy : struct, IColorSpaceStrategy<TTexel>
+    {
+        TStrategy strategy = default;
+        (TTexel low, TTexel high) = strategy.Fit(texels);
+
+        int texelCount = footprint.PixelCount;
+        Span<TTexel> subsetLow = [low];
+        Span<TTexel> subsetHigh = [high];
+        var input = new BlockInput<TTexel>(
+            texels, footprint, Partition.GetSinglePartition(footprint).Assignment, partitionCount: 1, subsetLow, subsetHigh);
+
+        var scratch = new ConfigScratch(
+            bestColorValues: stackalloc int[MaxColorValueCount * MaxPartitions],
+            bestGridWeights: stackalloc int[MaxGridWeights],
+            candidateColorValues: stackalloc int[MaxColorValueCount * MaxPartitions],
+            candidateGridWeights: stackalloc int[MaxGridWeights],
+            effectiveLow: stackalloc int[ChannelCount * MaxPartitions],
+            effectiveHigh: stackalloc int[ChannelCount * MaxPartitions],
+            unquantizedColors: stackalloc int[MaxColorValueCount],
+            idealWeights: stackalloc int[texelCount],
+            fittedGrid: stackalloc double[MaxGridWeights],
+            effectiveGrid: stackalloc int[MaxGridWeights],
+            perTexelWeights: stackalloc int[texelCount],
+            altColorValues: stackalloc int[MaxColorValueCount],
+            altEffectiveLow: stackalloc int[ChannelCount],
+            altEffectiveHigh: stackalloc int[ChannelCount],
+            altIdealWeights: stackalloc int[texelCount],
+            altFittedGrid: stackalloc double[MaxGridWeights],
+            altGridWeights: stackalloc int[MaxGridWeights],
+            altEffectiveGrid: stackalloc int[MaxGridWeights],
+            altPerTexelWeights: stackalloc int[texelCount]);
+
+        Span<ColorEndpointMode> candidateModes = stackalloc ColorEndpointMode[MaxCandidateModes];
+        int modeCount = strategy.SelectCandidateModes(texels, candidateModes);
+
+        int gridWeightCount = gridWidth * gridHeight;
+        DecimationInfo decimation = DecimationTable.Get(footprint, gridWidth, gridHeight);
+
+        long bestError = long.MaxValue;
+        BestConfig best = default;
+        foreach (ColorEndpointMode mode in candidateModes[..modeCount])
+        {
+            int colorValueCount = mode.GetColorValuesCount();
+            if (!TryResolveConfig(gridWidth, gridHeight, gridWeightCount, weightRange, ColorStartBit, colorValueCount, out int colorRange))
+            {
+                continue;
+            }
+
+            PrepareConfig<TTexel, TStrategy>(in input, mode, gridWeightCount, decimation, colorRange, in scratch);
+            long error = MeasureConfig<TTexel, TStrategy>(in input, mode, gridWeightCount, weightRange, colorRange, decimation, in scratch);
+            if (error < bestError)
+            {
+                bestError = error;
+                best = new BestConfig(mode, gridWidth, gridHeight, weightRange, colorRange, colorValueCount);
+                scratch.CandidateColorValues[..colorValueCount].CopyTo(scratch.BestColorValues);
+                scratch.CandidateGridWeights[..gridWeightCount].CopyTo(scratch.BestGridWeights);
+            }
+        }
+
+        if (best.WeightRange == 0)
+        {
+            block = default;
+            return false;
+        }
+
+        ushort blockMode = BlockModeEncoder.Encode(best.GridWidth, best.GridHeight, best.WeightRange, isDualPlane: false);
+        block = BlockAssembler.AssembleSinglePartition(
+            blockMode, best.Mode, best.ColorRange, scratch.BestColorValues[..best.ColorValueCount],
+            best.WeightRange, scratch.BestGridWeights[..gridWeightCount]);
+        return true;
+    }
+
+    /// <summary>
     /// Encodes a single-partition block (the proven path) and reports its reconstruction error.
     /// Searches weight-grid sizes from the footprint down to 2x2 and, per grid, the weight ranges
     /// that fit the bit budget, keeping the configuration with the lowest error. A grid smaller than
@@ -167,7 +261,15 @@ internal static partial class BlockEncoderCore
             idealWeights: stackalloc int[texelCount],
             fittedGrid: stackalloc double[MaxGridWeights],
             effectiveGrid: stackalloc int[MaxGridWeights],
-            perTexelWeights: stackalloc int[texelCount]);
+            perTexelWeights: stackalloc int[texelCount],
+            altColorValues: stackalloc int[MaxColorValueCount],
+            altEffectiveLow: stackalloc int[ChannelCount],
+            altEffectiveHigh: stackalloc int[ChannelCount],
+            altIdealWeights: stackalloc int[texelCount],
+            altFittedGrid: stackalloc double[MaxGridWeights],
+            altGridWeights: stackalloc int[MaxGridWeights],
+            altEffectiveGrid: stackalloc int[MaxGridWeights],
+            altPerTexelWeights: stackalloc int[texelCount]);
 
         // Cheaper endpoint modes (fewer colour values) leave more of the 128-bit budget for weight
         // precision, so a mode that drops alpha or chroma can win on opaque or grey content.
@@ -251,7 +353,7 @@ internal static partial class BlockEncoderCore
                             preparedColorRange = colorRange;
                         }
 
-                        long error = MeasureConfig<TTexel, TStrategy>(in block, gridWeightCount, weightRange, decimation, in scratch);
+                        long error = MeasureConfig<TTexel, TStrategy>(in block, mode, gridWeightCount, weightRange, colorRange, decimation, in scratch);
                         if (error < bestError)
                         {
                             bestError = error;

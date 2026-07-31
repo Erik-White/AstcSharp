@@ -62,7 +62,15 @@ internal static partial class BlockEncoderCore
         Span<int> idealWeights,
         Span<double> fittedGrid,
         Span<int> effectiveGrid,
-        Span<int> perTexelWeights)
+        Span<int> perTexelWeights,
+        Span<int> altColorValues,
+        Span<int> altEffectiveLow,
+        Span<int> altEffectiveHigh,
+        Span<int> altIdealWeights,
+        Span<double> altFittedGrid,
+        Span<int> altGridWeights,
+        Span<int> altEffectiveGrid,
+        Span<int> altPerTexelWeights)
     {
         public Span<int> BestColorValues { get; } = bestColorValues;
         public Span<int> BestGridWeights { get; } = bestGridWeights;
@@ -75,5 +83,17 @@ internal static partial class BlockEncoderCore
         public Span<double> FittedGrid { get; } = fittedGrid;
         public Span<int> EffectiveGrid { get; } = effectiveGrid;
         public Span<int> PerTexelWeights { get; } = perTexelWeights;
+
+        // Iterative endpoint⇄weight refinement working buffers: the recomputed endpoints'
+        // colour values / decoded channels, and the re-projected / re-fitted / re-quantised grid and
+        // per-texel weights for the pass under test.
+        public Span<int> AltColorValues { get; } = altColorValues;
+        public Span<int> AltEffectiveLow { get; } = altEffectiveLow;
+        public Span<int> AltEffectiveHigh { get; } = altEffectiveHigh;
+        public Span<int> AltIdealWeights { get; } = altIdealWeights;
+        public Span<double> AltFittedGrid { get; } = altFittedGrid;
+        public Span<int> AltGridWeights { get; } = altGridWeights;
+        public Span<int> AltEffectiveGrid { get; } = altEffectiveGrid;
+        public Span<int> AltPerTexelWeights { get; } = altPerTexelWeights;
     }
 }
