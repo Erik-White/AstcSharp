@@ -33,10 +33,10 @@ public class EncodingBenchmark
         int w = this.footprint.Width;
         int h = this.footprint.Height;
 
-        this.constant = TestImages.Solid(w, h, 73, 140, 200, 255);
-        this.gradient = TestImages.ChromaticGradient(w, h);
-        this.fourQuadrant = TestImages.FourQuadrant(w, h);
-        this.decorrelatedAlpha = TestImages.DecorrelatedAlpha(w, h);
+        this.constant = TestImage.Solid(w, h, 73, 140, 200, 255);
+        this.gradient = TestImage.ChromaticGradient(w, h);
+        this.fourQuadrant = TestImage.FourQuadrant(w, h);
+        this.decorrelatedAlpha = TestImage.DecorrelatedAlpha(w, h);
     }
 
     // Constant block -> void-extent fast path (no search).

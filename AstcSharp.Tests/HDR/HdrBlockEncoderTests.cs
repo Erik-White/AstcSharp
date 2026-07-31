@@ -83,7 +83,7 @@ public class HdrBlockEncoderTests
         // tuned early-out threshold (a regression upward would early-out to single-partition here) and
         // that the dual-plane HDR search is reached and wins for independently-varying channels.
         Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint8x8);
-        Half[] pixels = TestImages.SmoothGradientHdr(footprint.Width, footprint.Height);
+        Half[] pixels = TestImage.SmoothGradientHdr(footprint.Width, footprint.Height);
 
         byte[] encoded = StreamCodec.EncodeHdr(pixels, footprint.Width, footprint.Height, footprint);
 

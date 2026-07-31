@@ -37,11 +37,11 @@ public class HdrEarlyOutSweep
         [
             ("near-lossless", NearLossless(footprint.Width, footprint.Height)),
             ("gentle-ramp", GentleRamp(footprint.Width, footprint.Height)),
-            ("smooth-gradient", TestImages.SmoothGradientHdr(footprint.Width, footprint.Height)),
+            ("smooth-gradient", TestImage.SmoothGradientHdr(footprint.Width, footprint.Height)),
             ("subtle-two-region", SubtleTwoRegion(footprint.Width, footprint.Height)),
-            ("two-region", TestImages.TwoRegionHdr(footprint.Width, footprint.Height)),
-            ("four-quadrant", TestImages.FourQuadrantHdr(footprint.Width, footprint.Height)),
-            ("decorrelated-alpha", TestImages.DecorrelatedAlphaHdr(footprint.Width, footprint.Height)),
+            ("two-region", TestImage.TwoRegionHdr(footprint.Width, footprint.Height)),
+            ("four-quadrant", TestImage.FourQuadrantHdr(footprint.Width, footprint.Height)),
+            ("decorrelated-alpha", TestImage.DecorrelatedAlphaHdr(footprint.Width, footprint.Height)),
         ];
 
         this.output.WriteLine($"footprint={footprintType} (earlyOutError = threshold * {footprint.PixelCount * BlockInfo.ChannelsPerPixel})");

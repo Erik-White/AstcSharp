@@ -32,10 +32,10 @@ public class HdrEncodingBenchmark
         int w = footprint.Width;
         int h = footprint.Height;
 
-        constant = TestImages.SolidHdr(w, h, (Half)2.5f, (Half)1.25f, (Half)3.75f, (Half)1.0f);
-        gradient = TestImages.ChromaticGradientHdr(w, h);
-        fourQuadrant = TestImages.FourQuadrantHdr(w, h);
-        decorrelatedAlpha = TestImages.DecorrelatedAlphaHdr(w, h);
+        constant = TestImage.SolidHdr(w, h, (Half)2.5f, (Half)1.25f, (Half)3.75f, (Half)1.0f);
+        gradient = TestImage.ChromaticGradientHdr(w, h);
+        fourQuadrant = TestImage.FourQuadrantHdr(w, h);
+        decorrelatedAlpha = TestImage.DecorrelatedAlphaHdr(w, h);
     }
 
     // Constant block -> void-extent fast path (no search).

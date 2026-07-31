@@ -36,7 +36,7 @@ public class AstcFullImageEncodeBenchmark
         AstcFile ldrFile = AstcFile.FromMemory(File.ReadAllBytes(ldrPath));
         this.footprint = ldrFile.Footprint;
         byte[] ldrFull = StreamCodec.DecodeLdr(ldrFile.Blocks, ldrFile.Width, ldrFile.Height, ldrFile.Footprint);
-        this.pixels = TestImage.CropTopLeft(ldrFull, ldrFile.Width, TileSize, TileSize);
+        this.pixels = ImageHelper.CropTopLeft(ldrFull, ldrFile.Width, TileSize, TileSize);
 
         string hdrPath = BenchmarkTestDataLocator.FindTestData(Path.Combine("Astc", "HdrPipeline", "mixed-256-4x4.astc"));
         AstcFile hdrFile = AstcFile.FromMemory(File.ReadAllBytes(hdrPath));
@@ -55,7 +55,7 @@ public class AstcFullImageEncodeBenchmark
 
     /// <summary>
     /// Crops the top-left <paramref name="cropWidth"/>×<paramref name="cropHeight"/> region of an
-    /// FP16 RGBA image — the <see cref="Half"/> analogue of <see cref="TestImage.CropTopLeft"/>.
+    /// FP16 RGBA image — the <see cref="Half"/> analogue of <see cref="ImageHelper.CropTopLeft"/>.
     /// </summary>
     private static Half[] CropTopLeftHalf(ReadOnlySpan<Half> rgba, int sourceWidth, int cropWidth, int cropHeight)
     {

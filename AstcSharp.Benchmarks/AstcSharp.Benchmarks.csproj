@@ -17,8 +17,8 @@
 
   <ItemGroup>
     <Compile Include="..\AstcSharp.Tests\Utils\StreamCodec.cs" Link="Utils\StreamCodec.cs" />
+    <Compile Include="..\AstcSharp.Tests\Utils\ImageHelper.cs" Link="Utils\ImageHelper.cs" />
     <Compile Include="..\AstcSharp.Tests\Utils\TestImage.cs" Link="Utils\TestImage.cs" />
-    <Compile Include="..\AstcSharp.Tests\Utils\TestImages.cs" Link="Utils\TestImages.cs" />
   </ItemGroup>
 
   <ItemGroup>

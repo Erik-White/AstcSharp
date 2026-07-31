@@ -27,7 +27,7 @@ public class VoidExtentEncoderTests
         int width = footprint.Width * 2;
         int height = footprint.Height * 2;
 
-        byte[] pixels = TestImages.Solid(width, height, 0x80, 0x40, 0xC0, 0xFF);
+        byte[] pixels = TestImage.Solid(width, height, 0x80, 0x40, 0xC0, 0xFF);
 
         byte[] encoded = StreamCodec.Encode(pixels, width, height, footprint);
         byte[] decoded = StreamCodec.DecodeLdr(encoded, width, height, footprint);
@@ -46,7 +46,7 @@ public class VoidExtentEncoderTests
         int width = footprint.Width;
         int height = footprint.Height;
 
-        byte[] pixels = TestImages.Solid(width, height, r, g, b, a);
+        byte[] pixels = TestImage.Solid(width, height, r, g, b, a);
 
         byte[] encoded = StreamCodec.Encode(pixels, width, height, footprint);
         byte[] decoded = StreamCodec.DecodeLdr(encoded, width, height, footprint);
@@ -60,7 +60,7 @@ public class VoidExtentEncoderTests
         // One perturbed texel makes the block non-constant, so it takes the general (non-void-extent)
         // encoding path rather than throwing. The result must still be a legal block (no magenta).
         Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint4x4);
-        byte[] pixels = TestImages.Solid(4, 4, 10, 20, 30, 40);
+        byte[] pixels = TestImage.Solid(4, 4, 10, 20, 30, 40);
         pixels[^4] = 99;
 
         byte[] encoded = StreamCodec.Encode(pixels, 4, 4, footprint);

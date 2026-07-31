@@ -34,7 +34,7 @@ public class HdrEncoderReferenceTests
         int height = blockY;
 
         // A constant HDR colour above the LDR range drives the HDR void-extent path.
-        Half[] pixels = TestImages.SolidHdr(width, height, (Half)2.5f, (Half)1.25f, (Half)3.75f, (Half)1.0f);
+        Half[] pixels = TestImage.SolidHdr(width, height, (Half)2.5f, (Half)1.25f, (Half)3.75f, (Half)1.0f);
         byte[] encoded = StreamCodec.EncodeHdr(pixels, width, height, footprint);
 
         float[] armDecoded = HalvesToFloats(ReferenceDecoder.DecompressHdr(encoded, width, height, blockX, blockY));
@@ -54,7 +54,7 @@ public class HdrEncoderReferenceTests
         int width = footprint.Width;
         int height = footprint.Height;
 
-        Half[] pixels = TestImages.SolidHdr(width, height, (Half)r, (Half)g, (Half)b, (Half)a);
+        Half[] pixels = TestImage.SolidHdr(width, height, (Half)r, (Half)g, (Half)b, (Half)a);
         byte[] encoded = StreamCodec.EncodeHdr(pixels, width, height, footprint);
 
         float[] armDecoded = HalvesToFloats(ReferenceDecoder.DecompressHdr(encoded, width, height, 6, 6));
@@ -74,7 +74,7 @@ public class HdrEncoderReferenceTests
         Footprint footprint = Footprint.FromFootprintType(footprintType);
         int width = blockX * 2;
         int height = blockY * 2;
-        Half[] pixels = TestImages.ChromaticGradientHdr(width, height);
+        Half[] pixels = TestImage.ChromaticGradientHdr(width, height);
 
         byte[] encoded = StreamCodec.EncodeHdr(pixels, width, height, footprint);
         float[] armDecoded = HalvesToFloats(ReferenceDecoder.DecompressHdr(encoded, width, height, blockX, blockY));
@@ -169,7 +169,7 @@ public class HdrEncoderReferenceTests
         Footprint footprint = Footprint.FromFootprintType(footprintType);
         int width = blockX * 2;
         int height = blockY * 2;
-        Half[] pixels = TestImages.TwoRegionHdr(width, height);
+        Half[] pixels = TestImage.TwoRegionHdr(width, height);
 
         byte[] encoded = StreamCodec.EncodeHdr(pixels, width, height, footprint);
         float[] armDecoded = HalvesToFloats(ReferenceDecoder.DecompressHdr(encoded, width, height, blockX, blockY));
@@ -187,7 +187,7 @@ public class HdrEncoderReferenceTests
         var footprintType = FootprintType.Footprint12x12;
         var (blockX, blockY) = ReferenceDecoder.ToBlockDimensions(footprintType);
         Footprint footprint = Footprint.FromFootprintType(footprintType);
-        Half[] pixels = TestImages.FourQuadrantHdr(blockX, blockY);
+        Half[] pixels = TestImage.FourQuadrantHdr(blockX, blockY);
 
         byte[] encoded = StreamCodec.EncodeHdr(pixels, blockX, blockY, footprint);
 
@@ -212,7 +212,7 @@ public class HdrEncoderReferenceTests
         var footprintType = FootprintType.Footprint8x8;
         var (blockX, blockY) = ReferenceDecoder.ToBlockDimensions(footprintType);
         Footprint footprint = Footprint.FromFootprintType(footprintType);
-        Half[] pixels = TestImages.SmoothGradientHdr(blockX, blockY);
+        Half[] pixels = TestImage.SmoothGradientHdr(blockX, blockY);
 
         byte[] encoded = StreamCodec.EncodeHdr(pixels, blockX, blockY, footprint);
 
@@ -256,7 +256,7 @@ public class HdrEncoderReferenceTests
         Footprint footprint = Footprint.FromFootprintType(footprintType);
         int width = blockX * 2;
         int height = blockY * 2;
-        Half[] pixels = TestImages.ChromaticGradientHdr(width, height);
+        Half[] pixels = TestImage.ChromaticGradientHdr(width, height);
 
         // Our encoder, decoded by our decoder.
         byte[] ourEncoded = StreamCodec.EncodeHdr(pixels, width, height, footprint);

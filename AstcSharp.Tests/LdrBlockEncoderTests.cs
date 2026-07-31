@@ -61,7 +61,7 @@ public class LdrBlockEncoderTests
         // A block split into two very different solid colours is poorly served by a single
         // endpoint line; the encoder should pick a multi-partition encoding for it.
         Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint8x8);
-        byte[] pixels = TestImages.TwoRegion(footprint.Width, footprint.Height);
+        byte[] pixels = TestImage.TwoRegion(footprint.Width, footprint.Height);
 
         byte[] encoded = StreamCodec.Encode(pixels, footprint.Width, footprint.Height, footprint);
 
@@ -79,7 +79,7 @@ public class LdrBlockEncoderTests
         // detail, not a contract). What matters is that partitioning is used and the result
         // reconstructs the four flat regions closely.
         Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint12x12);
-        byte[] pixels = TestImages.FourQuadrant(footprint.Width, footprint.Height);
+        byte[] pixels = TestImage.FourQuadrant(footprint.Width, footprint.Height);
 
         byte[] encoded = StreamCodec.Encode(pixels, footprint.Width, footprint.Height, footprint);
 
@@ -126,7 +126,7 @@ public class LdrBlockEncoderTests
     public void Compress_TwoColorRegionBlock_ReconstructsWellViaPartitioning()
     {
         Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint8x8);
-        byte[] pixels = TestImages.TwoRegion(footprint.Width, footprint.Height);
+        byte[] pixels = TestImage.TwoRegion(footprint.Width, footprint.Height);
 
         byte[] encoded = StreamCodec.Encode(pixels, footprint.Width, footprint.Height, footprint);
         Span<byte> decoded = StreamCodec.DecodeLdr(encoded, footprint.Width, footprint.Height, footprint);
@@ -141,7 +141,7 @@ public class LdrBlockEncoderTests
         // A grey, opaque block should be encoded with a luminance CEM (mode 0 or 1), which is
         // cheaper than RGBA and frees budget for weight precision.
         Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint6x6);
-        byte[] pixels = TestImages.GrayscaleRamp(footprint.Width, footprint.Height);
+        byte[] pixels = TestImage.GrayscaleRamp(footprint.Width, footprint.Height);
 
         byte[] encoded = StreamCodec.Encode(pixels, footprint.Width, footprint.Height, footprint);
         ColorEndpointMode mode = DecodeEndpointMode(encoded);
@@ -193,7 +193,7 @@ public class LdrBlockEncoderTests
         // (spec §C.2.20) fits both independently, so the encoder should pick a dual-plane block and
         // reconstruct the anti-correlated content tightly.
         Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint6x6);
-        byte[] pixels = TestImages.DecorrelatedAlpha(footprint.Width, footprint.Height);
+        byte[] pixels = TestImage.DecorrelatedAlpha(footprint.Width, footprint.Height);
 
         byte[] encoded = StreamCodec.Encode(pixels, footprint.Width, footprint.Height, footprint);
         Span<byte> decoded = StreamCodec.DecodeLdr(encoded, footprint.Width, footprint.Height, footprint);
@@ -210,7 +210,7 @@ public class LdrBlockEncoderTests
     {
         // Constant blocks take the void-extent path even through the general encoder entry point.
         Footprint footprint = Footprint.FromFootprintType(footprintType);
-        byte[] pixels = TestImages.Solid(footprint.Width, footprint.Height, 73, 140, 200, 255);
+        byte[] pixels = TestImage.Solid(footprint.Width, footprint.Height, 73, 140, 200, 255);
 
         byte[] encoded = StreamCodec.Encode(pixels, footprint.Width, footprint.Height, footprint);
         Span<byte> decoded = StreamCodec.DecodeLdr(encoded, footprint.Width, footprint.Height, footprint);

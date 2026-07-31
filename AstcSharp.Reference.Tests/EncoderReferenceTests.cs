@@ -40,7 +40,7 @@ public class EncoderReferenceTests
         int width = blockX;
         int height = blockY;
 
-        byte[] pixels = TestImages.Solid(width, height, 0x80, 0x40, 0xC0, 0xFF);
+        byte[] pixels = TestImage.Solid(width, height, 0x80, 0x40, 0xC0, 0xFF);
         byte[] encoded = StreamCodec.Encode(pixels, width, height, footprint);
 
         byte[] armDecoded = ReferenceDecoder.DecompressLdr(encoded, width, height, blockX, blockY);
@@ -67,7 +67,7 @@ public class EncoderReferenceTests
         Footprint footprint = Footprint.FromFootprintType(footprintType);
         int width = blockX * 2;
         int height = blockY * 2;
-        byte[] pixels = TestImages.TwoRegion(width, height);
+        byte[] pixels = TestImage.TwoRegion(width, height);
 
         byte[] encoded = StreamCodec.Encode(pixels, width, height, footprint);
         byte[] armDecoded = ReferenceDecoder.DecompressLdr(encoded, width, height, blockX, blockY);
@@ -88,7 +88,7 @@ public class EncoderReferenceTests
         var footprintType = FootprintType.Footprint12x12;
         var (blockX, blockY) = ReferenceDecoder.ToBlockDimensions(footprintType);
         Footprint footprint = Footprint.FromFootprintType(footprintType);
-        byte[] pixels = TestImages.FourQuadrant(blockX, blockY);
+        byte[] pixels = TestImage.FourQuadrant(blockX, blockY);
 
         byte[] encoded = StreamCodec.Encode(pixels, blockX, blockY, footprint);
 
@@ -112,7 +112,7 @@ public class EncoderReferenceTests
         var footprintType = FootprintType.Footprint6x6;
         var (blockX, blockY) = ReferenceDecoder.ToBlockDimensions(footprintType);
         Footprint footprint = Footprint.FromFootprintType(footprintType);
-        byte[] pixels = TestImages.DecorrelatedAlpha(blockX, blockY);
+        byte[] pixels = TestImage.DecorrelatedAlpha(blockX, blockY);
 
         byte[] encoded = StreamCodec.Encode(pixels, blockX, blockY, footprint);
 
@@ -136,7 +136,7 @@ public class EncoderReferenceTests
         int width = footprint.Width;
         int height = footprint.Height;
 
-        byte[] pixels = TestImages.Solid(width, height, r, g, b, a);
+        byte[] pixels = TestImage.Solid(width, height, r, g, b, a);
         byte[] encoded = StreamCodec.Encode(pixels, width, height, footprint);
 
         byte[] armDecoded = ReferenceDecoder.DecompressLdr(encoded, width, height, 6, 6);
@@ -203,7 +203,7 @@ public class EncoderReferenceTests
         Footprint footprint = Footprint.FromFootprintType(footprintType);
         int width = blockX * 2;
         int height = blockY * 2;
-        byte[] pixels = TestImages.ChromaticGradient(width, height);
+        byte[] pixels = TestImage.ChromaticGradient(width, height);
 
         // Our encoder, decoded by our decoder.
         byte[] ourEncoded = StreamCodec.Encode(pixels, width, height, footprint);
@@ -240,7 +240,7 @@ public class EncoderReferenceTests
         var (blockX, blockY) = ReferenceDecoder.ToBlockDimensions(footprint.Type);
 
         byte[] decoded = StreamCodec.DecodeLdr(file.Blocks, file.Width, file.Height, footprint);
-        byte[] source = TestImage.CropTopLeft(decoded, file.Width, CropSize, CropSize);
+        byte[] source = ImageHelper.CropTopLeft(decoded, file.Width, CropSize, CropSize);
 
         byte[] reencoded = StreamCodec.Encode(source, CropSize, CropSize, footprint);
         byte[] armDecoded = ReferenceDecoder.DecompressLdr(reencoded, CropSize, CropSize, blockX, blockY);
@@ -251,8 +251,8 @@ public class EncoderReferenceTests
 
     private static byte[] ContentImage(Content content, int width, int height) => content switch
     {
-        Content.Color => TestImages.ChromaticGradient(width, height),
-        Content.Grayscale => TestImages.GrayscaleRamp(width, height),
+        Content.Color => TestImage.ChromaticGradient(width, height),
+        Content.Grayscale => TestImage.GrayscaleRamp(width, height),
         _ => throw new ArgumentOutOfRangeException(nameof(content), content, null),
     };
 
