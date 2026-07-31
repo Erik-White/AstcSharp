@@ -49,6 +49,11 @@ internal static class HdrEndpointEncoder
     // Mode-clear layout (v0[7] = 0): base is stored at step 2 (finer), delta at step 2, max delta 30.
     private const int SmallRangeFineDeltaMax = 30;
 
+    // Mode-set layout (v0[7] = 1): delta is a 5-bit field at step 4, so the largest representable
+    // delta is 0x1F << 2 = 124. Deltas above this are clamped to it (rather than masked, which would
+    // wrap to an arbitrary small value). CEM 2 covers wider luma spans anyway.
+    private const int SmallRangeWideDeltaMax = 124;
+
     // Largest 12-bit luma the decoder produces (spec §C.2.14 clamps y1 to this).
     private const int MaxLuma12Bit = 0xFFF;
 
@@ -110,9 +115,12 @@ internal static class HdrEndpointEncoder
         else
         {
             // Mode-set: y0 = (v1 & 0xE0) << 4 | (v0 & 0x7F) << 2; d = (v1 & 0x1F) << 2.
-            // Base and delta are at step 4, so drop the low two bits of each.
+            // Base and delta are at step 4, so drop the low two bits of each. Clamp the delta to the
+            // field's max (124) so an over-range delta lands on the nearest representable value rather
+            // than wrapping to an arbitrary small one.
+            int clampedDelta = Math.Min(delta, SmallRangeWideDeltaMax);
             v0 = SmallRangeModeBitFlag | ((baseLuma >> 2) & 0x7F);
-            v1 = (((baseLuma >> 9) & 0x07) << 5) | ((delta >> 2) & 0x1F);
+            v1 = (((baseLuma >> 9) & 0x07) << 5) | ((clampedDelta >> 2) & 0x1F);
         }
 
         colorValues[0] = QuantizeByte(v0, colorRange);

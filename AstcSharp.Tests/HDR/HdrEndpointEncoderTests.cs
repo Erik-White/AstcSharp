@@ -76,6 +76,22 @@ public class HdrEndpointEncoderTests
     }
 
     [Fact]
+    public void Encode_LumaSmallRange_DeltaBeyondFieldMax_ClampsInsteadOfWrapping()
+    {
+        // A delta far past the mode-set field max (124 at step 4) must clamp to it, not wrap to an
+        // arbitrary small value. base 12-bit 0x400 (→ 0x4000); source delta 200 (high 12-bit 0x4C8,
+        // → 0x4C80) exceeds 124, so the recovered high is base + 124 = 0x47C (→ LNS 0x47C0), the
+        // nearest representable — not the wrapped ~base+72 the pre-fix mask produced.
+        var low = new RgbaHdrColor(0x4000, 0x4000, 0x4000, AlphaOne);
+        var high = new RgbaHdrColor(0x4C80, 0x4C80, 0x4C80, AlphaOne);
+
+        (RgbaHdrColor recoveredLow, RgbaHdrColor recoveredHigh) = RoundTrip(ColorEndpointMode.HdrLumaSmallRange, low, high);
+
+        Assert.Equal(low, recoveredLow);
+        Assert.Equal(new RgbaHdrColor(0x47C0, 0x47C0, 0x47C0, AlphaOne), recoveredHigh);
+    }
+
+    [Fact]
     public void Encode_RgbDirect_RecoversRgbEndpoints()
     {
         // CEM 11 direct sub-mode: R/G store the top byte (low 8 bits discarded), B stores a 7-bit
