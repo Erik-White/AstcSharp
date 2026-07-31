@@ -16,7 +16,7 @@ public class HdrDecoderTests
         float[] hdrResult = StreamCodec.DecodeHdr(astcData, 4, 4, footprint);
 
         // 4x4 pixels, 4 float values (RGBA) per pixel.
-        Assert.Equal(4 * 4 * 4, hdrResult.Length);
+        Assert.Equal(4 * 4 * BlockInfo.ChannelsPerPixel, hdrResult.Length);
 
         foreach (float value in hdrResult)
         {
@@ -49,7 +49,7 @@ public class HdrDecoderTests
             float[] result = StreamCodec.DecodeHdr(astcData, fp.Width, fp.Height, fp);
 
             // footprint.Width * footprint.Height pixels, each with 4 float values.
-            Assert.Equal(fp.Width * fp.Height * 4, result.Length);
+            Assert.Equal(fp.Width * fp.Height * BlockInfo.ChannelsPerPixel, result.Length);
         }
     }
 

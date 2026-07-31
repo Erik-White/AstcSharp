@@ -81,13 +81,13 @@ public class ReferenceDecoderHdrTests
         int height = blockY;
 
         // Single block: R=G=B=2.0, A=1.0 (above LDR range)
-        var pixels = new Half[width * height * 4];
+        var pixels = new Half[width * height * RgbaColor.BytesPerPixel];
         for (int index = 0; index < width * height; index++)
         {
-            pixels[index * 4 + 0] = (Half)2.0f;
-            pixels[index * 4 + 1] = (Half)2.0f;
-            pixels[index * 4 + 2] = (Half)2.0f;
-            pixels[index * 4 + 3] = (Half)1.0f;
+            pixels[index * RgbaColor.BytesPerPixel + 0] = (Half)2.0f;
+            pixels[index * RgbaColor.BytesPerPixel + 1] = (Half)2.0f;
+            pixels[index * RgbaColor.BytesPerPixel + 2] = (Half)2.0f;
+            pixels[index * RgbaColor.BytesPerPixel + 3] = (Half)1.0f;
         }
 
         var compressed = ReferenceDecoder.CompressHdr(pixels, width, height, blockX, blockY);
@@ -109,12 +109,12 @@ public class ReferenceDecoderHdrTests
         int height = blockY * 2;
 
         // Gradient from 0.0 to 4.0
-        var pixels = new Half[width * height * 4];
+        var pixels = new Half[width * height * RgbaColor.BytesPerPixel];
         for (int row = 0; row < height; row++)
         {
             for (int col = 0; col < width; col++)
             {
-                int idx = (row * width + col) * 4;
+                int idx = (row * width + col) * RgbaColor.BytesPerPixel;
                 float fraction = (float)(row * width + col) / (width * height - 1);
                 float value = fraction * 4.0f;
                 pixels[idx + 0] = (Half)value;
@@ -145,12 +145,12 @@ public class ReferenceDecoderHdrTests
         int height = blockY * 2;
         int halfWidth = width / 2;
 
-        var pixels = new Half[width * height * 4];
+        var pixels = new Half[width * height * RgbaColor.BytesPerPixel];
         for (int row = 0; row < height; row++)
         {
             for (int col = 0; col < width; col++)
             {
-                int idx = (row * width + col) * 4;
+                int idx = (row * width + col) * RgbaColor.BytesPerPixel;
                 if (col < halfWidth)
                 {
                     // LDR left half: values in 0.0-1.0
@@ -209,12 +209,12 @@ public class ReferenceDecoderHdrTests
         int width = blockX * 2;
         int height = blockY * 2;
 
-        var pixels = new Half[width * height * 4];
+        var pixels = new Half[width * height * RgbaColor.BytesPerPixel];
         for (int row = 0; row < height; row++)
         {
             for (int col = 0; col < width; col++)
             {
-                int idx = (row * width + col) * 4;
+                int idx = (row * width + col) * RgbaColor.BytesPerPixel;
                 float fraction = (float)(row * width + col) / (width * height - 1);
                 float value = fraction * 4.0f;
                 pixels[idx + 0] = (Half)value;
@@ -301,8 +301,8 @@ public class ReferenceDecoderHdrTests
             Assert.Fail(
                 $"[{label}] {mismatches}/{channelCount} F16 channel mismatches. " +
                 $"Worst: pixel ({pixelX},{pixelY}) channel {channelName}, " +
-                $"actual={actual[worstPixel * 4 + worstChannel]:G5} vs " +
-                $"expected={(float)expected[worstPixel * 4 + worstChannel]:G5} " +
+                $"actual={actual[worstPixel * RgbaColor.BytesPerPixel + worstChannel]:G5} vs " +
+                $"expected={(float)expected[worstPixel * RgbaColor.BytesPerPixel + worstChannel]:G5} " +
                 $"(relDiff={worstRelDiff:P2}).");
         }
     }

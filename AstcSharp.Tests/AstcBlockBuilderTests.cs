@@ -61,8 +61,8 @@ public class AstcBlockBuilderTests
         var footprint = Footprint.FromFootprintType(FootprintType.Footprint4x4);
         byte[] pixels = StreamCodec.DecodeLdr(blockBytes.ToArray(), 4, 4, footprint);
 
-        Assert.Equal(4 * 4 * 4, pixels.Length);
-        for (int i = 0; i < pixels.Length; i += 4)
+        Assert.Equal(4 * 4 * BlockInfo.ChannelsPerPixel, pixels.Length);
+        for (int i = 0; i < pixels.Length; i += BlockInfo.ChannelsPerPixel)
         {
             Assert.Equal(0x80, pixels[i + 0]);
             Assert.Equal(0x40, pixels[i + 1]);

@@ -41,7 +41,7 @@ public class RealImageRoundTripTests
 
         // Decode the fixture to RGBA8 and take a crop — the real-world source image the encoder must handle.
         byte[] decoded = StreamCodec.DecodeLdr(file.Blocks, file.Width, file.Height, footprint);
-        byte[] source = TestImage.CropTopLeft(decoded, file.Width, CropSize, CropSize);
+        byte[] source = ImageHelper.CropTopLeft(decoded, file.Width, CropSize, CropSize);
 
         byte[] reencoded = StreamCodec.Encode(source, CropSize, CropSize, footprint);
         byte[] roundTripped = StreamCodec.DecodeLdr(reencoded, CropSize, CropSize, footprint);

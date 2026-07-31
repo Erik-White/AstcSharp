@@ -65,7 +65,7 @@ public class HdrImageTests
             astcFile.Footprint);
 
         // Should produce Width * Height pixels, each with 4 values
-        Assert.Equal(astcFile.Width * astcFile.Height * 4, hdrResult.Length);
+        Assert.Equal(astcFile.Width * astcFile.Height * BlockInfo.ChannelsPerPixel, hdrResult.Length);
 
         // Verify at least some HDR values exceed 1.0 (typical for HDR content)
         int valuesGreaterThanOne = 0;
@@ -91,7 +91,7 @@ public class HdrImageTests
         byte[] ldrResult = StreamCodec.DecodeLdr(astcFile.Blocks, astcFile.Width, astcFile.Height, astcFile.Footprint);
 
         // Spec §C.2.19 error colour: opaque magenta (0xFF, 0x00, 0xFF, 0xFF) per texel.
-        for (int i = 0; i < ldrResult.Length; i += 4)
+        for (int i = 0; i < ldrResult.Length; i += BlockInfo.ChannelsPerPixel)
         {
             Assert.Equal(0xFF, ldrResult[i]);
             Assert.Equal(0x00, ldrResult[i + 1]);

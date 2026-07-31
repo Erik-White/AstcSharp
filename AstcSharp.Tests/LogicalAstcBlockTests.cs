@@ -16,7 +16,7 @@ public class LogicalAstcBlockTests
         UInt128 bits = UInt128.Zero;
         BlockInfo info = BlockModeDecoder.Decode(bits);
         Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint8x8);
-        byte[] pixels = new byte[footprint.PixelCount * 4];
+        byte[] pixels = new byte[footprint.PixelCount * BlockInfo.ChannelsPerPixel];
         Array.Fill(pixels, (byte)0xCC);
 
         LogicalBlock.DecodeToBytes<LinearMode>(bits, in info, footprint, pixels);
@@ -32,7 +32,7 @@ public class LogicalAstcBlockTests
         UInt128 bits = (UInt128)0xFFFFFFFFFFFFFDFCUL;
         BlockInfo info = BlockModeDecoder.Decode(bits);
         Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint8x8);
-        byte[] pixels = new byte[footprint.PixelCount * 4];
+        byte[] pixels = new byte[footprint.PixelCount * BlockInfo.ChannelsPerPixel];
 
         LogicalBlock.DecodeToBytes<LinearMode>(bits, in info, footprint, pixels);
 
@@ -59,14 +59,14 @@ public class LogicalAstcBlockTests
         Assert.True(info.IsVoidExtent);
 
         Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint4x4);
-        float[] pixels = new float[footprint.PixelCount * 4];
+        float[] pixels = new float[footprint.PixelCount * BlockInfo.ChannelsPerPixel];
 
         LogicalBlock.DecodeToFloats(bits, in info, footprint, pixels);
 
         // Every texel should carry the same FP16 bit pattern → float values.
         for (int i = 0; i < footprint.PixelCount; i++)
         {
-            int o = i * 4;
+            int o = i * BlockInfo.ChannelsPerPixel;
             Assert.Equal(1.0f, pixels[o + 0]);
             Assert.Equal(2.0f, pixels[o + 1]);
             Assert.Equal(4.0f, pixels[o + 2]);
@@ -80,7 +80,7 @@ public class LogicalAstcBlockTests
         UInt128 bits = (UInt128)0x0000000001FE000173UL;
         BlockInfo info = BlockModeDecoder.Decode(bits);
         Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint6x5);
-        byte[] pixels = new byte[footprint.PixelCount * 4];
+        byte[] pixels = new byte[footprint.PixelCount * BlockInfo.ChannelsPerPixel];
 
         LogicalBlock.DecodeToBytes<LinearMode>(bits, in info, footprint, pixels);
 

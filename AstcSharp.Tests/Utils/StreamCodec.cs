@@ -53,6 +53,27 @@ internal static class StreamCodec
     }
 
     /// <summary>
+    /// Encodes RGBA <see cref="Half"/> pixels to ASTC blocks via the streaming HDR encoder, writing
+    /// the source as little-endian FP16 — the inverse of the decoder's FP16 input layout.
+    /// </summary>
+    public static byte[] EncodeHdr(ReadOnlySpan<Half> rgba, int width, int height, Footprint footprint)
+    {
+        byte[] sourceBytes = new byte[rgba.Length * sizeof(ushort)];
+        for (int i = 0; i < rgba.Length; i++)
+        {
+            BinaryPrimitives.WriteHalfLittleEndian(sourceBytes.AsSpan(i * sizeof(ushort), sizeof(ushort)), rgba[i]);
+        }
+
+        using var source = new MemoryStream(sourceBytes);
+        using var destination = new MemoryStream();
+        AstcEncoder.CompressHdrImage(source, destination, width, height, footprint);
+        return destination.ToArray();
+    }
+
+    public static byte[] EncodeHdr(ReadOnlySpan<Half> rgba, int width, int height, FootprintType footprint)
+        => EncodeHdr(rgba, width, height, Footprint.FromFootprintType(footprint));
+
+    /// <summary>
     /// Decodes raw UASTC blocks (always 4x4) to RGBA32 bytes.
     /// </summary>
     public static byte[] DecodeUastc(ReadOnlySpan<byte> uastcData, int width, int height, LdrDecodeMode mode = LdrDecodeMode.Linear)

@@ -1,0 +1,111 @@
+using System.Runtime.CompilerServices;
+using AstcSharp.ColorEncoding;
+using AstcSharp.Core;
+
+namespace AstcSharp.Encoding;
+
+/// <summary>
+/// The HDR (<see cref="RgbaHdrColor"/>, 16-bit LNS-domain channels) implementation of
+/// <see cref="IColorSpaceStrategy{TTexel}"/>: principal-axis endpoint fitting via
+/// <see cref="HdrEndpointFitter"/>, HDR endpoint encoding via <see cref="HdrEndpointEncoder"/>, and
+/// the decoder's HDR interpolation (<see cref="Interpolation.BlendWeighted"/>, spec §C.2.19) for
+/// reconstruction.
+/// </summary>
+/// <remarks>
+/// <para>
+/// The whole search runs in the LNS (log) domain the HDR decoder interpolates in: texels are handed
+/// in already converted from FP16 to LNS via <see cref="Fp16.ToLns"/>, endpoints decode to
+/// LNS-domain channels, and error is measured there — the domain ASTC uses so squared error tracks
+/// perceived HDR error rather than raw magnitude.
+/// </para>
+/// <para>
+/// Coverage matches <see cref="HdrEndpointEncoder"/>: CEM 2 (luminance) for grey opaque content,
+/// CEM 11 (RGB direct) for opaque content, and CEM 15 (RGB + HDR alpha) when alpha varies. CEM 2 and
+/// CEM 11 force alpha to 1.0, opaque input alpha (1.0) converts to that same LNS value
+/// (<see cref="Fp16.One"/>), so opaque blocks incur no alpha error.
+/// </para>
+/// </remarks>
+internal readonly struct HdrColorStrategy : IColorSpaceStrategy<RgbaHdrColor>
+{
+    private const int ChannelCount = BlockInfo.ChannelsPerPixel;
+
+    // Per-channel-sample squared-error early-out target in the LNS domain. Tuned by measurement of HdrEarlyOutSweep
+    private const long LnsEarlyOutPerSampleError = 64;
+
+    public long EarlyOutPerSampleError => LnsEarlyOutPerSampleError;
+
+    public (RgbaHdrColor Low, RgbaHdrColor High) Fit(ReadOnlySpan<RgbaHdrColor> texels)
+        => HdrEndpointFitter.Fit(texels);
+
+    public bool FitSubsets(
+        ReadOnlySpan<RgbaHdrColor> texels, ReadOnlySpan<int> assignment, int partitionCount, Span<RgbaHdrColor> subsetLow, Span<RgbaHdrColor> subsetHigh)
+        => HdrEndpointFitter.FitSubsets(texels, assignment, partitionCount, subsetLow, subsetHigh);
+
+    /// <summary>
+    /// Picks the HDR endpoint modes worth trying, cheapest-content-fit first. Grey opaque blocks add
+    /// the two luminance modes (CEM 2 large-range and CEM 3 small-range, 2 values each — CEM 3 gives a
+    /// finer base step over a narrow luma span). Opaque blocks add the RGB base+scale mode (CEM 7, 4
+    /// values — cheaper, so it can win on content whose dark endpoint is a uniformly dimmed version of
+    /// the bright one) and the RGB-direct mode (CEM 11, 6 values). Blocks whose alpha is not a constant
+    /// 1.0 use the RGB+HDR-alpha mode (CEM 15), the only implemented mode that carries alpha. Every
+    /// mode except CEM 15 forces alpha to 1.0, so they are offered only when the content is opaque.
+    /// </summary>
+    public int SelectCandidateModes(ReadOnlySpan<RgbaHdrColor> texels, Span<ColorEndpointMode> modes)
+    {
+        bool grey = true;
+        bool opaque = true;
+        foreach (RgbaHdrColor texel in texels)
+        {
+            grey &= texel.R == texel.G && texel.G == texel.B;
+
+            // Texels are LNS-domain here, Fp16.One is the endpoint/LNS-domain value for 1.0 (opaque)
+            opaque &= texel.A == Fp16.One;
+        }
+
+        int count = 0;
+        if (grey && opaque)
+        {
+            modes[count++] = ColorEndpointMode.HdrLumaLargeRange;
+            modes[count++] = ColorEndpointMode.HdrLumaSmallRange;
+        }
+
+        if (opaque)
+        {
+            modes[count++] = ColorEndpointMode.HdrRgbBaseScale;
+            modes[count++] = ColorEndpointMode.HdrRgbDirect;
+        }
+
+        // The RGB+alpha mode always applies and is the only legal choice when alpha varies.
+        modes[count++] = ColorEndpointMode.HdrRgbDirectHdrAlpha;
+        return count;
+    }
+
+    public void EncodeEndpoints(ColorEndpointMode mode, RgbaHdrColor low, RgbaHdrColor high, int colorRange, Span<int> colorValues)
+        => HdrEndpointEncoder.Encode(mode, low, high, colorRange, colorValues);
+
+    public void StoreEffectiveChannels(in ColorEndpointPair pair, Span<int> low, Span<int> high)
+    {
+        StoreChannels(pair.HdrLow, low);
+        StoreChannels(pair.HdrHigh, high);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void StoreChannels(RgbaHdrColor endpoint, Span<int> channels)
+    {
+        for (int channel = 0; channel < ChannelCount; channel++)
+        {
+            channels[channel] = endpoint.GetChannel(channel);
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public int GetChannel(RgbaHdrColor texel, int channel) => texel.GetChannel(channel);
+
+    /// <summary>
+    /// HDR reconstruction: the decoder blends the two 16-bit LNS endpoint channels directly
+    /// (spec §C.2.19), with no 8→16 expansion (endpoints are already 16-bit), matching
+    /// <see cref="BlockDecoding.HdrPixelWriter"/>.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public int Reconstruct(int low, int high, int weight) => Interpolation.BlendWeighted(low, high, weight);
+}

@@ -103,7 +103,7 @@ public class HdrComparisonTests
             astcFile.Blocks, astcFile.Width, astcFile.Height, astcFile.Footprint);
 
         // Should produce Width * Height * 4 values
-        Assert.Equal(astcFile.Width * astcFile.Height * 4, hdrResult.Length);
+        Assert.Equal(astcFile.Width * astcFile.Height * BlockInfo.ChannelsPerPixel, hdrResult.Length);
 
         foreach (float value in hdrResult)
         {
@@ -125,8 +125,8 @@ public class HdrComparisonTests
             astcFile.Blocks, astcFile.Width, astcFile.Height, astcFile.Footprint);
 
         // Both should produce correct output sizes
-        Assert.Equal(astcFile.Width * astcFile.Height * 4, ldrResult.Length);
-        Assert.Equal(astcFile.Width * astcFile.Height * 4, hdrResult.Length);
+        Assert.Equal(astcFile.Width * astcFile.Height * BlockInfo.ChannelsPerPixel, ldrResult.Length);
+        Assert.Equal(astcFile.Width * astcFile.Height * BlockInfo.ChannelsPerPixel, hdrResult.Length);
     }
 
     [Fact]

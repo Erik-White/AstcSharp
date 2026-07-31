@@ -11,6 +11,7 @@ namespace AstcSharp.Benchmarks
                 typeof(DecodingBenchmark),
                 typeof(AstcFullImageDecodeBenchmark),
                 typeof(EncodingBenchmark),
+                typeof(HdrEncodingBenchmark),
                 typeof(AstcFullImageEncodeBenchmark),
                 typeof(CodecComparisonBenchmark),
                 typeof(ReferenceDecoderBenchmark)

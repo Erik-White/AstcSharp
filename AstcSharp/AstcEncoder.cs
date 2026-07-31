@@ -7,8 +7,8 @@ using AstcSharp.Encoding;
 namespace AstcSharp;
 
 /// <summary>
-/// Encodes uncompressed RGBA pixel data into ASTC-compressed blocks, streaming from a source
-/// <see cref="Stream"/> of RGBA32 pixels to a destination <see cref="Stream"/> of ASTC blocks one
+/// Encodes uncompressed pixel data into ASTC-compressed blocks, streaming from a source
+/// <see cref="Stream"/> of pixels to a destination <see cref="Stream"/> of ASTC blocks one
 /// block-row band at a time so peak memory is independent of the image height.
 /// </summary>
 /// <remarks>
@@ -20,16 +20,26 @@ namespace AstcSharp;
 /// </para>
 /// <para>
 /// Constant-colour blocks are encoded as void-extent blocks (spec §C.2.23). Other blocks are fit
-/// per block: the endpoint colour mode (luminance, RGB, or RGBA — direct or base+offset) and the
-/// partition count (1 to 4, spec §C.2.21, all partitions sharing one colour mode) are chosen by
-/// search, with a weight grid (decimated below the footprint size as needed, spec §C.2.18) fitted
-/// to the texels. Every 2D footprint is supported.
+/// per block: the endpoint colour mode and the partition count (1 to 4, spec §C.2.21, all partitions
+/// sharing one colour mode) are chosen by search, with a weight grid (decimated below the footprint
+/// size as needed, spec §C.2.18) fitted to the texels. Every 2D footprint is supported.
+/// </para>
+/// <para>
+/// The LDR path fits endpoints in the byte domain and searches the LDR colour modes (luminance, RGB,
+/// or RGBA — direct or base+offset). The HDR path fits endpoints in the LNS (log) domain the HDR
+/// decoder interpolates in (spec §C.2.15) and searches a subset of the HDR colour modes: CEM 2
+/// (luminance), CEM 11 (RGB direct), and CEM 15 (RGB + HDR alpha). Both paths share one search core:
+/// the HDR mode/sub-mode coverage is a deliberate subset (see the encoder source for the current
+/// limits), so HDR quality is within a wider margin of a production encoder than the LDR path.
 /// </para>
 /// </remarks>
 public static class AstcEncoder
 {
     // At or above this block count in a band, the band's blocks are encoded in parallel
     private const int ParallelBlockThreshold = 2;
+
+    // HDR source pixels are four little-endian FP16 channels: 2 bytes per channel.
+    private const int HdrBytesPerPixel = BlockInfo.ChannelsPerPixel * sizeof(ushort);
 
     /// <summary>
     /// Streams an LDR encode from <paramref name="source"/> to <paramref name="destination"/> one
@@ -57,8 +67,7 @@ public static class AstcEncoder
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(destination);
-        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(width, 0);
-        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(height, 0);
+        ValidateStreamEncodeArgs(width, height, footprint, BlockInfo.ChannelsPerPixel);
 
         int blocksWide = footprint.BlocksWide(width);
         int bandPixelBytes = footprint.Height * width * BlockInfo.ChannelsPerPixel;
@@ -102,13 +111,17 @@ public static class AstcEncoder
     /// <exception cref="EndOfStreamException">
     /// Thrown if <paramref name="source"/> contains fewer than <c>width * height * 4</c> bytes.
     /// </exception>
+    /// <exception cref="InvalidOperationException">
+    /// A block has no legal encoding. This indicates an internal invariant violation rather than bad
+    /// input — every supported 2D footprint admits a legal single-partition encoding — and should not
+    /// occur in practice.
+    /// </exception>
     public static async Task CompressImageAsync(
         Stream source, Stream destination, int width, int height, Footprint footprint, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(destination);
-        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(width, 0);
-        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(height, 0);
+        ValidateStreamEncodeArgs(width, height, footprint, BlockInfo.ChannelsPerPixel);
 
         int blocksWide = footprint.BlocksWide(width);
         int bandPixelBytes = footprint.Height * width * BlockInfo.ChannelsPerPixel;
@@ -133,6 +146,127 @@ public static class AstcEncoder
             ArrayPool<byte>.Shared.Return(sourceBand);
             ArrayPool<byte>.Shared.Return(outputBand);
         }
+    }
+
+    /// <summary>
+    /// Streams an HDR encode from <paramref name="source"/> to <paramref name="destination"/> one
+    /// block-row band at a time, reading little-endian FP16 RGBA pixels.
+    /// </summary>
+    /// <param name="source">Source RGBA pixels, 8 bytes per pixel as four little-endian FP16 channels in R, G, B, A order, row-major.</param>
+    /// <param name="destination">The stream to write the ASTC block stream to (16 bytes per block, row-major block order).</param>
+    /// <param name="width">Image width in pixels.</param>
+    /// <param name="height">Image height in pixels.</param>
+    /// <param name="footprint">The ASTC block footprint to encode with.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="source"/> or <paramref name="destination"/> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="width"/> or <paramref name="height"/> is not positive.</exception>
+    /// <exception cref="EndOfStreamException">
+    /// Thrown if <paramref name="source"/> contains fewer than <c>width * height * 8</c> bytes.
+    /// </exception>
+    /// <exception cref="InvalidOperationException">
+    /// A block has no legal encoding. This indicates an internal invariant violation rather than bad
+    /// input — every supported 2D footprint admits a legal single-partition encoding — and should not
+    /// occur in practice.
+    /// </exception>
+    public static void CompressHdrImage(Stream source, Stream destination, int width, int height, Footprint footprint)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(destination);
+        ValidateStreamEncodeArgs(width, height, footprint, HdrBytesPerPixel);
+
+        int blocksWide = footprint.BlocksWide(width);
+        int bandPixelBytes = footprint.Height * width * HdrBytesPerPixel;
+        int bandBlockBytes = blocksWide * BlockInfo.SizeInBytes;
+
+        byte[] sourceBand = ArrayPool<byte>.Shared.Rent(bandPixelBytes);
+        byte[] outputBand = ArrayPool<byte>.Shared.Rent(bandBlockBytes);
+        try
+        {
+            for (int baseY = 0; baseY < height; baseY += footprint.Height)
+            {
+                int bandHeight = Math.Min(footprint.Height, height - baseY);
+                int validBytes = bandHeight * width * HdrBytesPerPixel;
+                source.ReadExactly(sourceBand.AsSpan(0, validBytes));
+
+                EncodeHdrBand(sourceBand, bandHeight, width, footprint, blocksWide, outputBand);
+                destination.Write(outputBand, 0, bandBlockBytes);
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(sourceBand);
+            ArrayPool<byte>.Shared.Return(outputBand);
+        }
+    }
+
+    /// <summary>
+    /// Asynchronously streams an HDR encode from <paramref name="source"/> to
+    /// <paramref name="destination"/> one block-row band at a time, reading little-endian FP16 RGBA
+    /// pixels.
+    /// </summary>
+    /// <param name="source">Source RGBA pixels, 8 bytes per pixel as four little-endian FP16 channels in R, G, B, A order, row-major.</param>
+    /// <param name="destination">The stream to write the ASTC block stream to (16 bytes per block, row-major block order).</param>
+    /// <param name="width">Image width in pixels.</param>
+    /// <param name="height">Image height in pixels.</param>
+    /// <param name="footprint">The ASTC block footprint to encode with.</param>
+    /// <param name="cancellationToken">Token to cancel the operation.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="source"/> or <paramref name="destination"/> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="width"/> or <paramref name="height"/> is not positive.</exception>
+    /// <exception cref="EndOfStreamException">
+    /// Thrown if <paramref name="source"/> contains fewer than <c>width * height * 8</c> bytes.
+    /// </exception>
+    /// <exception cref="InvalidOperationException">
+    /// A block has no legal encoding. This indicates an internal invariant violation rather than bad
+    /// input — every supported 2D footprint admits a legal single-partition encoding — and should not
+    /// occur in practice.
+    /// </exception>
+    public static async Task CompressHdrImageAsync(
+        Stream source, Stream destination, int width, int height, Footprint footprint, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(destination);
+        ValidateStreamEncodeArgs(width, height, footprint, HdrBytesPerPixel);
+
+        int blocksWide = footprint.BlocksWide(width);
+        int bandPixelBytes = footprint.Height * width * HdrBytesPerPixel;
+        int bandBlockBytes = blocksWide * BlockInfo.SizeInBytes;
+
+        byte[] sourceBand = ArrayPool<byte>.Shared.Rent(bandPixelBytes);
+        byte[] outputBand = ArrayPool<byte>.Shared.Rent(bandBlockBytes);
+        try
+        {
+            for (int baseY = 0; baseY < height; baseY += footprint.Height)
+            {
+                int bandHeight = Math.Min(footprint.Height, height - baseY);
+                int validBytes = bandHeight * width * HdrBytesPerPixel;
+                await source.ReadExactlyAsync(sourceBand.AsMemory(0, validBytes), cancellationToken).ConfigureAwait(false);
+
+                EncodeHdrBand(sourceBand, bandHeight, width, footprint, blocksWide, outputBand);
+                await destination.WriteAsync(outputBand.AsMemory(0, bandBlockBytes), cancellationToken).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(sourceBand);
+            ArrayPool<byte>.Shared.Return(outputBand);
+        }
+    }
+
+    /// <summary>
+    /// Validates that <paramref name="width"/> and <paramref name="height"/> are positive and that
+    /// the largest per-band source buffer — <c>footprint.Height × width × <paramref name="bytesPerPixel"/></c>
+    /// bytes, computed with <see cref="int"/> arithmetic before the band loop — cannot overflow. The
+    /// stream paths never materialise the whole image, but this one product is the biggest allocation
+    /// (it dominates the output block band, since <c>footprint.Height × bytesPerPixel ≥ 16</c>), so
+    /// bounding it keeps every band-offset computation in range. Counterpart to the decoder's
+    /// <c>ValidateStreamDecodeArgs</c>.
+    /// </summary>
+    private static void ValidateStreamEncodeArgs(int width, int height, Footprint footprint, int bytesPerPixel)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(width, 0);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(height, 0);
+
+        long bandPixelBytes = (long)footprint.Height * width * bytesPerPixel;
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(bandPixelBytes, int.MaxValue);
     }
 
     /// <summary>
@@ -217,7 +351,107 @@ public static class AstcEncoder
         return LdrBlockEncoder.Encode(texels, footprint);
     }
 
+    /// <summary>
+    /// HDR counterpart of <see cref="EncodeBand"/>: encodes one block-row band of
+    /// <see cref="RgbaHdrColor"/> texels gathered from the FP16 source band, in parallel for bands
+    /// of at least <see cref="ParallelBlockThreshold"/> blocks.
+    /// </summary>
+    private static void EncodeHdrBand(
+        byte[] bandPixels, int bandHeight, int width, Footprint footprint, int blocksWide, byte[] output)
+    {
+        if (blocksWide >= ParallelBlockThreshold)
+        {
+            try
+            {
+                Parallel.For(0, blocksWide, blockX =>
+                {
+                    Span<RgbaHdrColor> texels = stackalloc RgbaHdrColor[footprint.PixelCount];
+                    GatherHdrBandTexels(bandPixels, bandHeight, width, footprint, blockX, texels);
+                    UInt128 block = EncodeHdrTexels(texels, footprint);
+                    BinaryPrimitives.WriteUInt128LittleEndian(
+                        output.AsSpan(blockX * BlockInfo.SizeInBytes, BlockInfo.SizeInBytes), block);
+                });
+            }
+            catch (AggregateException ex) when (ex.InnerExceptions.Count == 1)
+            {
+                ExceptionDispatchInfo.Throw(ex.InnerException!);
+            }
+
+            return;
+        }
+
+        Span<RgbaHdrColor> texels = stackalloc RgbaHdrColor[footprint.PixelCount];
+        for (int blockX = 0; blockX < blocksWide; blockX++)
+        {
+            GatherHdrBandTexels(bandPixels, bandHeight, width, footprint, blockX, texels);
+            UInt128 block = EncodeHdrTexels(texels, footprint);
+            BinaryPrimitives.WriteUInt128LittleEndian(output.AsSpan(blockX * BlockInfo.SizeInBytes, BlockInfo.SizeInBytes), block);
+        }
+    }
+
+    /// <summary>
+    /// HDR counterpart of <see cref="GatherBandTexels"/>: gathers the footprint-sized block at
+    /// column <paramref name="blockX"/> as <see cref="RgbaHdrColor"/> texels (four little-endian
+    /// FP16 channels per pixel), clamping right/bottom overhang to the nearest in-band texel.
+    /// </summary>
+    private static void GatherHdrBandTexels(
+        byte[] bandPixels, int bandHeight, int width, Footprint footprint, int blockX, Span<RgbaHdrColor> texels)
+    {
+        int baseX = blockX * footprint.Width;
+
+        for (int y = 0; y < footprint.Height; y++)
+        {
+            int srcY = Math.Min(y, bandHeight - 1);
+            for (int x = 0; x < footprint.Width; x++)
+            {
+                int srcX = Math.Min(baseX + x, width - 1);
+                int offset = (((srcY * width) + srcX) * HdrBytesPerPixel);
+                ReadOnlySpan<byte> pixel = bandPixels.AsSpan(offset, HdrBytesPerPixel);
+                texels[(y * footprint.Width) + x] = new RgbaHdrColor(
+                    BinaryPrimitives.ReadUInt16LittleEndian(pixel),
+                    BinaryPrimitives.ReadUInt16LittleEndian(pixel[2..]),
+                    BinaryPrimitives.ReadUInt16LittleEndian(pixel[4..]),
+                    BinaryPrimitives.ReadUInt16LittleEndian(pixel[6..]));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Encodes one block's gathered HDR texels (FP16 bit patterns): a void-extent block when all
+    /// texels are identical, otherwise a single-partition (or, for large footprints, multi-partition)
+    /// HDR block whose weight grid is fitted to the texels in the LNS domain.
+    /// </summary>
+    private static UInt128 EncodeHdrTexels(ReadOnlySpan<RgbaHdrColor> texels, Footprint footprint)
+    {
+        if (IsConstant(texels, out RgbaHdrColor constant))
+        {
+            // The void-extent path stores FP16 bits verbatim, but the search path a non-constant
+            // block would take clamps negative/Inf/NaN channels via Fp16.ToLns. Round-trip through
+            // ToLns/FromLns so both paths reconstruct the same value for those inputs; it is the
+            // identity for finite in-range channels, so ordinary constants are unaffected.
+            return VoidExtentEncoder.EncodeHdr(Normalize(constant.R), Normalize(constant.G), Normalize(constant.B), Normalize(constant.A));
+        }
+
+        return HdrBlockEncoder.Encode(texels, footprint);
+    }
+
+    private static ushort Normalize(ushort fp16Bits) => Fp16.FromLns(Fp16.ToLns(fp16Bits));
+
     private static bool IsConstant(ReadOnlySpan<RgbaColor> texels, out RgbaColor constant)
+    {
+        constant = texels[0];
+        for (int i = 1; i < texels.Length; i++)
+        {
+            if (texels[i] != constant)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool IsConstant(ReadOnlySpan<RgbaHdrColor> texels, out RgbaHdrColor constant)
     {
         constant = texels[0];
         for (int i = 1; i < texels.Length; i++)

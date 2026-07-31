@@ -3,15 +3,24 @@ using System.Runtime.CompilerServices;
 namespace AstcSharp.Core;
 
 /// <summary>
-/// IEEE 754 half-precision (FP16) constants and helpers used by the HDR decoder.
+/// IEEE 754 half-precision (FP16) constants and helpers used by the HDR decoder and encoder.
 /// </summary>
 internal static class Fp16
 {
-    /// <summary>FP16 bit pattern for 1.0 (sign 0, exponent 15, mantissa 0).</summary>
+    /// <summary>
+    /// The 16-bit HDR endpoint-domain value for 1.0: the 12-bit intermediate <c>0x780</c> (the spec's
+    /// "1.0", §C.2.14) shifted left by 4.
+    /// </summary>
     public const ushort One = 0x7800;
 
     /// <summary>FP16 bit pattern for the largest finite value (sign 0, exponent 30, mantissa all ones).</summary>
     public const ushort MaxFinite = 0x7BFF;
+
+    /// <summary>
+    /// FP16 bit pattern for +Infinity (sign 0, exponent all ones, mantissa zero). Positive NaN
+    /// patterns are strictly greater than this; positive finite values are strictly less.
+    /// </summary>
+    public const ushort PositiveInfinity = 0x7C00;
 
     /// <summary>
     /// Converts a 16-bit LNS (Log-Normalized Space) value to a 16-bit SF16 (FP16) bit pattern
@@ -45,6 +54,77 @@ internal static class Fp16
 
         int result = (exponentComponent << 10) | (mantissaTransformed >> 3);
         return (ushort)Math.Min(result, MaxFinite);
+    }
+
+    /// <summary>
+    /// Maps a non-negative finite FP16 bit pattern back to a 16-bit LNS value — a right inverse of
+    /// <see cref="FromLns"/>: <c>FromLns(ToLns(y)) == y</c> for every <paramref name="fp16Bits"/> in
+    /// [0, <see cref="MaxFinite"/>]. Out-of-domain inputs are sanitised first, so the result is always
+    /// a valid LNS value.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="FromLns"/> is many-to-one (its <c>&gt;&gt; 3</c> discards the low mantissa bits), so
+    /// no exact two-sided inverse exists; this returns the representative LNS value whose forward
+    /// transform reproduces the FP16 pattern exactly. The FP16 exponent maps straight to the LNS
+    /// exponent; the 10-bit FP16 mantissa is lifted back through whichever of the three linear
+    /// mantissa pieces (slope 3 / 4 / 5, spec §C.2.15) covers it, by ceiling division so the forward
+    /// <c>&gt;&gt; 3</c> lands in the intended bucket.
+    /// </para>
+    /// <para>
+    /// Negatives (including −Inf and negative NaN) and positive NaN map to 0, and +Inf clamps to
+    /// the largest finite magnitude.
+    /// </para>
+    /// </remarks>
+    public static int ToLns(ushort fp16Bits)
+    {
+        // Sanitise out-of-domain inputs to the [0, MaxFinite] range the inverse is defined on
+        bool negative = (fp16Bits & 0x8000) != 0;
+        if (negative)
+        {
+            return 0;
+        }
+
+        if (fp16Bits > PositiveInfinity)
+        {
+            // Positive NaN: float_to_lns treats NaN as underflow (→ 0), not as a large magnitude.
+            return 0;
+        }
+
+        if (fp16Bits == PositiveInfinity)
+        {
+            // Saturate +Inf to the maximum LNS value (0xFFFF). This decodes back to
+            // MaxFinite, so it is equivalent to clamping the input.
+            return 0xFFFF;
+        }
+
+        int exponentComponent = (fp16Bits >> 10) & 0x1F;
+        int mantissaFp16 = fp16Bits & 0x3FF;
+
+        // The forward pieces switch at mantissa components 512 and 1536; carried through the forward
+        // transform and >> 3, those map to these FP16-mantissa boundaries.
+        const int firstPieceEnd = 192;   // FromLns M=512  → (512*3) >> 3
+        const int secondPieceEnd = 704;  // FromLns M=1536 → (1536*4 - 512) >> 3
+
+        // The forward transform quantises the mantissa as (transformed >> 3), so invert to the
+        // smallest mantissa component whose transform floors back to mantissaFp16: undo the >> 3, undo
+        // the piece's affine map, and round up so the forward floor lands in this bucket.
+        int transformedLow = mantissaFp16 << 3;
+        int mantissaComponent;
+        if (mantissaFp16 < firstPieceEnd)
+        {
+            mantissaComponent = (transformedLow + 2) / 3;
+        }
+        else if (mantissaFp16 < secondPieceEnd)
+        {
+            mantissaComponent = (transformedLow + 512 + 3) / 4;
+        }
+        else
+        {
+            mantissaComponent = (transformedLow + 2048 + 4) / 5;
+        }
+
+        return (exponentComponent << 11) | mantissaComponent;
     }
 
     /// <summary>

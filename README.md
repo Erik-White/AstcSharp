@@ -7,7 +7,7 @@ A pure C# library for decoding and encoding ASTC (Adaptive Scalable Texture Comp
 - Managed C#, no native dependencies
 - Stream-to-stream API (sync + async) that processes one block-row band at a time, bounding memory independently of image size
 - Decode ASTC textures to RGBA32 (LDR) or RGBA float / FP16 (HDR)
-- Encode RGBA32 LDR images to ASTC blocks
+- Encode RGBA32 LDR images and FP16 HDR images to ASTC blocks
 - Linear and sRGB LDR decode modes
 - All standard block footprints (4x4 to 12x12)
 - UASTC LDR decoding (Basis Universal)
@@ -59,6 +59,11 @@ using var blockDestination = new MemoryStream();
 // Encode an RGBA32 LDR image to ASTC blocks
 AstcEncoder.CompressImage(pixelSource, blockDestination, width, height, footprint);
 await AstcEncoder.CompressImageAsync(pixelSource, blockDestination, width, height, footprint, token);
+
+// Encode an HDR image (FP16 RGBA)
+using var hdrSource = new MemoryStream(fp16Pixels);
+AstcEncoder.CompressHdrImage(hdrSource, blockDestination, width, height, footprint);
+await AstcEncoder.CompressHdrImageAsync(hdrSource, blockDestination, width, height, footprint, token);
 ```
 
 ## Performance
@@ -78,7 +83,7 @@ AstcSharp's decoding performance is competitive with ARM's C++ implementation, w
 ## Future improvements
 
 - 3D block types
-- HDR encoding (encoding currently LDR only)
+- Wider HDR encoder mode coverage for higher HDR quality
 
 ## References
 

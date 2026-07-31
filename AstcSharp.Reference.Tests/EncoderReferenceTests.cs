@@ -40,7 +40,7 @@ public class EncoderReferenceTests
         int width = blockX;
         int height = blockY;
 
-        byte[] pixels = SolidImage(width, height, 0x80, 0x40, 0xC0, 0xFF);
+        byte[] pixels = TestImage.Solid(width, height, 0x80, 0x40, 0xC0, 0xFF);
         byte[] encoded = StreamCodec.Encode(pixels, width, height, footprint);
 
         byte[] armDecoded = ReferenceDecoder.DecompressLdr(encoded, width, height, blockX, blockY);
@@ -67,7 +67,7 @@ public class EncoderReferenceTests
         Footprint footprint = Footprint.FromFootprintType(footprintType);
         int width = blockX * 2;
         int height = blockY * 2;
-        byte[] pixels = TwoRegionImage(width, height);
+        byte[] pixels = TestImage.TwoRegion(width, height);
 
         byte[] encoded = StreamCodec.Encode(pixels, width, height, footprint);
         byte[] armDecoded = ReferenceDecoder.DecompressLdr(encoded, width, height, blockX, blockY);
@@ -88,7 +88,7 @@ public class EncoderReferenceTests
         var footprintType = FootprintType.Footprint12x12;
         var (blockX, blockY) = ReferenceDecoder.ToBlockDimensions(footprintType);
         Footprint footprint = Footprint.FromFootprintType(footprintType);
-        byte[] pixels = FourQuadrantImage(blockX, blockY);
+        byte[] pixels = TestImage.FourQuadrant(blockX, blockY);
 
         byte[] encoded = StreamCodec.Encode(pixels, blockX, blockY, footprint);
 
@@ -112,7 +112,7 @@ public class EncoderReferenceTests
         var footprintType = FootprintType.Footprint6x6;
         var (blockX, blockY) = ReferenceDecoder.ToBlockDimensions(footprintType);
         Footprint footprint = Footprint.FromFootprintType(footprintType);
-        byte[] pixels = DecorrelatedAlphaRamp(blockX, blockY);
+        byte[] pixels = TestImage.DecorrelatedAlpha(blockX, blockY);
 
         byte[] encoded = StreamCodec.Encode(pixels, blockX, blockY, footprint);
 
@@ -136,7 +136,7 @@ public class EncoderReferenceTests
         int width = footprint.Width;
         int height = footprint.Height;
 
-        byte[] pixels = SolidImage(width, height, r, g, b, a);
+        byte[] pixels = TestImage.Solid(width, height, r, g, b, a);
         byte[] encoded = StreamCodec.Encode(pixels, width, height, footprint);
 
         byte[] armDecoded = ReferenceDecoder.DecompressLdr(encoded, width, height, 6, 6);
@@ -203,7 +203,7 @@ public class EncoderReferenceTests
         Footprint footprint = Footprint.FromFootprintType(footprintType);
         int width = blockX * 2;
         int height = blockY * 2;
-        byte[] pixels = GradientImage(width, height);
+        byte[] pixels = TestImage.ChromaticGradient(width, height);
 
         // Our encoder, decoded by our decoder.
         byte[] ourEncoded = StreamCodec.Encode(pixels, width, height, footprint);
@@ -240,7 +240,7 @@ public class EncoderReferenceTests
         var (blockX, blockY) = ReferenceDecoder.ToBlockDimensions(footprint.Type);
 
         byte[] decoded = StreamCodec.DecodeLdr(file.Blocks, file.Width, file.Height, footprint);
-        byte[] source = TestImage.CropTopLeft(decoded, file.Width, CropSize, CropSize);
+        byte[] source = ImageHelper.CropTopLeft(decoded, file.Width, CropSize, CropSize);
 
         byte[] reencoded = StreamCodec.Encode(source, CropSize, CropSize, footprint);
         byte[] armDecoded = ReferenceDecoder.DecompressLdr(reencoded, CropSize, CropSize, blockX, blockY);
@@ -251,122 +251,12 @@ public class EncoderReferenceTests
 
     private static byte[] ContentImage(Content content, int width, int height) => content switch
     {
-        Content.Color => GradientImage(width, height),
-        Content.Grayscale => GrayscaleGradient(width, height),
+        Content.Color => TestImage.ChromaticGradient(width, height),
+        Content.Grayscale => TestImage.GrayscaleRamp(width, height),
         _ => throw new ArgumentOutOfRangeException(nameof(content), content, null),
     };
 
     private static IEnumerable<FootprintType> EnumerateFootprints() => Enum.GetValues<FootprintType>();
-
-    private static byte[] TwoRegionImage(int width, int height)
-    {
-        byte[] pixels = new byte[width * height * 4];
-        for (int y = 0; y < height; y++)
-        {
-            for (int x = 0; x < width; x++)
-            {
-                int idx = ((y * width) + x) * 4;
-                float t = (float)y / (height - 1);
-                if (x < width / 2)
-                {
-                    pixels[idx] = 220;
-                    pixels[idx + 1] = (byte)(20 + (t * 200));
-                    pixels[idx + 2] = 20;
-                }
-                else
-                {
-                    pixels[idx] = 20;
-                    pixels[idx + 1] = (byte)(20 + (t * 200));
-                    pixels[idx + 2] = 220;
-                }
-
-                pixels[idx + 3] = 255;
-            }
-        }
-
-        return pixels;
-    }
-
-    // Four saturated solid colours, one per quadrant — four well-separated points in RGB space that
-    // RGB ramps up while alpha ramps down — anti-correlated channels that elicit a dual-plane block.
-    private static byte[] DecorrelatedAlphaRamp(int width, int height)
-    {
-        byte[] pixels = new byte[width * height * 4];
-        for (int y = 0; y < height; y++)
-        {
-            for (int x = 0; x < width; x++)
-            {
-                int idx = ((y * width) + x) * 4;
-                float t = (float)(x + y) / (width + height - 2);
-                byte up = (byte)(t * 255);
-                pixels[idx] = up; pixels[idx + 1] = up; pixels[idx + 2] = up;
-                pixels[idx + 3] = (byte)((1 - t) * 255);
-            }
-        }
-
-        return pixels;
-    }
-
-    // no two endpoint lines cover, giving a 3-partition fit (a shared RGB mode fits three).
-    private static byte[] FourQuadrantImage(int width, int height)
-    {
-        (byte R, byte G, byte B)[] quadrant =
-        [
-            (240, 20, 20), (20, 240, 20), (20, 20, 240), (240, 240, 20),
-        ];
-
-        byte[] pixels = new byte[width * height * 4];
-        for (int y = 0; y < height; y++)
-        {
-            for (int x = 0; x < width; x++)
-            {
-                int idx = ((y * width) + x) * 4;
-                int cell = ((y < height / 2) ? 0 : 2) + ((x < width / 2) ? 0 : 1);
-                (byte r, byte g, byte b) = quadrant[cell];
-                pixels[idx] = r; pixels[idx + 1] = g; pixels[idx + 2] = b; pixels[idx + 3] = 255;
-            }
-        }
-
-        return pixels;
-    }
-
-    private static byte[] GrayscaleGradient(int width, int height)
-    {
-        byte[] pixels = new byte[width * height * 4];
-        for (int y = 0; y < height; y++)
-        {
-            for (int x = 0; x < width; x++)
-            {
-                int idx = ((y * width) + x) * 4;
-                byte v = (byte)(255 * (x + y) / (width + height - 2));
-                pixels[idx] = v;
-                pixels[idx + 1] = v;
-                pixels[idx + 2] = v;
-                pixels[idx + 3] = 255;
-            }
-        }
-
-        return pixels;
-    }
-
-    private static byte[] GradientImage(int width, int height)
-    {
-        byte[] pixels = new byte[width * height * 4];
-        for (int y = 0; y < height; y++)
-        {
-            for (int x = 0; x < width; x++)
-            {
-                int idx = ((y * width) + x) * 4;
-                byte v = (byte)(255 * x / (width - 1));
-                pixels[idx] = v;
-                pixels[idx + 1] = (byte)(255 - v);
-                pixels[idx + 2] = (byte)(128 + (v / 2));
-                pixels[idx + 3] = 255;
-            }
-        }
-
-        return pixels;
-    }
 
     private static double Psnr(ReadOnlySpan<byte> original, ReadOnlySpan<byte> decoded)
     {
@@ -384,20 +274,6 @@ public class EncoderReferenceTests
 
         double meanSquaredError = sumSquaredError / original.Length;
         return 10.0 * Math.Log10((255.0 * 255.0) / meanSquaredError);
-    }
-
-    private static byte[] SolidImage(int width, int height, byte r, byte g, byte b, byte a)
-    {
-        byte[] pixels = new byte[width * height * 4];
-        for (int i = 0; i < pixels.Length; i += 4)
-        {
-            pixels[i] = r;
-            pixels[i + 1] = g;
-            pixels[i + 2] = b;
-            pixels[i + 3] = a;
-        }
-
-        return pixels;
     }
 
     private static void CompareRgba8(byte[] actual, byte[] expected, string label)

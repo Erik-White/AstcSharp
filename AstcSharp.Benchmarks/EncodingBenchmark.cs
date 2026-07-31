@@ -33,10 +33,10 @@ public class EncodingBenchmark
         int w = this.footprint.Width;
         int h = this.footprint.Height;
 
-        this.constant = Solid(w, h);
-        this.gradient = Gradient(w, h);
-        this.fourQuadrant = FourQuadrant(w, h);
-        this.decorrelatedAlpha = DecorrelatedAlpha(w, h);
+        this.constant = TestImage.Solid(w, h, 73, 140, 200, 255);
+        this.gradient = TestImage.ChromaticGradient(w, h);
+        this.fourQuadrant = TestImage.FourQuadrant(w, h);
+        this.decorrelatedAlpha = TestImage.DecorrelatedAlpha(w, h);
     }
 
     // Constant block -> void-extent fast path (no search).
@@ -58,65 +58,4 @@ public class EncodingBenchmark
     [Benchmark]
     public int EncodeDecorrelatedAlpha()
         => StreamCodec.Encode(this.decorrelatedAlpha, this.footprint.Width, this.footprint.Height, this.footprint).Length;
-
-    private static byte[] Solid(int width, int height)
-    {
-        byte[] pixels = new byte[width * height * 4];
-        for (int i = 0; i < pixels.Length; i += 4)
-        {
-            pixels[i] = 73; pixels[i + 1] = 140; pixels[i + 2] = 200; pixels[i + 3] = 255;
-        }
-
-        return pixels;
-    }
-
-    private static byte[] Gradient(int width, int height)
-    {
-        byte[] pixels = new byte[width * height * 4];
-        for (int y = 0; y < height; y++)
-        {
-            for (int x = 0; x < width; x++)
-            {
-                int idx = ((y * width) + x) * 4;
-                byte v = (byte)(255 * x / Math.Max(1, width - 1));
-                pixels[idx] = v; pixels[idx + 1] = (byte)(255 - v); pixels[idx + 2] = (byte)(128 + (v / 2)); pixels[idx + 3] = 255;
-            }
-        }
-
-        return pixels;
-    }
-
-    private static byte[] FourQuadrant(int width, int height)
-    {
-        (byte R, byte G, byte B)[] quadrant = [(240, 20, 20), (20, 240, 20), (20, 20, 240), (240, 240, 20)];
-        byte[] pixels = new byte[width * height * 4];
-        for (int y = 0; y < height; y++)
-        {
-            for (int x = 0; x < width; x++)
-            {
-                int idx = ((y * width) + x) * 4;
-                int cell = ((y < height / 2) ? 0 : 2) + ((x < width / 2) ? 0 : 1);
-                (byte r, byte g, byte b) = quadrant[cell];
-                pixels[idx] = r; pixels[idx + 1] = g; pixels[idx + 2] = b; pixels[idx + 3] = 255;
-            }
-        }
-
-        return pixels;
-    }
-
-    private static byte[] DecorrelatedAlpha(int width, int height)
-    {
-        byte[] pixels = new byte[width * height * 4];
-        for (int y = 0; y < height; y++)
-        {
-            for (int x = 0; x < width; x++)
-            {
-                int idx = ((y * width) + x) * 4;
-                byte up = (byte)(255 * (x + y) / Math.Max(1, width + height - 2));
-                pixels[idx] = up; pixels[idx + 1] = up; pixels[idx + 2] = up; pixels[idx + 3] = (byte)(255 - up);
-            }
-        }
-
-        return pixels;
-    }
 }

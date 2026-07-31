@@ -61,7 +61,7 @@ public class LdrBlockEncoderTests
         // A block split into two very different solid colours is poorly served by a single
         // endpoint line; the encoder should pick a multi-partition encoding for it.
         Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint8x8);
-        byte[] pixels = TwoRegionImage(footprint.Width, footprint.Height);
+        byte[] pixels = TestImage.TwoRegion(footprint.Width, footprint.Height);
 
         byte[] encoded = StreamCodec.Encode(pixels, footprint.Width, footprint.Height, footprint);
 
@@ -79,7 +79,7 @@ public class LdrBlockEncoderTests
         // detail, not a contract). What matters is that partitioning is used and the result
         // reconstructs the four flat regions closely.
         Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint12x12);
-        byte[] pixels = FourQuadrantImage(footprint.Width, footprint.Height);
+        byte[] pixels = TestImage.FourQuadrant(footprint.Width, footprint.Height);
 
         byte[] encoded = StreamCodec.Encode(pixels, footprint.Width, footprint.Height, footprint);
 
@@ -126,7 +126,7 @@ public class LdrBlockEncoderTests
     public void Compress_TwoColorRegionBlock_ReconstructsWellViaPartitioning()
     {
         Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint8x8);
-        byte[] pixels = TwoRegionImage(footprint.Width, footprint.Height);
+        byte[] pixels = TestImage.TwoRegion(footprint.Width, footprint.Height);
 
         byte[] encoded = StreamCodec.Encode(pixels, footprint.Width, footprint.Height, footprint);
         Span<byte> decoded = StreamCodec.DecodeLdr(encoded, footprint.Width, footprint.Height, footprint);
@@ -141,7 +141,7 @@ public class LdrBlockEncoderTests
         // A grey, opaque block should be encoded with a luminance CEM (mode 0 or 1), which is
         // cheaper than RGBA and frees budget for weight precision.
         Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint6x6);
-        byte[] pixels = SingleChannelRamp(footprint.Width, footprint.Height);
+        byte[] pixels = TestImage.GrayscaleRamp(footprint.Width, footprint.Height);
 
         byte[] encoded = StreamCodec.Encode(pixels, footprint.Width, footprint.Height, footprint);
         ColorEndpointMode mode = DecodeEndpointMode(encoded);
@@ -193,7 +193,7 @@ public class LdrBlockEncoderTests
         // (spec §C.2.20) fits both independently, so the encoder should pick a dual-plane block and
         // reconstruct the anti-correlated content tightly.
         Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint6x6);
-        byte[] pixels = DecorrelatedAlphaRamp(footprint.Width, footprint.Height);
+        byte[] pixels = TestImage.DecorrelatedAlpha(footprint.Width, footprint.Height);
 
         byte[] encoded = StreamCodec.Encode(pixels, footprint.Width, footprint.Height, footprint);
         Span<byte> decoded = StreamCodec.DecodeLdr(encoded, footprint.Width, footprint.Height, footprint);
@@ -210,7 +210,7 @@ public class LdrBlockEncoderTests
     {
         // Constant blocks take the void-extent path even through the general encoder entry point.
         Footprint footprint = Footprint.FromFootprintType(footprintType);
-        byte[] pixels = SolidImage(footprint.Width, footprint.Height, 73, 140, 200, 255);
+        byte[] pixels = TestImage.Solid(footprint.Width, footprint.Height, 73, 140, 200, 255);
 
         byte[] encoded = StreamCodec.Encode(pixels, footprint.Width, footprint.Height, footprint);
         Span<byte> decoded = StreamCodec.DecodeLdr(encoded, footprint.Width, footprint.Height, footprint);
@@ -235,12 +235,12 @@ public class LdrBlockEncoderTests
 
     private static byte[] GradientImage(int width, int height)
     {
-        byte[] pixels = new byte[width * height * 4];
+        byte[] pixels = new byte[width * height * BlockInfo.ChannelsPerPixel];
         for (int y = 0; y < height; y++)
         {
             for (int x = 0; x < width; x++)
             {
-                int idx = ((y * width) + x) * 4;
+                int idx = ((y * width) + x) * BlockInfo.ChannelsPerPixel;
                 byte v = (byte)(255 * x / (width - 1));
                 pixels[idx] = v;
                 pixels[idx + 1] = v;
@@ -256,12 +256,12 @@ public class LdrBlockEncoderTests
     // (20,200,0,255) -> (220,20,255,255) — the ideal case for a single-partition, single-line block.
     private static byte[] SingleColorLineRamp(int width, int height)
     {
-        byte[] pixels = new byte[width * height * 4];
+        byte[] pixels = new byte[width * height * BlockInfo.ChannelsPerPixel];
         for (int y = 0; y < height; y++)
         {
             for (int x = 0; x < width; x++)
             {
-                int idx = ((y * width) + x) * 4;
+                int idx = ((y * width) + x) * BlockInfo.ChannelsPerPixel;
                 float t = (float)(x + y) / (width + height - 2);
                 pixels[idx] = (byte)(20 + (t * 200));
                 pixels[idx + 1] = (byte)(200 - (t * 180));
@@ -273,57 +273,20 @@ public class LdrBlockEncoderTests
         return pixels;
     }
 
-    // RGB ramps up while alpha ramps down — anti-correlated channels that one weight line cannot
-    // track, the ideal case for a dual-plane block with the second plane on alpha.
-    private static byte[] DecorrelatedAlphaRamp(int width, int height)
-    {
-        byte[] pixels = new byte[width * height * 4];
-        for (int y = 0; y < height; y++)
-        {
-            for (int x = 0; x < width; x++)
-            {
-                int idx = ((y * width) + x) * 4;
-                float t = (float)(x + y) / (width + height - 2);
-                byte up = (byte)(t * 255);
-                pixels[idx] = up; pixels[idx + 1] = up; pixels[idx + 2] = up;
-                pixels[idx + 3] = (byte)((1 - t) * 255);
-            }
-        }
-
-        return pixels;
-    }
-
     // A ramp whose alpha varies across the block (RGB fixed-ish), forcing a full RGBA endpoint mode.
     private static byte[] VaryingAlphaRamp(int width, int height)
     {
-        byte[] pixels = new byte[width * height * 4];
+        byte[] pixels = new byte[width * height * BlockInfo.ChannelsPerPixel];
         for (int y = 0; y < height; y++)
         {
             for (int x = 0; x < width; x++)
             {
-                int idx = ((y * width) + x) * 4;
+                int idx = ((y * width) + x) * BlockInfo.ChannelsPerPixel;
                 float t = (float)(x + y) / (width + height - 2);
                 pixels[idx] = (byte)(40 + (t * 160));
                 pixels[idx + 1] = 90;
                 pixels[idx + 2] = 150;
                 pixels[idx + 3] = (byte)(20 + (t * 220));
-            }
-        }
-
-        return pixels;
-    }
-
-    // A grayscale ramp (R=G=B varying, opaque) — single-channel content for the luminance modes.
-    private static byte[] SingleChannelRamp(int width, int height)
-    {
-        byte[] pixels = new byte[width * height * 4];
-        for (int y = 0; y < height; y++)
-        {
-            for (int x = 0; x < width; x++)
-            {
-                int idx = ((y * width) + x) * 4;
-                byte v = (byte)(255 * (x + y) / (width + height - 2));
-                pixels[idx] = v; pixels[idx + 1] = v; pixels[idx + 2] = v; pixels[idx + 3] = 255;
             }
         }
 
@@ -340,63 +303,6 @@ public class LdrBlockEncoderTests
         return info.GetEndpointMode(0);
     }
 
-    // Two regions, each with its own colour ramp between different endpoint pairs. The four
-    // endpoints are not collinear, so no single endpoint line fits well — partitioning is needed.
-    private static byte[] TwoRegionImage(int width, int height)
-    {
-        byte[] pixels = new byte[width * height * 4];
-        for (int y = 0; y < height; y++)
-        {
-            for (int x = 0; x < width; x++)
-            {
-                int idx = ((y * width) + x) * 4;
-                float t = (float)y / (height - 1);
-                if (x < width / 2)
-                {
-                    // Left: red -> yellow ramp.
-                    pixels[idx] = 220;
-                    pixels[idx + 1] = (byte)(20 + (t * 200));
-                    pixels[idx + 2] = 20;
-                }
-                else
-                {
-                    // Right: blue -> cyan ramp (a different line in RGB space).
-                    pixels[idx] = 20;
-                    pixels[idx + 1] = (byte)(20 + (t * 200));
-                    pixels[idx + 2] = 220;
-                }
-
-                pixels[idx + 3] = 255;
-            }
-        }
-
-        return pixels;
-    }
-
-    // Four saturated solid colours, one per quadrant — four well-separated points in RGB space that
-    // no two endpoint lines cover, eliciting a 3-partition fit (a shared RGB mode fits three).
-    private static byte[] FourQuadrantImage(int width, int height)
-    {
-        (byte R, byte G, byte B)[] quadrant =
-        [
-            (240, 20, 20), (20, 240, 20), (20, 20, 240), (240, 240, 20),
-        ];
-
-        byte[] pixels = new byte[width * height * 4];
-        for (int y = 0; y < height; y++)
-        {
-            for (int x = 0; x < width; x++)
-            {
-                int idx = ((y * width) + x) * 4;
-                int cell = ((y < height / 2) ? 0 : 2) + ((x < width / 2) ? 0 : 1);
-                (byte r, byte g, byte b) = quadrant[cell];
-                pixels[idx] = r; pixels[idx + 1] = g; pixels[idx + 2] = b; pixels[idx + 3] = 255;
-            }
-        }
-
-        return pixels;
-    }
-
     // A block tiled into a 2D grid of distinct random solid colours — multi-region content that no
     // single endpoint line (and often no 2-way split) fits well, the kind most likely to tempt the
     // encoder toward a 3+ partition fit.
@@ -410,12 +316,12 @@ public class LdrBlockEncoderTests
             colors[i] = ((byte)rng.Next(256), (byte)rng.Next(256), (byte)rng.Next(256));
         }
 
-        byte[] pixels = new byte[width * height * 4];
+        byte[] pixels = new byte[width * height * BlockInfo.ChannelsPerPixel];
         for (int y = 0; y < height; y++)
         {
             for (int x = 0; x < width; x++)
             {
-                int idx = ((y * width) + x) * 4;
+                int idx = ((y * width) + x) * BlockInfo.ChannelsPerPixel;
                 int cell = (Math.Min(y * rows / height, rows - 1) * cols) + Math.Min(x * cols / width, cols - 1);
                 (byte r, byte g, byte b) = colors[cell];
                 pixels[idx] = r;
@@ -423,17 +329,6 @@ public class LdrBlockEncoderTests
                 pixels[idx + 2] = b;
                 pixels[idx + 3] = 255;
             }
-        }
-
-        return pixels;
-    }
-
-    private static byte[] SolidImage(int width, int height, byte r, byte g, byte b, byte a)
-    {
-        byte[] pixels = new byte[width * height * 4];
-        for (int i = 0; i < pixels.Length; i += 4)
-        {
-            pixels[i] = r; pixels[i + 1] = g; pixels[i + 2] = b; pixels[i + 3] = a;
         }
 
         return pixels;
@@ -458,10 +353,10 @@ public class LdrBlockEncoderTests
 
     private static void AssertNoMagentaBlocks(ReadOnlySpan<byte> decoded)
     {
-        for (int i = 0; i < decoded.Length; i += 4)
+        for (int i = 0; i < decoded.Length; i += BlockInfo.ChannelsPerPixel)
         {
             bool isMagenta = decoded[i] == 255 && decoded[i + 1] == 0 && decoded[i + 2] == 255 && decoded[i + 3] == 255;
-            Assert.False(isMagenta, $"Found error-colour (magenta) texel at index {i / 4}; a block was encoded illegally.");
+            Assert.False(isMagenta, $"Found error-colour (magenta) texel at index {i / BlockInfo.ChannelsPerPixel}; a block was encoded illegally.");
         }
     }
 }
