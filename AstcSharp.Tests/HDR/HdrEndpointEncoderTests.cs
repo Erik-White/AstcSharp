@@ -16,7 +16,7 @@ public class HdrEndpointEncoderTests
 {
     // Widest 8-bit endpoint range: quantise/unquantise round-trips losslessly, so any residual error
     // is a wiring bug, not quantisation.
-    private const int LosslessColorRange = 255;
+    private const int LosslessColorRange = byte.MaxValue;
 
     // These modes decode alpha to the FP16 pattern for 1.0.
     private const ushort AlphaOne = Fp16.One;

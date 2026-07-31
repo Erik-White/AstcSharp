@@ -5,13 +5,10 @@ namespace AstcSharp.Encoding;
 /// <summary>
 /// The colour-space-specific operations of the per-block encoder search, factored out so
 /// <see cref="BlockEncoderCore"/> can drive one search skeleton for both the LDR and HDR profiles.
-/// Implementations are zero-size <c>readonly struct</c>s passed as a generic type argument
-/// (<c>where TStrategy : struct, IColorSpaceStrategy&lt;TTexel&gt;</c>) so every call devirtualises
-/// and inlines — the same idiom the decode side uses for <c>IBlockPipeline</c>/<c>IPixelWriter</c>.
 /// </summary>
 /// <typeparam name="TTexel">
 /// The texel/endpoint value type: <see cref="Core.RgbaColor"/> for LDR (byte channels), a 16-bit
-/// value type for HDR. Endpoints fitted by <see cref="Fit"/> share this type; everything the search
+/// value type for HDR. Endpoints fitted by <see cref="Fit"/> share this type, everything the search
 /// measures against is reduced to <c>int</c> channels via <see cref="StoreEffectiveChannels"/>.
 /// </typeparam>
 internal interface IColorSpaceStrategy<TTexel>

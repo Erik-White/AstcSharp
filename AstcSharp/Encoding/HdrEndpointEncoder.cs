@@ -107,17 +107,15 @@ internal static class HdrEndpointEncoder
         int v0, v1;
         if (delta <= SmallRangeFineDeltaMax)
         {
-            // Mode-clear: y0 = (v1 & 0xF0) << 4 | (v0 & 0x7F) << 1; d = (v1 & 0x0F) << 1.
-            // Base and delta are at step 2, so drop the low bit of each.
+            // Mode-clear: base and delta are at step 2, so drop the low bit of each.
             v0 = (baseLuma >> 1) & 0x7F;
             v1 = (((baseLuma >> 8) & 0x0F) << 4) | ((delta >> 1) & 0x0F);
         }
         else
         {
-            // Mode-set: y0 = (v1 & 0xE0) << 4 | (v0 & 0x7F) << 2; d = (v1 & 0x1F) << 2.
-            // Base and delta are at step 4, so drop the low two bits of each. Clamp the delta to the
-            // field's max (124) so an over-range delta lands on the nearest representable value rather
-            // than wrapping to an arbitrary small one.
+            // Mode-set: base and delta are at step 4, so drop the low two bits of each.
+            // Clamp the delta to the field's max (124) so an over-range delta lands on
+            // the nearest representable value rather than wrapping to an arbitrary small one.
             int clampedDelta = Math.Min(delta, SmallRangeWideDeltaMax);
             v0 = SmallRangeModeBitFlag | ((baseLuma >> 2) & 0x7F);
             v1 = (((baseLuma >> 9) & 0x07) << 5) | ((clampedDelta >> 2) & 0x1F);
@@ -160,7 +158,7 @@ internal static class HdrEndpointEncoder
 
         // One scale serves all three channels; use the mean high-minus-low field difference, clamped
         // so no channel's low endpoint underflows the field range.
-        int scale = ScaleField(low, high, redField, greenField, blueField);
+        int scale = ScaleField(low, redField, greenField, blueField);
 
         int v0 = BaseScaleMode5V0Selector | (redField & SixBitFieldMask);
         int v1 = BaseScaleModeBitFlag | (greenField & SevenBitFieldMask);
@@ -179,7 +177,7 @@ internal static class HdrEndpointEncoder
     /// bound — a channel whose span is below the mean can have its low endpoint driven negative, which
     /// the decoder clamps to 0.
     /// </summary>
-    private static int ScaleField(RgbaHdrColor low, RgbaHdrColor high, int redField, int greenField, int blueField)
+    private static int ScaleField(RgbaHdrColor low, int redField, int greenField, int blueField)
     {
         int lowRed = low.R >> BaseScaleFieldShift;
         int lowGreen = low.G >> BaseScaleFieldShift;
