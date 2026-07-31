@@ -50,25 +50,26 @@ public class Fp16Tests
         Assert.Equal(fp16, Fp16.FromLns(Fp16.ToLns(fp16)));
     }
 
-    [Theory]
-    [InlineData((ushort)0x7C00)] // +Inf
-    [InlineData((ushort)0x7E00)] // NaN
-    [InlineData((ushort)0xFC00)] // -Inf
-    [InlineData((ushort)0xFFFF)] // negative NaN
-    public void ToLns_InfiniteOrNaN_ClampsToMaxFinite(ushort fp16)
+    [Fact]
+    public void ToLns_PositiveInfinity_SaturatesAndDecodesToMaxFinite()
     {
-        // Out-of-domain magnitudes clamp to the largest finite value; negatives clamp to 0 first, so a
-        // negative NaN yields 0, a positive one yields MaxFinite. Either way the result is valid LNS.
-        int expected = (fp16 & 0x8000) != 0 ? Fp16.ToLns(0) : Fp16.ToLns(MaxFinite);
-        Assert.Equal(expected, Fp16.ToLns(fp16));
+        // +Inf is the one out-of-domain input that maps to a large magnitude: float_to_lns saturates
+        // it to the maximum LNS value (0xFFFF), which decodes back to MaxFinite.
+        Assert.Equal(0xFFFF, Fp16.ToLns(0x7C00));
+        Assert.Equal(MaxFinite, Fp16.FromLns(Fp16.ToLns(0x7C00)));
     }
 
     [Theory]
+    [InlineData((ushort)0x7E00)] // positive NaN
+    [InlineData((ushort)0xFC00)] // -Inf
+    [InlineData((ushort)0xFFFF)] // negative NaN
     [InlineData((ushort)0x8000)] // -0.0
     [InlineData((ushort)0xBC00)] // -1.0
     [InlineData((ushort)0xC000)] // -2.0
-    public void ToLns_NegativeValues_ClampToZero(ushort fp16)
+    public void ToLns_NanAndNegatives_MapToZero(ushort fp16)
     {
-        Assert.Equal(Fp16.ToLns(0), Fp16.ToLns(fp16));
+        // Matching ARM astcenc's float_to_lns: NaN (either sign) and all negatives (including -Inf)
+        // map to 0, not to a large magnitude.
+        Assert.Equal(0, Fp16.ToLns(fp16));
     }
 }

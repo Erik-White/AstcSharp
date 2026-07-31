@@ -17,6 +17,12 @@ internal static class Fp16
     public const ushort MaxFinite = 0x7BFF;
 
     /// <summary>
+    /// FP16 bit pattern for +Infinity (sign 0, exponent all ones, mantissa zero). Positive NaN
+    /// patterns are strictly greater than this; positive finite values are strictly less.
+    /// </summary>
+    public const ushort PositiveInfinity = 0x7C00;
+
+    /// <summary>
     /// Converts a 16-bit LNS (Log-Normalized Space) value to a 16-bit SF16 (FP16) bit pattern
     /// per ASTC spec §C.2.15.
     /// </summary>
@@ -53,30 +59,43 @@ internal static class Fp16
     /// <summary>
     /// Maps a non-negative finite FP16 bit pattern back to a 16-bit LNS value — a right inverse of
     /// <see cref="FromLns"/>: <c>FromLns(ToLns(y)) == y</c> for every <paramref name="fp16Bits"/> in
-    /// [0, <see cref="MaxFinite"/>]. Negative, infinite, and NaN inputs are clamped into that range
-    /// first, so the result is always a valid LNS value.
+    /// [0, <see cref="MaxFinite"/>]. Out-of-domain inputs are sanitised first, so the result is always
+    /// a valid LNS value.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// <see cref="FromLns"/> is many-to-one (its <c>&gt;&gt; 3</c> discards the low mantissa bits), so
     /// no exact two-sided inverse exists; this returns the representative LNS value whose forward
     /// transform reproduces the FP16 pattern exactly. The FP16 exponent maps straight to the LNS
     /// exponent; the 10-bit FP16 mantissa is lifted back through whichever of the three linear
     /// mantissa pieces (slope 3 / 4 / 5, spec §C.2.15) covers it, by ceiling division so the forward
     /// <c>&gt;&gt; 3</c> lands in the intended bucket.
+    /// </para>
+    /// <para>
+    /// Negatives (including −Inf and negative NaN) and positive NaN map to 0, and +Inf clamps to
+    /// the largest finite magnitude.
+    /// </para>
     /// </remarks>
     public static int ToLns(ushort fp16Bits)
     {
-        // Sanitise out-of-domain inputs to the [0, MaxFinite] range the inverse is defined on.
+        // Sanitise out-of-domain inputs to the [0, MaxFinite] range the inverse is defined on
         bool negative = (fp16Bits & 0x8000) != 0;
         if (negative)
         {
             return 0;
         }
 
-        if (fp16Bits > MaxFinite)
+        if (fp16Bits > PositiveInfinity)
         {
-            // +Inf / NaN: the largest finite magnitude.
-            fp16Bits = MaxFinite;
+            // Positive NaN: float_to_lns treats NaN as underflow (→ 0), not as a large magnitude.
+            return 0;
+        }
+
+        if (fp16Bits == PositiveInfinity)
+        {
+            // Saturate +Inf to the maximum LNS value (0xFFFF). This decodes back to
+            // MaxFinite, so it is equivalent to clamping the input.
+            return 0xFFFF;
         }
 
         int exponentComponent = (fp16Bits >> 10) & 0x1F;

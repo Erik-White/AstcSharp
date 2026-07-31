@@ -97,9 +97,9 @@ public class HdrBlockEncoderTests
     {
         // A constant block takes the void-extent path, which stores FP16 bits verbatim — but a
         // non-constant block's search path clamps out-of-domain channels via Fp16.ToLns. The encoder
-        // sanitises the void-extent constant the same way so both paths reconstruct alike: +Inf and
-        // positive NaN become the largest finite magnitude, negatives become zero, and finite channels
-        // (alpha) are untouched.
+        // sanitises the void-extent constant the same way so both paths reconstruct alike:
+        // +Inf clamps to the largest finite magnitude, NaN and negatives become zero, and
+        // finite channels (alpha) are untouched.
         Half positiveNaN = BitConverter.UInt16BitsToHalf(0x7E00);
         Footprint footprint = Footprint.FromFootprintType(FootprintType.Footprint4x4);
         Half[] pixels = ConstantBlock(
@@ -108,11 +108,10 @@ public class HdrBlockEncoderTests
         byte[] encoded = StreamCodec.EncodeHdr(pixels, footprint.Width, footprint.Height, footprint);
         float[] decoded = StreamCodec.DecodeHdr(encoded, footprint.Width, footprint.Height, footprint);
 
-        float maxFinite = (float)Half.MaxValue;
-        Assert.Equal(maxFinite, decoded[0]);
-        Assert.Equal(maxFinite, decoded[1]);
-        Assert.Equal(0.0f, decoded[2]);
-        Assert.Equal(1.0f, decoded[3]);
+        Assert.Equal((float)Half.MaxValue, decoded[0]); // +Inf → MaxFinite
+        Assert.Equal(0.0f, decoded[1]);                 // positive NaN → 0
+        Assert.Equal(0.0f, decoded[2]);                 // negative → 0
+        Assert.Equal(1.0f, decoded[3]);                 // finite alpha untouched
     }
 
     // Per-channel ramps between HDR values bounded away from zero, colinear in RGB space.
