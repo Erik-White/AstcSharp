@@ -57,6 +57,8 @@ internal readonly struct HdrColorStrategy : IColorSpaceStrategy<RgbaHdrColor>
         foreach (RgbaHdrColor texel in texels)
         {
             grey &= texel.R == texel.G && texel.G == texel.B;
+
+            // Texels are LNS-domain here, Fp16.One is the endpoint/LNS-domain value for 1.0 (opaque)
             opaque &= texel.A == Fp16.One;
         }
 

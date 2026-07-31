@@ -175,9 +175,9 @@ internal static class HdrEndpointEncoder
 
     /// <summary>
     /// The shared 7-bit base+scale factor for CEM 7 mode 5: the mean per-channel high-minus-low field
-    /// difference, clamped to <c>[0, 0x7F]</c>. A larger scale can only drive a channel's low endpoint
-    /// negative (the decoder clamps it to 0), so bounding by the smallest field keeps every channel
-    /// representable.
+    /// difference, clamped to <c>[0, 0x7F]</c>. This is a least-squares-style average, not a per-channel
+    /// bound — a channel whose span is below the mean can have its low endpoint driven negative, which
+    /// the decoder clamps to 0.
     /// </summary>
     private static int ScaleField(RgbaHdrColor low, RgbaHdrColor high, int redField, int greenField, int blueField)
     {

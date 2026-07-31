@@ -7,7 +7,10 @@ namespace AstcSharp.Core;
 /// </summary>
 internal static class Fp16
 {
-    /// <summary>FP16 bit pattern for 1.0 (sign 0, exponent 15, mantissa 0).</summary>
+    /// <summary>
+    /// The 16-bit HDR endpoint-domain value for 1.0: the 12-bit intermediate <c>0x780</c> (the spec's
+    /// "1.0", §C.2.14) shifted left by 4.
+    /// </summary>
     public const ushort One = 0x7800;
 
     /// <summary>FP16 bit pattern for the largest finite value (sign 0, exponent 30, mantissa all ones).</summary>
