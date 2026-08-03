@@ -133,6 +133,13 @@ internal static class HdrEndpointEncoder
     /// </summary>
     private static void EncodeRgbDirect(int colorRange, Span<int> colorValues, RgbaHdrColor low, RgbaHdrColor high)
     {
+        // Prefer the finer mode-0 sub-mode (9-bit anchor + deltas) when the endpoints' channel spread
+        // fits its delta fields, otherwise fall back to the passthrough sub-mode (8/8/7-bit direct).
+        if (TryEncodeRgbDirectFine(colorRange, colorValues, low, high))
+        {
+            return;
+        }
+
         colorValues[0] = QuantizeByte(low.R >> 8, colorRange);
         colorValues[1] = QuantizeByte(high.R >> 8, colorRange);
         colorValues[2] = QuantizeByte(low.G >> 8, colorRange);
@@ -140,6 +147,92 @@ internal static class HdrEndpointEncoder
         colorValues[4] = QuantizeByte(MajorComponentDirectFlag | ((low.B >> 9) & BlueFieldMask), colorRange);
         colorValues[5] = QuantizeByte(MajorComponentDirectFlag | ((high.B >> 9) & BlueFieldMask), colorRange);
     }
+
+    // CEM 11 mode 0: a 9-bit red anchor plus per-channel deltas, versus the passthrough sub-mode's
+    // 8/8/7-bit independent fields. Finer where the channels are correlated (the delta fields stay in
+    // range), which is the common natural-image case. Field widths from spec §C.2.14, modeValue 0.
+    // Values are stored pre-shift (channel >> 7); the decoder shifts left by 3 (to 12 bits) then 4 (to FP16).
+    private const int DirectFineAnchorShift = 7;
+    private const int DirectFineAnchorMax = 0x1FF;      // 9-bit anchor.
+    private const int DirectFineDeltaMax = 0x7F;        // 7-bit unsigned green/blue delta.
+    private const int DirectFineLowDeltaMax = 0x3F;     // 6-bit unsigned red low-delta.
+    private const int DirectFineSignedMin = -64;        // 7-bit signed low green/blue delta.
+    private const int DirectFineSignedMax = 63;
+
+    /// <summary>
+    /// Tries to encode <paramref name="low"/>/<paramref name="high"/> as CEM 11 mode 0 (9-bit anchor +
+    /// per-channel deltas) into <paramref name="colorValues"/>[0..5]. Picks the largest-high channel as
+    /// the major component (swapped into the anchor "red" slot, spec §C.2.14), then derives the anchor
+    /// and delta fields.
+    /// </summary>
+    /// <returns>
+    /// Returns false — leaving <paramref name="colorValues"/> untouched — when any
+    /// delta falls outside its field range (the channels are too decorrelated for this sub-mode), the
+    /// caller then keeps the passthrough encoding. When it returns true the values decode back exactly
+    /// for endpoints whose low 7 bits are zero.
+    /// </returns>
+    private static bool TryEncodeRgbDirectFine(int colorRange, Span<int> colorValues, RgbaHdrColor low, RgbaHdrColor high)
+    {
+        // Major component = channel with the largest high value, swap it into the anchor (red) slot.
+        int major = MajorComponent(high);
+        (int anchorHigh, int greenHigh, int blueHigh) = SwapToMajor(high.R, high.G, high.B, major);
+        (int anchorLow, int greenLow, int blueLow) = SwapToMajor(low.R, low.G, low.B, major);
+
+        int a = anchorHigh >> DirectFineAnchorShift;
+        int b0 = a - (greenHigh >> DirectFineAnchorShift);
+        int b1 = a - (blueHigh >> DirectFineAnchorShift);
+        int c = a - (anchorLow >> DirectFineAnchorShift);
+        int d0 = a - b0 - c - (greenLow >> DirectFineAnchorShift);
+        int d1 = a - b1 - c - (blueLow >> DirectFineAnchorShift);
+
+        if (a > DirectFineAnchorMax
+            || (uint)b0 > DirectFineDeltaMax || (uint)b1 > DirectFineDeltaMax
+            || (uint)c > DirectFineLowDeltaMax
+            || d0 < DirectFineSignedMin || d0 > DirectFineSignedMax
+            || d1 < DirectFineSignedMin || d1 > DirectFineSignedMax)
+        {
+            return false;
+        }
+
+        int majorBit0 = major & 1;
+        int majorBit1 = (major >> 1) & 1;
+
+        colorValues[0] = QuantizeByte(a & 0xFF, colorRange);
+        colorValues[1] = QuantizeByte(((a >> 8) & 1) << 6 | (c & 0x3F), colorRange);
+        colorValues[2] = QuantizeByte(b0 & 0x7F, colorRange);
+        colorValues[3] = QuantizeByte(b1 & 0x7F, colorRange);
+        colorValues[4] = QuantizeByte((majorBit0 << 7) | (d0 & 0x7F), colorRange);
+        colorValues[5] = QuantizeByte((majorBit1 << 7) | (d1 & 0x7F), colorRange);
+
+        return true;
+    }
+
+    /// <summary>
+    /// Returns the major component (0 = R, 1 = G, 2 = B) — the channel with the largest high-endpoint
+    /// value, which the anchor/delta layout assumes is largest so the deltas stay non-negative.
+    /// </summary>
+    private static int MajorComponent(RgbaHdrColor high)
+    {
+        if (high.G >= high.R && high.G >= high.B)
+        {
+            return 1;
+        }
+
+        return high.B >= high.R
+            ? 2
+            : 0;
+    }
+
+    /// <summary>
+    /// Swaps channel <paramref name="major"/> into the first (anchor) position, mirroring the decoder's
+    /// major-component channel swap (spec §C.2.14): major 1 exchanges R/G, major 2 exchanges R/B.
+    /// </summary>
+    private static (int Anchor, int Green, int Blue) SwapToMajor(int r, int g, int b, int major) => major switch
+    {
+        1 => (g, r, b),
+        2 => (b, g, r),
+        _ => (r, g, b),
+    };
 
     /// <summary>
     /// CEM 7 (HDR RGB, base+scale) via mode 5, the only base+scale sub-mode that stores R/G/B

@@ -107,8 +107,10 @@ public class HdrEncoderReferenceTests
         // A block whose texels are a single bright HDR colour uniformly dimmed toward black in the
         // log domain is exactly what CEM 7 base+scale models. Assert the cheaper 4-value mode is
         // actually chosen (not CEM 11), then require ARM to read the base+scale bitstream in agreement
-        // with our decoder.
-        var footprintType = FootprintType.Footprint6x6;
+        // with our decoder. Uses a larger footprint (10×10): at 4×4/6×6 the finer CEM 11 mode-0 sub-mode
+        // (9-bit anchor + deltas) now reconstructs this block better and wins. But at the larger grid's
+        // tighter colour-bit budget CEM 7's 4 values (vs CEM 11's 6) win again, which is its real niche.
+        var footprintType = FootprintType.Footprint10x10;
         var (blockX, blockY) = ReferenceDecoder.ToBlockDimensions(footprintType);
         Footprint footprint = Footprint.FromFootprintType(footprintType);
         Half[] pixels = HdrUniformDarkening(blockX, blockY);
