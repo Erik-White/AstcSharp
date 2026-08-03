@@ -117,23 +117,24 @@ internal static partial class BlockEncoderCore
                 texels[t], effectiveLow.Slice(p * ChannelCount, ChannelCount), effectiveHigh.Slice(p * ChannelCount, ChannelCount), perTexelWeights[t]);
         }
 
-        // Additive iterative endpoint⇄weight co-refinement, single-partition only. Converges the
-        // endpoint/weight assignment toward the endpoint line's joint optimum, recovering the headroom
-        // between the one-shot fit and the line's ceiling. Kept only on strict improvement, so it can
-        // only lower the error or leave the config unchanged.
         TStrategy strategy = default;
-        if (strategy.TryIterativeRefinement && block.PartitionCount == 1)
+        if (strategy.TryIterativeRefinement)
         {
-            long refined = TryIterativeRefinement<TTexel, TStrategy>(
-                in block, mode, gridWeightCount, weightRange, colorRange, decimation, baseError: error, in scratch);
-            if (refined < error)
+            // Additive iterative endpoint/weight co-refinement (single-partition only — it uses the
+            // single-partition endpoint solve). Converges the endpoint/weight assignment toward the
+            // endpoint line's joint optimum. Kept only on strict improvement.
+            if (block.PartitionCount == 1)
             {
-                error = refined;
+                long refined = TryIterativeRefinement<TTexel, TStrategy>(
+                    in block, mode, gridWeightCount, weightRange, colorRange, decimation, baseError: error, in scratch);
+                if (refined < error)
+                {
+                    error = refined;
+                }
             }
 
-            // Additive endpoint coordinate-descent: perturb the winning quantised colour values by +/- 1,
-            // re-decode endpoints, re-fit/quantise weights, keep strict improvements. Catches the small
-            // endpoint-field quantisation misses the least-squares recompute leaves on the table.
+            // Additive endpoint coordinate-descent (any partition count): perturb the winning quantised
+            // colour values by +/- 1, re-decode endpoints, re-fit/quantise weights, keep strict improvements.
             long refinedValues = RefineEndpointValues<TTexel, TStrategy>(
                 in block, mode, gridWeightCount, weightRange, colorRange, decimation, currentError: error, in scratch);
             if (refinedValues < error)
@@ -146,13 +147,18 @@ internal static partial class BlockEncoderCore
     }
 
     /// <summary>
-    /// Single-partition endpoint coordinate-descent: sweeps each quantised endpoint colour value in
-    /// <see cref="ConfigScratch.CandidateColorValues"/> by ±<see cref="EndpointRefineRadius"/>,
-    /// re-decoding the endpoints, re-projecting/fitting/quantising the weight grid, and re-measuring
-    /// through the real path; keeps any move that lowers the block error. Updates the candidate colour
-    /// values and grid weights in place on improvement and returns the new error, else returns
-    /// <paramref name="currentError"/> unchanged. Purely additive — it can only lower error.
+    /// Endpoint coordinate-descent: sweeps each quantised endpoint colour value in
+    /// <see cref="ConfigScratch.CandidateColorValues"/> by ±<see cref="EndpointRefineRadius"/>, keeping
+    /// moves that lower the block error. Handles any partition count, the colour values are the
+    /// per-partition endpoints concatenated (all partitions share <paramref name="mode"/>).
     /// </summary>
+    /// <remarks>
+    /// To bound cost, the descent scores each trial against the <em>fixed</em> per-texel weights of the
+    /// incoming config. This is a proxy: the best endpoints at fixed weights may not be best after the weights re-adapt.
+    /// After the descent settles a single real re-fit (project -> fit -> quantise -> measure) decides the kept result,
+    /// and it is applied only on a strict improvement over <paramref name="currentError"/>. Purely additive, it can only
+    /// lower error, and the emitted grid always matches the emitted endpoints.
+    /// </remarks>
     private static long RefineEndpointValues<TTexel, TStrategy>(
         in BlockInput<TTexel> block,
         ColorEndpointMode mode,
@@ -165,10 +171,26 @@ internal static partial class BlockEncoderCore
         where TTexel : unmanaged
         where TStrategy : struct, IColorSpaceStrategy<TTexel>
     {
-        int valueCount = mode.GetColorValuesCount();
+        int valueCount = mode.GetColorValuesCount() * block.PartitionCount;
         Span<int> values = scratch.CandidateColorValues[..valueCount];
-        Span<int> bestGrid = scratch.CandidateGridWeights[..gridWeightCount];
+        ReadOnlySpan<TTexel> texels = block.Texels;
 
+        // Snapshot the incoming config so a proxy-improving-but-real-worsening descent can be rolled
+        // back — the caller copies Candidate* to Best* by error, so these must stay consistent.
+        Span<int> savedValues = scratch.AltColorValues[..valueCount];
+        Span<int> savedGrid = scratch.AltGridWeights[..gridWeightCount];
+        values.CopyTo(savedValues);
+        scratch.CandidateGridWeights[..gridWeightCount].CopyTo(savedGrid);
+
+        // Fixed per-texel weights of the incoming winning config — the descent scores trials against
+        // these without re-fitting the grid.
+        Span<int> fixedWeights = scratch.AltPerTexelWeights[..texels.Length];
+        DecimationTable.InfillWeights(scratch.EffectiveGrid[..gridWeightCount], decimation, fixedWeights);
+
+        // Descend on the fixed-weight proxy error (seeded from the same proxy at the current values, so
+        // "improvement" is measured consistently in the proxy metric).
+        long proxyBest = ProxyErrorAtValues<TTexel, TStrategy>(in block, mode, colorRange, values, fixedWeights, in scratch);
+        bool anyMove = false;
         for (int sweep = 0; sweep < MaxEndpointRefineSweeps; sweep++)
         {
             bool improved = false;
@@ -189,15 +211,13 @@ internal static partial class BlockEncoderCore
                     }
 
                     values[v] = trial;
-                    long err = MeasureColorValues<TTexel, TStrategy>(
-                        in block, mode, gridWeightCount, weightRange, colorRange, decimation, values,
-                        scratch.AltGridWeights[..gridWeightCount], in scratch);
-                    if (err < currentError)
+                    long proxy = ProxyErrorAtValues<TTexel, TStrategy>(in block, mode, colorRange, values, fixedWeights, in scratch);
+                    if (proxy < proxyBest)
                     {
-                        currentError = err;
+                        proxyBest = proxy;
                         original = trial;
                         improved = true;
-                        scratch.AltGridWeights[..gridWeightCount].CopyTo(bestGrid);
+                        anyMove = true;
                     }
                     else
                     {
@@ -212,16 +232,76 @@ internal static partial class BlockEncoderCore
             }
         }
 
+        if (!anyMove)
+        {
+            return currentError;
+        }
+
+        // The descent moved the endpoints (on the fixed-weight proxy); re-fit the grid once for the new
+        // endpoints and take the real error. Keep the moved config only on a strict improvement,
+        // otherwise restore the snapshot so Candidate* stays the incoming winner (the proxy gain did not
+        // survive the weight re-fit).
+        long refitted = MeasureColorValuesRefit<TTexel, TStrategy>(
+            in block,
+            mode,
+            gridWeightCount,
+            weightRange,
+            colorRange,
+            decimation,
+            values,
+            scratch.CandidateGridWeights[..gridWeightCount],
+            in scratch);
+        if (refitted < currentError)
+        {
+            return refitted;
+        }
+
+        savedValues.CopyTo(values);
+        savedGrid.CopyTo(scratch.CandidateGridWeights[..gridWeightCount]);
         return currentError;
     }
 
     /// <summary>
-    /// Single-partition reconstruction error for a specific set of quantised colour
-    /// <paramref name="values"/>: decodes the endpoints, projects/fits/quantises the weight grid (into
-    /// <paramref name="quantGrid"/>), and measures through the real infill and interpolation. Used by
-    /// the endpoint coordinate-descent to score a perturbed colour value.
+    /// Fixed weight proxy error for a set of quantised colour <paramref name="values"/>: decodes each
+    /// partition's endpoints and sums the reconstruction error against the caller-supplied
+    /// <paramref name="fixedWeights"/> (no grid re-fit). O(texels) per call — the cheap inner step of
+    /// the endpoint coordinate-descent.
     /// </summary>
-    private static long MeasureColorValues<TTexel, TStrategy>(
+    private static long ProxyErrorAtValues<TTexel, TStrategy>(
+        in BlockInput<TTexel> block,
+        ColorEndpointMode mode,
+        int colorRange,
+        ReadOnlySpan<int> values,
+        ReadOnlySpan<int> fixedWeights,
+        in ConfigScratch scratch)
+        where TTexel : unmanaged
+        where TStrategy : struct, IColorSpaceStrategy<TTexel>
+    {
+        DecodeEndpointsPerPartition<TTexel, TStrategy>(in block, mode, colorRange, values, scratch);
+
+        Span<int> effLow = scratch.AltEffectiveLow;
+        Span<int> effHigh = scratch.AltEffectiveHigh;
+        ReadOnlySpan<TTexel> texels = block.Texels;
+        ReadOnlySpan<int> assignment = block.Assignment;
+        long error = 0;
+
+        for (int t = 0; t < texels.Length; t++)
+        {
+            int p = assignment[t];
+            error += ReconstructionError<TTexel, TStrategy>(
+                texels[t], effLow.Slice(p * ChannelCount, ChannelCount), effHigh.Slice(p * ChannelCount, ChannelCount), fixedWeights[t]);
+        }
+
+        return error;
+    }
+
+    /// <summary>
+    /// Real reconstruction error for a set of quantised colour <paramref name="values"/>: decodes the
+    /// per-partition endpoints, projects each texel onto its partition's line, fits/quantises the shared
+    /// weight grid (into <paramref name="quantGrid"/>), and measures through the real infill and
+    /// interpolation. The full (grid-refitting) measure the endpoint descent applies once at the end.
+    /// </summary>
+    private static long MeasureColorValuesRefit<TTexel, TStrategy>(
         in BlockInput<TTexel> block,
         ColorEndpointMode mode,
         int gridWeightCount,
@@ -234,22 +314,18 @@ internal static partial class BlockEncoderCore
         where TTexel : unmanaged
         where TStrategy : struct, IColorSpaceStrategy<TTexel>
     {
-        TStrategy strategy = default;
-        int valueCount = values.Length;
-        Span<int> unquantized = scratch.UnquantizedColors[..valueCount];
-        values.CopyTo(unquantized);
-        Quantization.UnquantizeCEValuesBatch(unquantized, colorRange);
-        ColorEndpointPair pair = EndpointCodec.Decode(unquantized, mode);
+        DecodeEndpointsPerPartition<TTexel, TStrategy>(in block, mode, colorRange, values, scratch);
 
-        Span<int> effLow = scratch.AltEffectiveLow[..ChannelCount];
-        Span<int> effHigh = scratch.AltEffectiveHigh[..ChannelCount];
-        strategy.StoreEffectiveChannels(in pair, effLow, effHigh);
-
+        Span<int> effLow = scratch.AltEffectiveLow;
+        Span<int> effHigh = scratch.AltEffectiveHigh;
         ReadOnlySpan<TTexel> texels = block.Texels;
+        ReadOnlySpan<int> assignment = block.Assignment;
         Span<int> idealWeights = scratch.AltIdealWeights[..texels.Length];
         for (int t = 0; t < texels.Length; t++)
         {
-            idealWeights[t] = ProjectWeight<TTexel, TStrategy>(texels[t], effLow, effHigh);
+            int p = assignment[t];
+            idealWeights[t] = ProjectWeight<TTexel, TStrategy>(
+                texels[t], effLow.Slice(p * ChannelCount, ChannelCount), effHigh.Slice(p * ChannelCount, ChannelCount));
         }
 
         Span<double> fittedGrid = scratch.AltFittedGrid[..gridWeightCount];
@@ -263,10 +339,35 @@ internal static partial class BlockEncoderCore
         long error = 0;
         for (int t = 0; t < texels.Length; t++)
         {
-            error += ReconstructionError<TTexel, TStrategy>(texels[t], effLow, effHigh, perTexel[t]);
+            int p = assignment[t];
+            error += ReconstructionError<TTexel, TStrategy>(
+                texels[t], effLow.Slice(p * ChannelCount, ChannelCount), effHigh.Slice(p * ChannelCount, ChannelCount), perTexel[t]);
         }
 
         return error;
+    }
+
+    /// <summary>
+    /// Decodes each partition's endpoints from its slice of the concatenated colour
+    /// <paramref name="values"/> into <see cref="ConfigScratch.AltEffectiveLow"/>/<c>AltEffectiveHigh</c>.
+    /// </summary>
+    private static void DecodeEndpointsPerPartition<TTexel, TStrategy>(
+        in BlockInput<TTexel> block, ColorEndpointMode mode, int colorRange, ReadOnlySpan<int> values, in ConfigScratch scratch)
+        where TTexel : unmanaged
+        where TStrategy : struct, IColorSpaceStrategy<TTexel>
+    {
+        TStrategy strategy = default;
+        int valuesPerPartition = mode.GetColorValuesCount();
+        Span<int> effLow = scratch.AltEffectiveLow;
+        Span<int> effHigh = scratch.AltEffectiveHigh;
+        for (int p = 0; p < block.PartitionCount; p++)
+        {
+            Span<int> unquantized = scratch.UnquantizedColors[..valuesPerPartition];
+            values.Slice(p * valuesPerPartition, valuesPerPartition).CopyTo(unquantized);
+            Quantization.UnquantizeCEValuesBatch(unquantized, colorRange);
+            ColorEndpointPair pair = EndpointCodec.Decode(unquantized, mode);
+            strategy.StoreEffectiveChannels(in pair, effLow.Slice(p * ChannelCount, ChannelCount), effHigh.Slice(p * ChannelCount, ChannelCount));
+        }
     }
 
     // The iterative refiner stops early once a pass fails to lower error by at least this fraction of
