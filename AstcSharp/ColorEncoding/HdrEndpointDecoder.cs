@@ -43,15 +43,24 @@ internal static class HdrEndpointDecoder
     /// The slot is stored as a plain <c>int</c> so the same row type serves both placement
     /// tables. Callers populate it from <see cref="BaseScaleTarget"/> or <see cref="DirectTarget"/>.
     /// </summary>
-    private readonly record struct BitPlacement(int Slot, int ModeMask, int SourceBit, int TargetShift);
+    internal readonly record struct BitPlacement(int Slot, int ModeMask, int SourceBit, int TargetShift);
 
-    // Shift amounts for the HdrRgbBaseScale mode, indexed by the mode selector (0..5).
+    // Shift amounts for the HdrRgbBaseScale mode, indexed by the mode selector (0..5). Internal so the
+    // encoder (HdrEndpointEncoder) inverts the same table rather than transcribing a second copy.
 #pragma warning disable SA1201 // Readability: keep tables adjacent to the types they use.
-    private static readonly int[] BaseScaleShiftByMode = [1, 1, 2, 3, 4, 5];
+    internal static readonly int[] BaseScaleShiftByMode = [1, 1, 2, 3, 4, 5];
+
+    // The (v-input index, bit) each HdrRgbBaseScale sourceBit is read from. The decoder gathers the
+    // source bits from here and the encoder scatters field bits back to the same positions, so the
+    // non-contiguous CEM 7 bit routing has a single source of truth.
+    internal static readonly (int VIndex, int Bit)[] BaseScaleSourceBitOrigins =
+    [
+        (1, 6), (1, 5), (2, 6), (2, 5), (3, 7), (3, 6), (3, 5),
+    ];
 
     // Bit placements for the HdrRgbBaseScale mode (ASTC CEM 7). Each entry represents:
     // "if the current one-hot mode matches ModeMask, OR sourceBits[SourceBit] into Slot at position TargetShift."
-    private static readonly BitPlacement[] BaseScalePlacements =
+    internal static readonly BitPlacement[] BaseScalePlacements =
     [
         new(Slot: (int)BaseScaleTarget.Green, ModeMask: 0x30, SourceBit: 0, TargetShift: 6),
         new(Slot: (int)BaseScaleTarget.Green, ModeMask: 0x3A, SourceBit: 1, TargetShift: 5),
@@ -258,16 +267,13 @@ internal static class HdrEndpointDecoder
             v3 & 0x1F,
         ];
 
-        Span<int> sourceBits =
-        [
-            (v1 >> 6) & 1,
-            (v1 >> 5) & 1,
-            (v2 >> 6) & 1,
-            (v2 >> 5) & 1,
-            (v3 >> 7) & 1,
-            (v3 >> 6) & 1,
-            (v3 >> 5) & 1,
-        ];
+        ReadOnlySpan<int> vInputs = [v0, v1, v2, v3];
+        Span<int> sourceBits = stackalloc int[BaseScaleSourceBitOrigins.Length];
+        for (int i = 0; i < sourceBits.Length; i++)
+        {
+            (int vIndex, int bit) = BaseScaleSourceBitOrigins[i];
+            sourceBits[i] = (vInputs[vIndex] >> bit) & 1;
+        }
 
         ApplyBitPlacements(BaseScalePlacements, oneHotMode: 1 << mode, sourceBits, targets);
 

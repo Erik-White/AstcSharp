@@ -137,6 +137,22 @@ public class HdrEndpointEncoderTests
     }
 
     [Fact]
+    public void Encode_RgbBaseScale_FineSubMode_RecoversEndpointsModeFiveCannot()
+    {
+        // The worst-block endpoints the 4×4 probe decoded from ARM: high channels (16896,15488,13952)
+        // are not all multiples of 512, so mode 5 (fields >> 9) rounds green/blue away. A finer sub-mode
+        // (shift 3, per-channel deltas) represents them exactly — every channel is a multiple of 8 and
+        // the deltas/scale fit the sub-mode's fields — so the selector must pick it and recover exactly.
+        var low = new RgbaHdrColor(0x3580, 0x3000, 0x2A00, AlphaOne);
+        var high = new RgbaHdrColor(0x4200, 0x3C80, 0x3680, AlphaOne);
+
+        (RgbaHdrColor recoveredLow, RgbaHdrColor recoveredHigh) = RoundTrip(ColorEndpointMode.HdrRgbBaseScale, low, high);
+
+        Assert.Equal(high, recoveredHigh);
+        Assert.Equal(low, recoveredLow);
+    }
+
+    [Fact]
     public void Encode_RgbDirect_FineSubMode_RecoversAtNineBitPrecision()
     {
         // Correlated endpoints whose channels carry bit 7 (a 9-bit-precision detail the passthrough
