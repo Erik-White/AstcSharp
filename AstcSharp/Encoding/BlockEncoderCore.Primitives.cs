@@ -14,6 +14,12 @@ namespace AstcSharp.Encoding;
 /// </summary>
 internal static partial class BlockEncoderCore
 {
+
+    // Endpoint coordinate-descent radius and sweep cap. Small: it refines the already-fitted endpoint
+    // values, and per-value trials each re-fit the whole grid.
+    private const int EndpointRefineRadius = 1;
+    private const int MaxEndpointRefineSweeps = 2;
+
     /// <summary>
     /// Returns the smallest per-partition colour-value count among <paramref name="modes"/> — the
     /// cheapest shared mode the multi-partition search could pick, used to decide whether a partition
@@ -124,6 +130,140 @@ internal static partial class BlockEncoderCore
             {
                 error = refined;
             }
+
+            // Additive endpoint coordinate-descent: perturb the winning quantised colour values by +/- 1,
+            // re-decode endpoints, re-fit/quantise weights, keep strict improvements. Catches the small
+            // endpoint-field quantisation misses the least-squares recompute leaves on the table.
+            long refinedValues = RefineEndpointValues<TTexel, TStrategy>(
+                in block, mode, gridWeightCount, weightRange, colorRange, decimation, currentError: error, in scratch);
+            if (refinedValues < error)
+            {
+                error = refinedValues;
+            }
+        }
+
+        return error;
+    }
+
+    /// <summary>
+    /// Single-partition endpoint coordinate-descent: sweeps each quantised endpoint colour value in
+    /// <see cref="ConfigScratch.CandidateColorValues"/> by ±<see cref="EndpointRefineRadius"/>,
+    /// re-decoding the endpoints, re-projecting/fitting/quantising the weight grid, and re-measuring
+    /// through the real path; keeps any move that lowers the block error. Updates the candidate colour
+    /// values and grid weights in place on improvement and returns the new error, else returns
+    /// <paramref name="currentError"/> unchanged. Purely additive — it can only lower error.
+    /// </summary>
+    private static long RefineEndpointValues<TTexel, TStrategy>(
+        in BlockInput<TTexel> block,
+        ColorEndpointMode mode,
+        int gridWeightCount,
+        int weightRange,
+        int colorRange,
+        DecimationInfo decimation,
+        long currentError,
+        in ConfigScratch scratch)
+        where TTexel : unmanaged
+        where TStrategy : struct, IColorSpaceStrategy<TTexel>
+    {
+        int valueCount = mode.GetColorValuesCount();
+        Span<int> values = scratch.CandidateColorValues[..valueCount];
+        Span<int> bestGrid = scratch.CandidateGridWeights[..gridWeightCount];
+
+        for (int sweep = 0; sweep < MaxEndpointRefineSweeps; sweep++)
+        {
+            bool improved = false;
+            for (int v = 0; v < valueCount; v++)
+            {
+                int original = values[v];
+                for (int delta = -EndpointRefineRadius; delta <= EndpointRefineRadius; delta++)
+                {
+                    if (delta == 0)
+                    {
+                        continue;
+                    }
+
+                    int trial = original + delta;
+                    if (trial < 0 || trial > colorRange)
+                    {
+                        continue;
+                    }
+
+                    values[v] = trial;
+                    long err = MeasureColorValues<TTexel, TStrategy>(
+                        in block, mode, gridWeightCount, weightRange, colorRange, decimation, values,
+                        scratch.AltGridWeights[..gridWeightCount], in scratch);
+                    if (err < currentError)
+                    {
+                        currentError = err;
+                        original = trial;
+                        improved = true;
+                        scratch.AltGridWeights[..gridWeightCount].CopyTo(bestGrid);
+                    }
+                    else
+                    {
+                        values[v] = original;
+                    }
+                }
+            }
+
+            if (!improved)
+            {
+                break;
+            }
+        }
+
+        return currentError;
+    }
+
+    /// <summary>
+    /// Single-partition reconstruction error for a specific set of quantised colour
+    /// <paramref name="values"/>: decodes the endpoints, projects/fits/quantises the weight grid (into
+    /// <paramref name="quantGrid"/>), and measures through the real infill and interpolation. Used by
+    /// the endpoint coordinate-descent to score a perturbed colour value.
+    /// </summary>
+    private static long MeasureColorValues<TTexel, TStrategy>(
+        in BlockInput<TTexel> block,
+        ColorEndpointMode mode,
+        int gridWeightCount,
+        int weightRange,
+        int colorRange,
+        DecimationInfo decimation,
+        ReadOnlySpan<int> values,
+        Span<int> quantGrid,
+        in ConfigScratch scratch)
+        where TTexel : unmanaged
+        where TStrategy : struct, IColorSpaceStrategy<TTexel>
+    {
+        TStrategy strategy = default;
+        int valueCount = values.Length;
+        Span<int> unquantized = scratch.UnquantizedColors[..valueCount];
+        values.CopyTo(unquantized);
+        Quantization.UnquantizeCEValuesBatch(unquantized, colorRange);
+        ColorEndpointPair pair = EndpointCodec.Decode(unquantized, mode);
+
+        Span<int> effLow = scratch.AltEffectiveLow[..ChannelCount];
+        Span<int> effHigh = scratch.AltEffectiveHigh[..ChannelCount];
+        strategy.StoreEffectiveChannels(in pair, effLow, effHigh);
+
+        ReadOnlySpan<TTexel> texels = block.Texels;
+        Span<int> idealWeights = scratch.AltIdealWeights[..texels.Length];
+        for (int t = 0; t < texels.Length; t++)
+        {
+            idealWeights[t] = ProjectWeight<TTexel, TStrategy>(texels[t], effLow, effHigh);
+        }
+
+        Span<double> fittedGrid = scratch.AltFittedGrid[..gridWeightCount];
+        DecimationFit.Fit(idealWeights, decimation, gridWeightCount, fittedGrid);
+        Span<int> effectiveGrid = scratch.AltEffectiveGrid[..gridWeightCount];
+        QuantizeGridToEffective(fittedGrid, weightRange, quantGrid, effectiveGrid);
+
+        Span<int> perTexel = scratch.AltPerTexelWeights[..texels.Length];
+        DecimationTable.InfillWeights(effectiveGrid, decimation, perTexel);
+
+        long error = 0;
+        for (int t = 0; t < texels.Length; t++)
+        {
+            error += ReconstructionError<TTexel, TStrategy>(texels[t], effLow, effHigh, perTexel[t]);
         }
 
         return error;
