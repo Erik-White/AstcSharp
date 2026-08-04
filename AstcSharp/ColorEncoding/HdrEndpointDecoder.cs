@@ -82,13 +82,21 @@ internal static class HdrEndpointDecoder
     ];
 
     // Data-bit widths for the HdrRgbDirect mode (ASTC CEM 11), indexed by modeValue (0..7).
-    // Used for sign-extension of the d0/d1 offsets.
-    private static readonly int[] DirectDataBitsByMode = [7, 6, 7, 6, 5, 6, 5, 6];
+    // Used for sign-extension of the d0/d1 offsets. Internal so the encoder shares the same widths.
+    internal static readonly int[] DirectDataBitsByMode = [7, 6, 7, 6, 5, 6, 5, 6];
+
+    // The (v-input index, bit) each HdrRgbDirect sourceBit is read from. The decoder gathers the
+    // source bits from here and the encoder scatters field bits back to the same positions, so the
+    // non-contiguous CEM 11 bit routing has a single source of truth.
+    internal static readonly (int VIndex, int Bit)[] DirectSourceBitOrigins =
+    [
+        (2, 6), (3, 6), (4, 6), (5, 6), (4, 5), (5, 5),
+    ];
 
     // Bit placements for the HdrRgbDirect mode (ASTC CEM 11). Each entry: if the current
     // one-hot modeValue matches ModeMask, OR sourceBits[SourceBit] into Slot at TargetShift.
     // Entries are grouped by Slot (A, C, B0/B1, D0/D1).
-    private static readonly BitPlacement[] DirectPlacements =
+    internal static readonly BitPlacement[] DirectPlacements =
     [
         new(Slot: (int)DirectTarget.A,  ModeMask: 0xA4, SourceBit: 0, TargetShift: 9),
         new(Slot: (int)DirectTarget.A,  ModeMask: 0x08, SourceBit: 2, TargetShift: 9),
@@ -335,15 +343,13 @@ internal static class HdrEndpointDecoder
             v5 & 0x7F,
         ];
 
-        Span<int> sourceBits =
-        [
-            (v2 >> 6) & 1,
-            (v3 >> 6) & 1,
-            (v4 >> 6) & 1,
-            (v5 >> 6) & 1,
-            (v4 >> 5) & 1,
-            (v5 >> 5) & 1,
-        ];
+        ReadOnlySpan<int> vInputs = [v0, v1, v2, v3, v4, v5];
+        Span<int> sourceBits = stackalloc int[DirectSourceBitOrigins.Length];
+        for (int i = 0; i < sourceBits.Length; i++)
+        {
+            (int vIndex, int bit) = DirectSourceBitOrigins[i];
+            sourceBits[i] = (vInputs[vIndex] >> bit) & 1;
+        }
 
         ApplyBitPlacements(DirectPlacements, oneHotMode: 1 << modeValue, sourceBits, targets);
 

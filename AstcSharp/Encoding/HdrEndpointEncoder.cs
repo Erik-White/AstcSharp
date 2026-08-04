@@ -140,21 +140,64 @@ internal static class HdrEndpointEncoder
         colorValues[1] = QuantizeByte(v1, colorRange);
     }
 
+    // CEM 11 has eight sub-modes (spec §C.2.14, modeValue 0..7) and six field slots (A, B0, B1, C, D0, D1)
+    // matching the decoder's DirectTarget order. Endpoint channels are 12-bit intermediates (FP16 >> 4).
+    // The passthrough sub-mode is selected by major-component value 3.
+    private const int DirectSubModeCount = 8;
+    private const int DirectSlotCount = 6;
+    private const int SlotA = 0;
+    private const int SlotB0 = 1;
+    private const int SlotB1 = 2;
+    private const int SlotC = 3;
+    private const int SlotD0 = 4;
+    private const int SlotD1 = 5;
+
     /// <summary>
-    /// CEM 11 (HDR RGB, direct) via the <c>majcomp == 3</c> direct sub-mode: R/G store the top byte
-    /// of the channel (<c>v &lt;&lt; 8</c>), B stores a 7-bit field (<c>(v &amp; 0x7F) &lt;&lt; 9</c>),
-    /// and both v4/v5 carry the major-component flag bit that selects this sub-mode. Also used for the
-    /// RGB half of CEM 15, whose decoder decodes v0..v5 identically.
+    /// CEM 11 (HDR RGB, direct), a major-component anchor plus per-channel deltas (spec §C.2.14). The
+    /// eight sub-modes trade anchor/delta field precision (the decoder's per-mode value shift) against
+    /// delta field width, finer modes represent tightly-clustered endpoints the coarse ones round away.
+    /// This emits every representable sub-mode plus the passthrough fallback and keeps whichever
+    /// reconstructs the endpoints with the least error. Also used for the RGB half of CEM 15, whose
+    /// decoder decodes v0..v5 identically.
     /// </summary>
     private static void EncodeRgbDirect(int colorRange, Span<int> colorValues, RgbaHdrColor low, RgbaHdrColor high)
     {
-        // Prefer the finer mode-0 sub-mode (9-bit anchor + deltas) when the endpoints' channel spread
-        // fits its delta fields, otherwise fall back to the passthrough sub-mode (8/8/7-bit direct).
-        if (TryEncodeRgbDirectFine(colorRange, colorValues, low, high))
-        {
-            return;
-        }
+        EncodeRgbDirectPassthrough(colorRange, colorValues, low, high);
 
+        // The anchor+delta sub-modes are not always representable (their delta fields are narrower than
+        // the passthrough's independent channels), so each is scored by real reconstruction error and
+        // kept only when it beats the passthrough. Additive, since passthrough is always in the running.
+        Span<int> trial = stackalloc int[DirectSlotCount];
+        Span<int> scoreBuffer = stackalloc int[DirectSlotCount];
+        int major = MajorComponent(high);
+        long bestError = DirectReconstructionError(colorValues, colorRange, scoreBuffer, low, high);
+
+        for (int mode = 0; mode < DirectSubModeCount; mode++)
+        {
+            if (!TryEncodeRgbDirectFine(mode, major, colorRange, trial, low, high))
+            {
+                continue;
+            }
+
+            long error = DirectReconstructionError(trial, colorRange, scoreBuffer, low, high);
+            if (error < bestError)
+            {
+                bestError = error;
+                trial.CopyTo(colorValues);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Encodes the CEM 11 passthrough sub-mode (major-component value 3).
+    /// </summary>
+    /// <remarks>
+    /// R/G store the top byte of the channel (<c>v &lt;&lt; 8</c>), B stores a 7-bit field (<c>(v &amp; 0x7F) &lt;&lt; 9</c>),
+    /// and both v4/v5 carry the major-component flag bit that selects this sub-mode. Always representable, so it
+    /// is the fallback the finer sub-modes are scored against.
+    /// </remarks>
+    private static void EncodeRgbDirectPassthrough(int colorRange, Span<int> colorValues, RgbaHdrColor low, RgbaHdrColor high)
+    {
         colorValues[0] = QuantizeByte(low.R >> 8, colorRange);
         colorValues[1] = QuantizeByte(high.R >> 8, colorRange);
         colorValues[2] = QuantizeByte(low.G >> 8, colorRange);
@@ -163,63 +206,160 @@ internal static class HdrEndpointEncoder
         colorValues[5] = QuantizeByte(MajorComponentDirectFlag | ((high.B >> 9) & BlueFieldMask), colorRange);
     }
 
-    // CEM 11 mode 0: a 9-bit red anchor plus per-channel deltas, versus the passthrough sub-mode's
-    // 8/8/7-bit independent fields. Finer where the channels are correlated (the delta fields stay in
-    // range), which is the common natural-image case. Field widths from spec §C.2.14, modeValue 0.
-    // Values are stored pre-shift (channel >> 7); the decoder shifts left by 3 (to 12 bits) then 4 (to FP16).
-    private const int DirectFineAnchorShift = 7;
-    private const int DirectFineAnchorMax = 0x1FF;      // 9-bit anchor.
-    private const int DirectFineDeltaMax = 0x7F;        // 7-bit unsigned green/blue delta.
-    private const int DirectFineLowDeltaMax = 0x3F;     // 6-bit unsigned red low-delta.
-    private const int DirectFineSignedMin = -64;        // 7-bit signed low green/blue delta.
-    private const int DirectFineSignedMax = 63;
-
     /// <summary>
-    /// Tries to encode <paramref name="low"/>/<paramref name="high"/> as CEM 11 mode 0 (9-bit anchor +
-    /// per-channel deltas) into <paramref name="colorValues"/>[0..5]. Picks the largest-high channel as
-    /// the major component (swapped into the anchor "red" slot, spec §C.2.14), then derives the anchor
-    /// and delta fields.
+    /// Tries to encode <paramref name="low"/>/<paramref name="high"/> as CEM 11 anchor+delta sub-mode.
     /// </summary>
+    /// <remarks>
+    /// <paramref name="mode"/> (0..7) for major component <paramref name="major"/> into
+    /// <paramref name="colorValues"/>[0..5] — the inverse of <see cref="HdrEndpointDecoder"/>'s direct
+    /// path. The channels are un-swizzled so the major component is the anchor, the anchor and deltas
+    /// are quantised to the mode's value shift, and the scattered field bits are routed through the
+    /// decoder's own placement table (<see cref="HdrEndpointDecoder.DirectPlacements"/>).
+    /// </remarks>
     /// <returns>
-    /// Returns false — leaving <paramref name="colorValues"/> untouched — when any
-    /// delta falls outside its field range (the channels are too decorrelated for this sub-mode), the
-    /// caller then keeps the passthrough encoding. When it returns true the values decode back exactly
-    /// for endpoints whose low 7 bits are zero.
+    /// Returns false — leaving <paramref name="colorValues"/> untouched — when any field falls outside
+    /// its range for this mode (so the caller keeps a representable candidate instead).
     /// </returns>
-    private static bool TryEncodeRgbDirectFine(int colorRange, Span<int> colorValues, RgbaHdrColor low, RgbaHdrColor high)
+    private static bool TryEncodeRgbDirectFine(int mode, int major, int colorRange, Span<int> colorValues, RgbaHdrColor low, RgbaHdrColor high)
     {
-        // Major component = channel with the largest high value, swap it into the anchor (red) slot.
-        int major = MajorComponent(high);
-        (int anchorHigh, int greenHigh, int blueHigh) = SwapToMajor(high.R, high.G, high.B, major);
-        (int anchorLow, int greenLow, int blueLow) = SwapToMajor(low.R, low.G, low.B, major);
+        // The decoder expands each stored field by valueShift = (mode >> 1) ^ 3 (spec §C.2.14).
+        int valueShift = (mode >> 1) ^ 3;
 
-        int a = anchorHigh >> DirectFineAnchorShift;
-        int b0 = a - (greenHigh >> DirectFineAnchorShift);
-        int b1 = a - (blueHigh >> DirectFineAnchorShift);
-        int c = a - (anchorLow >> DirectFineAnchorShift);
-        int d0 = a - b0 - c - (greenLow >> DirectFineAnchorShift);
-        int d1 = a - b1 - c - (blueLow >> DirectFineAnchorShift);
+        // Un-swizzle into the decoder's (anchor, green, blue) order, in 12-bit intermediates, then round
+        // each field to the mode's value shift so the stored value expands back exactly.
+        (int anchorHigh, int greenHigh, int blueHigh) = SwapToMajor(high.R >> Fp16ToTwelveBitShift, high.G >> Fp16ToTwelveBitShift, high.B >> Fp16ToTwelveBitShift, major);
+        (int anchorLow, int greenLow, int blueLow) = SwapToMajor(low.R >> Fp16ToTwelveBitShift, low.G >> Fp16ToTwelveBitShift, low.B >> Fp16ToTwelveBitShift, major);
 
-        if (a > DirectFineAnchorMax
-            || (uint)b0 > DirectFineDeltaMax || (uint)b1 > DirectFineDeltaMax
-            || (uint)c > DirectFineLowDeltaMax
-            || d0 < DirectFineSignedMin || d0 > DirectFineSignedMax
-            || d1 < DirectFineSignedMin || d1 > DirectFineSignedMax)
+        int a = RoundShift(anchorHigh, valueShift);
+        int b0 = a - RoundShift(greenHigh, valueShift);
+        int b1 = a - RoundShift(blueHigh, valueShift);
+        int c = a - RoundShift(anchorLow, valueShift);
+        int d0 = a - b0 - c - RoundShift(greenLow, valueShift);
+        int d1 = a - b1 - c - RoundShift(blueLow, valueShift);
+
+        // Field widths for this mode: the A anchor and the C/B/D deltas each occupy a mode-dependent
+        // number of bits (the decoder's data-bit width plus whatever high bits the placement table
+        // adds). d0/d1 are signed at the mode's data-bit width; the rest are unsigned.
+        int dataBits = HdrEndpointDecoder.DirectDataBitsByMode[mode];
+        int signedMin = -(1 << (dataBits - 1));
+        int signedMax = (1 << (dataBits - 1)) - 1;
+
+        Span<int> maxField = stackalloc int[DirectSlotCount];
+        DirectFieldMaxima(mode, maxField);
+
+        if ((uint)a > (uint)maxField[SlotA]
+            || (uint)b0 > (uint)maxField[SlotB0] || (uint)b1 > (uint)maxField[SlotB1]
+            || (uint)c > (uint)maxField[SlotC]
+            || d0 < signedMin || d0 > signedMax
+            || d1 < signedMin || d1 > signedMax)
         {
             return false;
         }
 
-        int majorBit0 = major & 1;
-        int majorBit1 = (major >> 1) & 1;
-
-        colorValues[0] = QuantizeByte(a & 0xFF, colorRange);
-        colorValues[1] = QuantizeByte(((a >> 8) & 1) << 6 | (c & 0x3F), colorRange);
-        colorValues[2] = QuantizeByte(b0 & 0x7F, colorRange);
-        colorValues[3] = QuantizeByte(b1 & 0x7F, colorRange);
-        colorValues[4] = QuantizeByte((majorBit0 << 7) | (d0 & 0x7F), colorRange);
-        colorValues[5] = QuantizeByte((majorBit1 << 7) | (d1 & 0x7F), colorRange);
-
+        PackDirectFields(mode, major, colorRange, colorValues, a, b0, b1, c, d0, d1);
         return true;
+    }
+
+    /// <summary>
+    /// Packs the six field values into the six quantised colour values for CEM 11 sub-mode
+    /// <paramref name="mode"/>. Base bits occupy the low bits of each slot, the scattered high bits are
+    /// placed by inverting <see cref="HdrEndpointDecoder.DirectPlacements"/>, and the mode/major
+    /// selector bits go into the top bits of v1/v2/v3 (mode) and v4/v5 (major).
+    /// </summary>
+    private static void PackDirectFields(int mode, int major, int colorRange, Span<int> colorValues, int a, int b0, int b1, int c, int d0, int d1)
+    {
+        int dataBits = HdrEndpointDecoder.DirectDataBitsByMode[mode];
+        Span<int> fields = [a, b0, b1, c, d0 & ((1 << dataBits) - 1), d1 & ((1 << dataBits) - 1)];
+        Span<int> v =
+        [
+            // Base field bits, mirroring the decoder's target assembly
+            fields[SlotA] & 0xFF, // A holds v0 (8 bits) + v1[6]->bit8
+            fields[SlotC] & 0x3F, // C holds v1[5:0]
+            fields[SlotB0] & 0x3F, // B0/B1 hold v2/v3[5:0]
+            fields[SlotB1] & 0x3F,
+            fields[SlotD0] & 0x7F, // D0/D1 hold v4/v5[6:0]
+            fields[SlotD1] & 0x7F,
+        ];
+
+        // The A bit-8 lives at v1[6] in every mode (decoder: v0 | ((v1 & 0x40) << 2)).
+        v[1] |= ((fields[SlotA] >> 8) & 1) << 6;
+
+        int oneHotMode = 1 << mode;
+        foreach (HdrEndpointDecoder.BitPlacement placement in HdrEndpointDecoder.DirectPlacements)
+        {
+            if ((oneHotMode & placement.ModeMask) == 0)
+            {
+                continue;
+            }
+
+            int bit = (fields[placement.Slot] >> placement.TargetShift) & 1;
+            (int vIndex, int vBit) = HdrEndpointDecoder.DirectSourceBitOrigins[placement.SourceBit];
+            v[vIndex] |= bit << vBit;
+        }
+
+        // Mode selector (decoder reassembles from these)
+        v[1] |= (mode & 1) << 7; // mode0
+        v[2] |= ((mode >> 1) & 1) << 7; // mode1
+        v[3] |= ((mode >> 2) & 1) << 7; // mode2
+
+        // Major-component selector
+        v[4] |= (major & 1) << 7; // major0
+        v[5] |= ((major >> 1) & 1) << 7; // major1
+
+        for (int i = 0; i < DirectSlotCount; i++)
+        {
+            colorValues[i] = QuantizeByte(v[i], colorRange);
+        }
+    }
+
+    /// <summary>
+    /// Fills <paramref name="maxField"/> with the largest representable unsigned value for each of the
+    /// six CEM 11 slots under sub-mode <paramref name="mode"/> — the base bits plus whichever scattered
+    /// high bits that mode enables (derived from the decoder's placement table). D0/D1 are handled as
+    /// signed by the caller, so their entries here are unused.
+    /// </summary>
+    private static void DirectFieldMaxima(int mode, Span<int> maxField)
+    {
+        // Base bit counts (highest base bit index) from spec §C.2.14:
+        // A is 8 bits (bit 8 via v1[6]),
+        // C/B0/B1 are 6 bits,
+        // D0/D1 are 7 bits
+        Span<int> highestBit = [8, 5, 5, 5, 6, 6];
+        int oneHotMode = 1 << mode;
+        foreach (HdrEndpointDecoder.BitPlacement placement in HdrEndpointDecoder.DirectPlacements)
+        {
+            if ((oneHotMode & placement.ModeMask) != 0 && placement.TargetShift > highestBit[placement.Slot])
+            {
+                highestBit[placement.Slot] = placement.TargetShift;
+            }
+        }
+
+        for (int i = 0; i < DirectSlotCount; i++)
+        {
+            maxField[i] = (1 << (highestBit[i] + 1)) - 1;
+        }
+    }
+
+    /// <summary>
+    /// Rounds <paramref name="value"/> (a 12-bit intermediate) to the nearest multiple of
+    /// <c>1 &lt;&lt; shift</c> and divides, clamping negatives to zero. The decoder reconstructs each
+    /// field as <c>stored &lt;&lt; shift</c>, so this is the encode inverse.
+    /// </summary>
+    private static int RoundShift(int value, int shift) => value > 0
+        ? (value + (1 << (shift - 1))) >> shift
+        : 0;
+
+    /// <summary>
+    /// Scores a CEM 11 colour-value set by its real reconstruction error: unquantise and decode through
+    /// the actual decoder, then sum the squared per-channel LNS-domain differences.
+    /// <paramref name="scoreBuffer"/> is a reusable length-6 scratch span.
+    /// </summary>
+    private static long DirectReconstructionError(ReadOnlySpan<int> quantValues, int colorRange, Span<int> scoreBuffer, RgbaHdrColor low, RgbaHdrColor high)
+    {
+        quantValues[..DirectSlotCount].CopyTo(scoreBuffer);
+        Quantization.UnquantizeCEValuesBatch(scoreBuffer, colorRange);
+        (RgbaHdrColor decodedLow, RgbaHdrColor decodedHigh) = HdrEndpointDecoder.DecodeHdrModeUnquantized(scoreBuffer, ColorEndpointMode.HdrRgbDirect);
+        return LnsSquaredError(low, decodedLow) + LnsSquaredError(high, decodedHigh);
     }
 
     /// <summary>

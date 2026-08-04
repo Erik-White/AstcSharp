@@ -153,6 +153,22 @@ public class HdrEndpointEncoderTests
     }
 
     [Fact]
+    public void Encode_RgbDirect_FinerSubMode_RecoversPrecisionModeZeroCannot()
+    {
+        // Tightly-clustered endpoints (the 4×4 probe's failure case): 12-bit intermediates that are even
+        // but not multiples of 8, so both the passthrough (>>8 or >>9) and mode 0 (value shift 3) round
+        // them away. A finer sub-mode (value shift 1) stores them exactly, every 12-bit value is even
+        // and the small deltas fit its fields, so the selector must pick it and recover exactly.
+        var low = new RgbaHdrColor(0x3EA0, 0x3E60, 0x3E20, AlphaOne);
+        var high = new RgbaHdrColor(0x3F20, 0x3EE0, 0x3EA0, AlphaOne);
+
+        (RgbaHdrColor recoveredLow, RgbaHdrColor recoveredHigh) = RoundTrip(ColorEndpointMode.HdrRgbDirect, low, high);
+
+        Assert.Equal(high, recoveredHigh);
+        Assert.Equal(low, recoveredLow);
+    }
+
+    [Fact]
     public void Encode_RgbDirect_FineSubMode_RecoversAtNineBitPrecision()
     {
         // Correlated endpoints whose channels carry bit 7 (a 9-bit-precision detail the passthrough
