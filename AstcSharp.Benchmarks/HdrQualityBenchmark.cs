@@ -4,12 +4,13 @@ using AstcSharp.Tests.Utils;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Jobs;
+using BenchmarkDotNet.Running;
 using BenchmarkDotNet.Toolchains.InProcess.Emit;
 
 namespace AstcSharp.Benchmarks;
 
 /// <summary>
-/// Combined quality-and-time report of the HDR encoder versus the ARM reference, across footprints.
+/// Combined quality-and-time report of the HDR encoder versus the ARM reference, across footprints
 /// </summary>
 [Config(typeof(QualityConfig))]
 public class HdrQualityBenchmark
@@ -37,27 +38,27 @@ public class HdrQualityBenchmark
     public FootprintType FootprintType { get; set; }
 
     private Footprint footprint;
-    private Half[] source = [];
+    private HdrQuality.Image image;
 
     /// <summary>
-    /// Returns the cached quality for <paramref name="footprintType"/>, measuring it on first request.
+    /// Returns the cached quality for the benchmark case's footprint, measuring it on first request.
     /// Read by the custom quality columns, which run outside the benchmark's timed body.
     /// </summary>
-    public static QualityResult QualityFor(FootprintType footprintType)
-        => QualityByFootprint.GetOrAdd(footprintType, HdrQuality.Measure);
+    public static QualityResult QualityFor(BenchmarkCase benchmarkCase)
+        => QualityByFootprint.GetOrAdd((FootprintType)benchmarkCase.Parameters["FootprintType"], HdrQuality.Measure);
 
     [GlobalSetup]
     public void Setup()
     {
         footprint = Footprint.FromFootprintType(FootprintType);
-        source = HdrQuality.LoadFixtureCropForFootprint();
+        image = HdrQuality.LoadFixture();
 
         // Measure and cache the (deterministic) quality now, so the columns read it without the timing
         // sampler ever re-running the comparison.
-        QualityFor(FootprintType);
+        QualityByFootprint.GetOrAdd(FootprintType, HdrQuality.Measure);
     }
 
     [Benchmark]
-    public int EncodeHdrCrop()
-        => StreamCodec.EncodeHdr(source, HdrQuality.CropSize, HdrQuality.CropSize, footprint).Length;
+    public int EncodeHdrImage()
+        => StreamCodec.EncodeHdr(image.Pixels, image.Width, image.Height, footprint).Length;
 }

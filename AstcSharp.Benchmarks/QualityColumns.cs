@@ -23,10 +23,10 @@ public readonly record struct QualityResult(double OurPsnr, double ReferencePsnr
 /// </summary>
 internal sealed class QualityColumn : IColumn
 {
-    private readonly Func<FootprintType, QualityResult> resolve;
+    private readonly Func<BenchmarkCase, QualityResult> resolve;
     private readonly Func<QualityResult, double> select;
 
-    public QualityColumn(string columnName, string legend, Func<FootprintType, QualityResult> resolve, Func<QualityResult, double> select)
+    public QualityColumn(string columnName, string legend, Func<BenchmarkCase, QualityResult> resolve, Func<QualityResult, double> select)
     {
         this.ColumnName = columnName;
         this.Legend = legend;
@@ -57,20 +57,13 @@ internal sealed class QualityColumn : IColumn
     public string GetValue(Summary summary, BenchmarkCase benchmarkCase) => this.GetValue(summary, benchmarkCase, SummaryStyle.Default);
 
     public string GetValue(Summary summary, BenchmarkCase benchmarkCase, SummaryStyle style)
-    {
-        if (benchmarkCase.Parameters["FootprintType"] is not FootprintType footprintType)
-        {
-            return "?";
-        }
-
-        return select(resolve(footprintType)).ToString("F2", CultureInfo.InvariantCulture);
-    }
+        => select(resolve(benchmarkCase)).ToString("F2", CultureInfo.InvariantCulture);
 
     /// <summary>
-    /// The three quality columns (Our dB, Ref dB, dB vs Ref) bound to a benchmark's cached
-    /// per-footprint quality lookup.
+    /// The three quality columns (Our dB, Ref dB, dB vs Ref) bound to a benchmark's cached quality
+    /// lookup, keyed by the whole benchmark case (footprint plus any fixture/region parameter).
     /// </summary>
-    public static IColumn[] For(Func<FootprintType, QualityResult> resolve) =>
+    public static IColumn[] For(Func<BenchmarkCase, QualityResult> resolve) =>
     [
         new QualityColumn("Our dB", "AstcSharp encode log-PSNR (dB) against the source", resolve, r => r.OurPsnr),
         new QualityColumn("Ref dB", "Reference encoder log-PSNR (dB) against the source", resolve, r => r.ReferencePsnr),

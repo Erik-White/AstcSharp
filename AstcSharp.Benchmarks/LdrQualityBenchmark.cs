@@ -4,6 +4,7 @@ using AstcSharp.Tests.Utils;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Jobs;
+using BenchmarkDotNet.Running;
 using BenchmarkDotNet.Toolchains.InProcess.Emit;
 
 namespace AstcSharp.Benchmarks;
@@ -36,24 +37,24 @@ public class LdrQualityBenchmark
     public FootprintType FootprintType { get; set; }
 
     private Footprint footprint;
-    private byte[] source = [];
+    private LdrQuality.Image image;
 
     /// <summary>
-    /// Returns the cached quality for <paramref name="footprintType"/>, measuring it on first request.
+    /// Returns the cached quality for the benchmark case's footprint, measuring it on first request.
     /// Read by the custom quality columns, which run outside the benchmark's timed body.
     /// </summary>
-    public static QualityResult QualityFor(FootprintType footprintType)
-        => QualityByFootprint.GetOrAdd(footprintType, LdrQuality.Measure);
+    public static QualityResult QualityFor(BenchmarkCase benchmarkCase)
+        => QualityByFootprint.GetOrAdd((FootprintType)benchmarkCase.Parameters["FootprintType"], LdrQuality.Measure);
 
     [GlobalSetup]
     public void Setup()
     {
         footprint = Footprint.FromFootprintType(FootprintType);
-        source = LdrQuality.LoadFixtureCrop();
-        QualityFor(FootprintType);
+        image = LdrQuality.LoadFixture();
+        QualityByFootprint.GetOrAdd(FootprintType, LdrQuality.Measure);
     }
 
     [Benchmark]
-    public int EncodeLdrCrop()
-        => StreamCodec.Encode(source, LdrQuality.CropSize, LdrQuality.CropSize, footprint).Length;
+    public int EncodeLdrImage()
+        => StreamCodec.Encode(image.Pixels, image.Width, image.Height, footprint).Length;
 }

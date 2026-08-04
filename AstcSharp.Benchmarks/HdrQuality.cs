@@ -14,11 +14,15 @@ namespace AstcSharp.Benchmarks;
 public static class HdrQuality
 {
     private const string Fixture = "HdrPipeline/mixed-256-4x4";
-    public const int CropSize = 64;
 
     // The FP16 bit pattern of the largest finite Half (65504), used as the PSNR peak — the fixed
     // reference the reconstruction error is measured against.
     private const double Fp16Peak = 0x7BFF;
+
+    /// <summary>
+    /// The loaded source image: its FP16 RGBA pixels and dimensions.
+    /// </summary>
+    public readonly record struct Image(Half[] Pixels, int Width, int Height);
 
     /// <summary>
     /// Measures both codecs' log-PSNR against the source for <paramref name="footprintType"/>. Encodes
@@ -26,30 +30,29 @@ public static class HdrQuality
     /// </summary>
     public static QualityResult Measure(FootprintType footprintType)
     {
-        Half[] source = LoadFixtureCrop();
+        Image image = LoadFixture();
         Footprint footprint = Footprint.FromFootprintType(footprintType);
 
-        byte[] ourBlocks = StreamCodec.EncodeHdr(source, CropSize, CropSize, footprint);
-        Half[] ourDecoded = DecompressHdr(ourBlocks, footprint);
+        byte[] ourBlocks = StreamCodec.EncodeHdr(image.Pixels, image.Width, image.Height, footprint);
+        Half[] ourDecoded = DecompressHdr(ourBlocks, image.Width, image.Height, footprint);
 
-        byte[] armBlocks = CompressHdr(source, footprint);
-        Half[] armDecoded = DecompressHdr(armBlocks, footprint);
+        byte[] armBlocks = CompressHdr(image, footprint);
+        Half[] armDecoded = DecompressHdr(armBlocks, image.Width, image.Height, footprint);
 
-        return new QualityResult(LogPsnr(source, ourDecoded), LogPsnr(source, armDecoded));
+        return new QualityResult(LogPsnr(image.Pixels, ourDecoded), LogPsnr(image.Pixels, armDecoded));
     }
 
     /// <summary>
-    /// Loads the fixture crop the benchmark's timed encode runs on — the same source
+    /// Loads the fixture image the benchmark's timed encode runs on — the same source
     /// <see cref="Measure"/> uses, so the timed encode and the quality columns describe one encode.
     /// </summary>
-    public static Half[] LoadFixtureCropForFootprint() => LoadFixtureCrop();
-
-    private static Half[] LoadFixtureCrop()
+    public static Image LoadFixture()
     {
         string path = BenchmarkTestDataLocator.FindTestData(Path.Combine("Astc", Fixture + ".astc"));
         AstcFile file = AstcFile.FromMemory(File.ReadAllBytes(path));
-        Half[] full = StreamCodec.DecodeHdrHalf(file.Blocks, file.Width, file.Height, file.Footprint);
-        return CropTopLeft(full, file.Width, CropSize, CropSize);
+        Half[] pixels = StreamCodec.DecodeHdrHalf(file.Blocks, file.Width, file.Height, file.Footprint);
+        
+        return new Image(pixels, file.Width, file.Height);
     }
 
     private static double LogPsnr(ReadOnlySpan<Half> original, ReadOnlySpan<Half> decoded)
@@ -71,30 +74,17 @@ public static class HdrQuality
         return 10.0 * Math.Log10((Fp16Peak * Fp16Peak) / meanSquaredError);
     }
 
-    private static Half[] CropTopLeft(ReadOnlySpan<Half> rgba, int sourceWidth, int cropWidth, int cropHeight)
-    {
-        int channels = BlockInfo.ChannelsPerPixel;
-        var cropped = new Half[cropWidth * cropHeight * channels];
-        for (int y = 0; y < cropHeight; y++)
-        {
-            ReadOnlySpan<Half> sourceRow = rgba.Slice(y * sourceWidth * channels, cropWidth * channels);
-            sourceRow.CopyTo(cropped.AsSpan(y * cropWidth * channels, cropWidth * channels));
-        }
-
-        return cropped;
-    }
-
-    private static byte[] CompressHdr(Half[] pixels, Footprint footprint)
+    private static byte[] CompressHdr(Image image, Footprint footprint)
     {
         AstcencContext context = ArmCodec.CreateContext(footprint, AstcencProfile.AstcencPrfHdr, Astcenc.AstcencPreMedium, flags: 0);
         try
         {
-            byte[] pixelBytes = MemoryMarshal.AsBytes(pixels.AsSpan()).ToArray();
-            var image = new AstcencImage { dimX = CropSize, dimY = CropSize, dimZ = 1, dataType = AstcencType.AstcencTypeF16, data = pixelBytes };
-            int blocksWide = (CropSize + footprint.Width - 1) / footprint.Width;
-            int blocksHigh = (CropSize + footprint.Height - 1) / footprint.Height;
+            byte[] pixelBytes = MemoryMarshal.AsBytes(image.Pixels.AsSpan()).ToArray();
+            var armImage = new AstcencImage { dimX = (uint)image.Width, dimY = (uint)image.Height, dimZ = 1, dataType = AstcencType.AstcencTypeF16, data = pixelBytes };
+            int blocksWide = (image.Width + footprint.Width - 1) / footprint.Width;
+            int blocksHigh = (image.Height + footprint.Height - 1) / footprint.Height;
             byte[] blocks = new byte[blocksWide * blocksHigh * BlockInfo.SizeInBytes];
-            ArmCodec.ThrowOnError(Astcenc.AstcencCompressImage(context, ref image, ArmCodec.IdentitySwizzle, blocks, 0), "CompressImage(HDR)");
+            ArmCodec.ThrowOnError(Astcenc.AstcencCompressImage(context, ref armImage, ArmCodec.IdentitySwizzle, blocks, 0), "CompressImage(HDR)");
 
             return blocks;
         }
@@ -104,14 +94,14 @@ public static class HdrQuality
         }
     }
 
-    private static Half[] DecompressHdr(byte[] blocks, Footprint footprint)
+    private static Half[] DecompressHdr(byte[] blocks, int width, int height, Footprint footprint)
     {
         AstcencContext context = ArmCodec.CreateContext(footprint, AstcencProfile.AstcencPrfHdr, Astcenc.AstcencPreFastest, AstcencFlags.DecompressOnly);
         try
         {
-            var outputHalves = new Half[CropSize * CropSize * BlockInfo.ChannelsPerPixel];
+            var outputHalves = new Half[width * height * BlockInfo.ChannelsPerPixel];
             byte[] outputBytes = new byte[MemoryMarshal.AsBytes(outputHalves.AsSpan()).Length];
-            var image = new AstcencImage { dimX = CropSize, dimY = CropSize, dimZ = 1, dataType = AstcencType.AstcencTypeF16, data = outputBytes };
+            var image = new AstcencImage { dimX = (uint)width, dimY = (uint)height, dimZ = 1, dataType = AstcencType.AstcencTypeF16, data = outputBytes };
             ArmCodec.ThrowOnError(Astcenc.AstcencDecompressImage(context, blocks, ref image, ArmCodec.IdentitySwizzle, 0), "DecompressImage(HDR)");
 
             outputBytes.AsSpan().CopyTo(MemoryMarshal.AsBytes(outputHalves.AsSpan()));
