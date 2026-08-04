@@ -66,7 +66,7 @@ internal static partial class BlockEncoderCore
 
     // Number of best seeds (by endpoint-fit error) carried into the full per-config search per
     // partition count — the seed space is searched cheaply first, then refined for a few finalists.
-    private const int SeedFinalists = 4;
+    private const int SeedFinalists = 3;
 
     // Candidate weight ranges to try, richest first (spec §C.2.7 Table 23 weight ranges).
     private static ReadOnlySpan<int> WeightRangeCandidates => [31, 23, 19, 15, 11, 9, 7, 5, 4, 3, 2, 1];
