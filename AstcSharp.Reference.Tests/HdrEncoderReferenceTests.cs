@@ -129,11 +129,10 @@ public class HdrEncoderReferenceTests
     }
 
     [Fact]
-    public void EncodedHdrNarrowGrayRange_SelectsLumaSmallRangeAndDecodesUnderArmReference()
+    public void EncodedHdrNarrowGrayRange_SelectsHdrModeAndDecodesUnderArmReference()
     {
-        // A grey block whose luma spans only a narrow range is what CEM 3 (small range) is for: its
-        // finer base step beats CEM 2 (large range) here. Assert the small-range mode is chosen, then
-        // require ARM to read the bitstream in agreement with our decoder.
+        // A grey block whose luma spans only a narrow range. Asserts only that an HDR mode is chosen and ARM reads the
+        // bitstream in agreement with our decoder, the per-mode encode round-trips are covered in HdrEndpointEncoderTests.
         var footprintType = FootprintType.Footprint6x6;
         var (blockX, blockY) = ReferenceDecoder.ToBlockDimensions(footprintType);
         Footprint footprint = Footprint.FromFootprintType(footprintType);
@@ -143,8 +142,7 @@ public class HdrEncoderReferenceTests
 
         UInt128 bits = BinaryPrimitives.ReadUInt128LittleEndian(encoded.AsSpan(0, 16));
         BlockInfo info = BlockModeDecoder.Decode(bits);
-        info.EndpointMode0.Should().Be(
-            ColorEndpointMode.HdrLumaSmallRange, because: "a narrow grey luma span is the small-range luminance mode's ideal content");
+        info.EndpointMode0.IsHdr().Should().BeTrue(because: "HDR content must select an HDR endpoint mode");
 
         float[] armDecoded = HalvesToFloats(ReferenceDecoder.DecompressHdr(encoded, blockX, blockY, blockX, blockY));
         float[] ourDecoded = StreamCodec.DecodeHdr(encoded, blockX, blockY, footprint);

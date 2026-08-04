@@ -343,11 +343,21 @@ internal static class HdrEndpointEncoder
     /// <summary>
     /// Rounds <paramref name="value"/> (a 12-bit intermediate) to the nearest multiple of
     /// <c>1 &lt;&lt; shift</c> and divides, clamping negatives to zero. The decoder reconstructs each
-    /// field as <c>stored &lt;&lt; shift</c>, so this is the encode inverse.
+    /// field as <c>stored &lt;&lt; shift</c>, so this is the encode inverse. At <paramref name="shift"/>
+    /// 0 (the full-precision sub-modes 6/7) it is the identity — the nearest multiple of 1 is the value
+    /// itself. The general formula's <c>1 &lt;&lt; (shift - 1)</c> rounding bias would underflow there.
     /// </summary>
-    private static int RoundShift(int value, int shift) => value > 0
-        ? (value + (1 << (shift - 1))) >> shift
-        : 0;
+    private static int RoundShift(int value, int shift)
+    {
+        if (value <= 0)
+        {
+            return 0;
+        }
+
+        return shift == 0
+            ? value
+            : (value + (1 << (shift - 1))) >> shift;
+    }
 
     /// <summary>
     /// Scores a CEM 11 colour-value set by its real reconstruction error: unquantise and decode through
@@ -570,14 +580,16 @@ internal static class HdrEndpointEncoder
     }
 
     /// <summary>
-    /// Sum of squared per-channel (R/G/B) differences between two HDR colours in the LNS domain. Alpha
-    /// is excluded, CEM 7 always reconstructs opaque alpha.
+    /// Sum of squared per-channel (R/G/B) differences between two HDR colours. The channels are already
+    /// LNS-domain values, so they are compared directly — matching the block-level metric
+    /// in <see cref="ColorGeometry.ReconstructionError"/>. Applying <c>ToLns</c> again here would be a
+    /// double conversion that corrupts the sub-mode selection. Alpha is excluded (opaque for these modes).
     /// </summary>
     private static long LnsSquaredError(RgbaHdrColor a, RgbaHdrColor b)
     {
-        long deltaRed = Fp16.ToLns(a.R) - Fp16.ToLns(b.R);
-        long deltaGreen = Fp16.ToLns(a.G) - Fp16.ToLns(b.G);
-        long deltaBlue = Fp16.ToLns(a.B) - Fp16.ToLns(b.B);
+        long deltaRed = a.R - b.R;
+        long deltaGreen = a.G - b.G;
+        long deltaBlue = a.B - b.B;
         return (deltaRed * deltaRed) + (deltaGreen * deltaGreen) + (deltaBlue * deltaBlue);
     }
 
