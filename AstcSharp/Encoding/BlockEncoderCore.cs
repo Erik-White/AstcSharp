@@ -47,6 +47,10 @@ internal static partial class BlockEncoderCore
     // field bit positions live in BlockLayout.
     private const int MinMultiPartitions = 2;
     private const int MaxPartitions = 4;
+
+    // The multi-partition search stops at this partition count — a speed/quality knob distinct from
+    // MaxPartitions (which sizes the spec-maximum scratch buffers).
+    private const int MaxSearchedPartitions = 2;
     private const int PartitionSeedCount = 1 << PartitionSeedBits;
 
     // A single-plane block may hold at most 18 colour endpoint values (spec §C.2.11); the decoder

@@ -42,7 +42,7 @@ internal static partial class BlockEncoderCore
         // Search every legal partition count (2..4, spec §C.2.21), skipping any whose cheapest shared
         // mode would still exceed the colour-value budget — for those, the seed scan and per-config
         // search below could only ever produce pruned (illegal) configurations.
-        for (int partitionCount = MinMultiPartitions; partitionCount <= MaxPartitions; partitionCount++)
+        for (int partitionCount = MinMultiPartitions; partitionCount <= MaxSearchedPartitions; partitionCount++)
         {
             if (minValuesPerPartition * partitionCount > MaxColorValuesPerBlock)
             {
