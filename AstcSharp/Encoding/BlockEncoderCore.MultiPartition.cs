@@ -120,8 +120,8 @@ internal static partial class BlockEncoderCore
             int p = assignment[t];
             Span<int> pLow = low.Slice(p * ChannelCount, ChannelCount);
             Span<int> pHigh = high.Slice(p * ChannelCount, ChannelCount);
-            int weight = ProjectWeight<TTexel, TStrategy>(texels[t], pLow, pHigh);
-            error += ReconstructionError<TTexel, TStrategy>(texels[t], pLow, pHigh, weight);
+            int weight = ColorGeometry.ProjectWeight<TTexel, TStrategy>(texels[t], pLow, pHigh);
+            error += ColorGeometry.ReconstructionError<TTexel, TStrategy>(texels[t], pLow, pHigh, weight);
         }
 
         return error;

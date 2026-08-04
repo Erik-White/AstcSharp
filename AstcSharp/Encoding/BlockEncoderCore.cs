@@ -21,10 +21,13 @@ namespace AstcSharp.Encoding;
 /// </para>
 /// <para>
 /// The implementation is split across partial files by concern: this file holds the constants and
-/// the single-partition search: <c>BlockEncoderCore.Types</c> the nested config/scratch types;
-/// <c>BlockEncoderCore.Primitives</c> the shared low-level operations both searches build on;
-/// <c>BlockEncoderCore.MultiPartition</c> and <c>BlockEncoderCore.DualPlane</c> the two costlier
-/// search variants.
+/// the single-partition search; <c>BlockEncoderCore.Types</c> the nested config/scratch types;
+/// <c>BlockEncoderCore.ConfigEvaluation</c> the prepare/measure/resolve pipeline scoring one
+/// configuration; <c>BlockEncoderCore.EndpointRefinement</c> the additive endpoint coordinate-descent;
+/// <c>BlockEncoderCore.ColorGeometry</c> the stateless projection/reconstruction/codec operations;
+/// and <c>BlockEncoderCore.MultiPartition</c> and <c>BlockEncoderCore.DualPlane</c> the two costlier
+/// search variants. The stateless projection/reconstruction/codec operations live in the separate
+/// <see cref="ColorGeometry"/> class.
 /// </para>
 /// </remarks>
 internal static partial class BlockEncoderCore

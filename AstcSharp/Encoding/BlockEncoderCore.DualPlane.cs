@@ -205,7 +205,7 @@ internal static partial class BlockEncoderCore
         where TTexel : unmanaged
         where TStrategy : struct, IColorSpaceStrategy<TTexel>
     {
-        EncodeAndDecodeEndpoints<TTexel, TStrategy>(
+        ColorGeometry.EncodeAndDecodeEndpoints<TTexel, TStrategy>(
             mode, block.SubsetLow[0], block.SubsetHigh[0], colorRange,
             scratch.CandidateColorValues, scratch.UnquantizedColors, scratch.EffectiveLow, scratch.EffectiveHigh);
 
@@ -216,8 +216,8 @@ internal static partial class BlockEncoderCore
         Span<int> idealWeights1 = scratch.IdealWeights1;
         for (int t = 0; t < texels.Length; t++)
         {
-            idealWeights0[t] = ProjectWeightMasked<TTexel, TStrategy>(texels[t], scratch.EffectiveLow, scratch.EffectiveHigh, plane0Mask);
-            idealWeights1[t] = ProjectWeightMasked<TTexel, TStrategy>(texels[t], scratch.EffectiveLow, scratch.EffectiveHigh, plane1Mask);
+            idealWeights0[t] = ColorGeometry.ProjectWeightMasked<TTexel, TStrategy>(texels[t], scratch.EffectiveLow, scratch.EffectiveHigh, plane0Mask);
+            idealWeights1[t] = ColorGeometry.ProjectWeightMasked<TTexel, TStrategy>(texels[t], scratch.EffectiveLow, scratch.EffectiveHigh, plane1Mask);
         }
 
         DecimationFit.Fit(idealWeights0[..texels.Length], decimation, gridWeightCount, scratch.FittedGrid0[..gridWeightCount]);
@@ -241,9 +241,9 @@ internal static partial class BlockEncoderCore
     {
         Span<int> effectiveGrid0 = scratch.EffectiveGrid0[..gridWeightCount];
         Span<int> effectiveGrid1 = scratch.EffectiveGrid1[..gridWeightCount];
-        QuantizeGridToEffective(
+        ColorGeometry.QuantizeGridToEffective(
             scratch.FittedGrid0[..gridWeightCount], weightRange, scratch.CandidateGridWeights0[..gridWeightCount], effectiveGrid0);
-        QuantizeGridToEffective(
+        ColorGeometry.QuantizeGridToEffective(
             scratch.FittedGrid1[..gridWeightCount], weightRange, scratch.CandidateGridWeights1[..gridWeightCount], effectiveGrid1);
 
         ReadOnlySpan<TTexel> texels = block.Texels;
@@ -255,7 +255,7 @@ internal static partial class BlockEncoderCore
         long error = 0;
         for (int t = 0; t < texels.Length; t++)
         {
-            error += ReconstructionErrorDualPlane<TTexel, TStrategy>(
+            error += ColorGeometry.ReconstructionErrorDualPlane<TTexel, TStrategy>(
                 texels[t], scratch.EffectiveLow, scratch.EffectiveHigh, perTexelWeights0[t], dualPlaneChannel, perTexelWeights1[t]);
         }
 
