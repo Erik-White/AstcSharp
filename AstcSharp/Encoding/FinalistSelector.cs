@@ -29,6 +29,13 @@ internal ref struct FinalistSelector
     public readonly ReadOnlySpan<int> Finalists => this.candidates[..this.Count];
 
     /// <summary>
+    /// The error of the current worst finalist — the threshold a new candidate must beat to be
+    /// inserted (<see cref="long.MaxValue"/> until the list fills). A scorer that accumulates error
+    /// can stop early once it reaches this, since the result cannot be inserted.
+    /// </summary>
+    public readonly long WorstError => this.errors[^1];
+
+    /// <summary>
     /// Inserts <paramref name="candidate"/>/<paramref name="error"/> in sorted position, evicting the
     /// current worst if the list is full. Does nothing if the error does not beat the worst finalist.
     /// </summary>
