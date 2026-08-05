@@ -72,4 +72,11 @@ internal interface IColorSpaceStrategy<TTexel>
     /// <see cref="GetChannel"/> so their difference is the reconstruction error.
     /// </summary>
     int Reconstruct(int low, int high, int weight);
+
+    /// <summary>
+    /// Whether the search should run the additive endpoint coordinate-descent candidate: perturb each
+    /// quantised endpoint colour value by +/- 1, re-decode, re-fit the weights, and keep strict
+    /// improvements. Kept only when it lowers measured error, so it is purely additive.
+    /// </summary>
+    bool TryEndpointRefinement => false;
 }

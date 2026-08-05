@@ -34,6 +34,9 @@ internal readonly struct HdrColorStrategy : IColorSpaceStrategy<RgbaHdrColor>
 
     public long EarlyOutPerSampleError => LnsEarlyOutPerSampleError;
 
+    // The HDR path benefits measurably from endpoint coordinate-descent refinement.
+    public bool TryEndpointRefinement => true;
+
     public (RgbaHdrColor Low, RgbaHdrColor High) Fit(ReadOnlySpan<RgbaHdrColor> texels)
         => HdrEndpointFitter.Fit(texels);
 

@@ -83,7 +83,7 @@ AstcSharp's decoding performance is competitive with ARM's C++ implementation, w
 ## Future improvements
 
 - 3D block types
-- Wider HDR encoder mode coverage for higher HDR quality
+- Better encoding performance
 
 ## References
 

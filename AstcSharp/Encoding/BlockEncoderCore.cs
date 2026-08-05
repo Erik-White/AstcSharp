@@ -7,24 +7,19 @@ namespace AstcSharp.Encoding;
 /// <summary>
 /// The colour-space-agnostic per-block encoder search, shared by the LDR and HDR profiles. Tries a
 /// single-partition encoding and (for large enough footprints) multi-partition encodings
-/// (spec §C.2.21), keeping whichever reconstructs the block best. Within each partition, endpoints
-/// are fitted to the principal axis of that subset's texels and every texel's weight is its
-/// projection onto its subset's endpoint line. A weight grid (possibly decimated below the footprint
-/// size, spec §C.2.18) is fitted to those weights. The endpoint mode, grid size, weight range, and
-/// colour range are chosen by searching the configurations that fit the 128-bit budget and keeping
-/// the one with the lowest reconstruction error.
+/// (spec §C.2.21), keeping whichever reconstructs the block best.
 /// </summary>
 /// <remarks>
 /// <para>
-/// The colour-space-specific operations — endpoint fitting, candidate-mode selection, endpoint
-/// encoding, per-texel channel access, and reconstruction — are supplied by an <see cref="IColorSpaceStrategy{TTexel}"/>.
+/// Within each partition, endpoints are fitted to the principal axis of that subset's texels and every
+/// texel's weight is its projection onto its subset's endpoint line. A weight grid (possibly decimated
+/// below the footprint size, spec §C.2.18) is fitted to those weights.
+/// The endpoint mode, grid size, weight range, and colour range are chosen by searching the configurations
+/// that fit the 128-bit budget and keeping the one with the lowest reconstruction error.
 /// </para>
 /// <para>
-/// The implementation is split across partial files by concern: this file holds the constants and
-/// the single-partition search: <c>BlockEncoderCore.Types</c> the nested config/scratch types;
-/// <c>BlockEncoderCore.Primitives</c> the shared low-level operations both searches build on;
-/// <c>BlockEncoderCore.MultiPartition</c> and <c>BlockEncoderCore.DualPlane</c> the two costlier
-/// search variants.
+/// The colour-space-specific operations (endpoint fitting, candidate-mode selection, endpoint
+/// encoding, per-texel channel access, and reconstruction) are supplied by an <see cref="IColorSpaceStrategy{TTexel}"/>.
 /// </para>
 /// </remarks>
 internal static partial class BlockEncoderCore
@@ -44,6 +39,10 @@ internal static partial class BlockEncoderCore
     // field bit positions live in BlockLayout.
     private const int MinMultiPartitions = 2;
     private const int MaxPartitions = 4;
+
+    // The multi-partition search stops at this partition count — a speed/quality knob distinct from
+    // MaxPartitions (which sizes the spec-maximum scratch buffers).
+    private const int MaxSearchedPartitions = 2;
     private const int PartitionSeedCount = 1 << PartitionSeedBits;
 
     // A single-plane block may hold at most 18 colour endpoint values (spec §C.2.11); the decoder
@@ -59,7 +58,7 @@ internal static partial class BlockEncoderCore
 
     // Number of best seeds (by endpoint-fit error) carried into the full per-config search per
     // partition count — the seed space is searched cheaply first, then refined for a few finalists.
-    private const int SeedFinalists = 4;
+    private const int SeedFinalists = 3;
 
     // Candidate weight ranges to try, richest first (spec §C.2.7 Table 23 weight ranges).
     private static ReadOnlySpan<int> WeightRangeCandidates => [31, 23, 19, 15, 11, 9, 7, 5, 4, 3, 2, 1];
@@ -167,7 +166,15 @@ internal static partial class BlockEncoderCore
             idealWeights: stackalloc int[texelCount],
             fittedGrid: stackalloc double[MaxGridWeights],
             effectiveGrid: stackalloc int[MaxGridWeights],
-            perTexelWeights: stackalloc int[texelCount]);
+            perTexelWeights: stackalloc int[texelCount],
+            altColorValues: stackalloc int[MaxColorValueCount * MaxPartitions],
+            altEffectiveLow: stackalloc int[ChannelCount * MaxPartitions],
+            altEffectiveHigh: stackalloc int[ChannelCount * MaxPartitions],
+            altIdealWeights: stackalloc int[texelCount],
+            altFittedGrid: stackalloc double[MaxGridWeights],
+            altGridWeights: stackalloc int[MaxGridWeights],
+            altEffectiveGrid: stackalloc int[MaxGridWeights],
+            altPerTexelWeights: stackalloc int[texelCount]);
 
         // Cheaper endpoint modes (fewer colour values) leave more of the 128-bit budget for weight
         // precision, so a mode that drops alpha or chroma can win on opaque or grey content.
@@ -251,7 +258,7 @@ internal static partial class BlockEncoderCore
                             preparedColorRange = colorRange;
                         }
 
-                        long error = MeasureConfig<TTexel, TStrategy>(in block, gridWeightCount, weightRange, decimation, in scratch);
+                        long error = MeasureConfig<TTexel, TStrategy>(in block, mode, gridWeightCount, weightRange, colorRange, decimation, in scratch);
                         if (error < bestError)
                         {
                             bestError = error;

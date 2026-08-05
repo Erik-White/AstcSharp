@@ -4,8 +4,7 @@ using AstcSharp.Core;
 namespace AstcSharp.Encoding;
 
 /// <summary>
-/// Nested data and scratch types shared across <see cref="BlockEncoderCore"/>'s search files: the
-/// winning-config records, the per-block input bundle, and the single-plane scratch buffers.
+/// Nested data and scratch types shared across <see cref="BlockEncoderCore"/>
 /// </summary>
 internal static partial class BlockEncoderCore
 {
@@ -16,7 +15,7 @@ internal static partial class BlockEncoderCore
 
     /// <summary>
     /// A winning configuration of type <typeparamref name="TConfig"/> and its reconstruction error.
-    /// Returned by the config searches - <c>null</c> means nothing legal fit.
+    /// Returned by the config searches, <c>null</c> means nothing legal fit.
     /// </summary>
     private readonly record struct SearchResult<TConfig>(TConfig Config, long Error);
 
@@ -62,7 +61,15 @@ internal static partial class BlockEncoderCore
         Span<int> idealWeights,
         Span<double> fittedGrid,
         Span<int> effectiveGrid,
-        Span<int> perTexelWeights)
+        Span<int> perTexelWeights,
+        Span<int> altColorValues,
+        Span<int> altEffectiveLow,
+        Span<int> altEffectiveHigh,
+        Span<int> altIdealWeights,
+        Span<double> altFittedGrid,
+        Span<int> altGridWeights,
+        Span<int> altEffectiveGrid,
+        Span<int> altPerTexelWeights)
     {
         public Span<int> BestColorValues { get; } = bestColorValues;
         public Span<int> BestGridWeights { get; } = bestGridWeights;
@@ -75,5 +82,15 @@ internal static partial class BlockEncoderCore
         public Span<double> FittedGrid { get; } = fittedGrid;
         public Span<int> EffectiveGrid { get; } = effectiveGrid;
         public Span<int> PerTexelWeights { get; } = perTexelWeights;
+
+        // Iterative endpoint/weight refinement working buffers
+        public Span<int> AltColorValues { get; } = altColorValues;
+        public Span<int> AltEffectiveLow { get; } = altEffectiveLow;
+        public Span<int> AltEffectiveHigh { get; } = altEffectiveHigh;
+        public Span<int> AltIdealWeights { get; } = altIdealWeights;
+        public Span<double> AltFittedGrid { get; } = altFittedGrid;
+        public Span<int> AltGridWeights { get; } = altGridWeights;
+        public Span<int> AltEffectiveGrid { get; } = altEffectiveGrid;
+        public Span<int> AltPerTexelWeights { get; } = altPerTexelWeights;
     }
 }

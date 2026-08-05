@@ -42,7 +42,7 @@ internal static partial class BlockEncoderCore
         // Search every legal partition count (2..4, spec §C.2.21), skipping any whose cheapest shared
         // mode would still exceed the colour-value budget — for those, the seed scan and per-config
         // search below could only ever produce pruned (illegal) configurations.
-        for (int partitionCount = MinMultiPartitions; partitionCount <= MaxPartitions; partitionCount++)
+        for (int partitionCount = MinMultiPartitions; partitionCount <= MaxSearchedPartitions; partitionCount++)
         {
             if (minValuesPerPartition * partitionCount > MaxColorValuesPerBlock)
             {
@@ -79,10 +79,10 @@ internal static partial class BlockEncoderCore
         for (int seed = 0; seed < PartitionSeedCount; seed++)
         {
             ReadOnlySpan<int> assignment = Partition.GetASTCPartition(footprint, partitionCount, seed).Assignment;
-            long error = PartitionFitError<TTexel, TStrategy>(texels, assignment, partitionCount);
+            long error = PartitionFitError<TTexel, TStrategy>(texels, assignment, partitionCount, finalists.WorstError);
             if (error < 0)
             {
-                continue; // an empty subset; skip this seed.
+                continue; // an empty subset, or the running error passed the worst finalist; skip.
             }
 
             finalists.TryInsert(seed, error);
@@ -91,9 +91,12 @@ internal static partial class BlockEncoderCore
 
     /// <summary>
     /// Returns the total squared distance of each texel from its subset's fitted endpoint line, or
-    /// -1 if any subset is empty under this assignment.
+    /// -1 if any subset is empty under this assignment. The accumulation stops early and returns -1
+    /// once the running error reaches <paramref name="cutoff"/> (the worst current finalist), such a
+    /// seed cannot enter the finalist list, so the exact total is not needed. This only skips work,
+    /// never changes which seeds are selected.
     /// </summary>
-    private static long PartitionFitError<TTexel, TStrategy>(ReadOnlySpan<TTexel> texels, ReadOnlySpan<int> assignment, int partitionCount)
+    private static long PartitionFitError<TTexel, TStrategy>(ReadOnlySpan<TTexel> texels, ReadOnlySpan<int> assignment, int partitionCount, long cutoff)
         where TTexel : unmanaged
         where TStrategy : struct, IColorSpaceStrategy<TTexel>
     {
@@ -120,8 +123,12 @@ internal static partial class BlockEncoderCore
             int p = assignment[t];
             Span<int> pLow = low.Slice(p * ChannelCount, ChannelCount);
             Span<int> pHigh = high.Slice(p * ChannelCount, ChannelCount);
-            int weight = ProjectWeight<TTexel, TStrategy>(texels[t], pLow, pHigh);
-            error += ReconstructionError<TTexel, TStrategy>(texels[t], pLow, pHigh, weight);
+            int weight = ColorGeometry.ProjectWeight<TTexel, TStrategy>(texels[t], pLow, pHigh);
+            error += ColorGeometry.ReconstructionError<TTexel, TStrategy>(texels[t], pLow, pHigh, weight);
+            if (error >= cutoff)
+            {
+                return -1; // cannot beat the worst finalist; abandon this seed.
+            }
         }
 
         return error;
@@ -165,7 +172,15 @@ internal static partial class BlockEncoderCore
             idealWeights: stackalloc int[texelCount],
             fittedGrid: stackalloc double[MaxGridWeights],
             effectiveGrid: stackalloc int[MaxGridWeights],
-            perTexelWeights: stackalloc int[texelCount]);
+            perTexelWeights: stackalloc int[texelCount],
+            altColorValues: stackalloc int[MaxColorValueCount * MaxPartitions],
+            altEffectiveLow: stackalloc int[ChannelCount * MaxPartitions],
+            altEffectiveHigh: stackalloc int[ChannelCount * MaxPartitions],
+            altIdealWeights: stackalloc int[texelCount],
+            altFittedGrid: stackalloc double[MaxGridWeights],
+            altGridWeights: stackalloc int[MaxGridWeights],
+            altEffectiveGrid: stackalloc int[MaxGridWeights],
+            altPerTexelWeights: stackalloc int[texelCount]);
 
         // All partitions share one colour endpoint mode (the simplest legal multi-partition layout).
         // SearchConfigs keeps only those that fit the colour-value budget (see MaxColorValuesPerBlock).

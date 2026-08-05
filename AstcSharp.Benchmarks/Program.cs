@@ -14,7 +14,9 @@ namespace AstcSharp.Benchmarks
                 typeof(HdrEncodingBenchmark),
                 typeof(AstcFullImageEncodeBenchmark),
                 typeof(CodecComparisonBenchmark),
-                typeof(ReferenceDecoderBenchmark)
+                typeof(ReferenceDecoderBenchmark),
+                typeof(LdrQualityBenchmark),
+                typeof(HdrQualityBenchmark),
             ]);
             switcher.Run(args);
         }

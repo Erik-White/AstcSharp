@@ -25,6 +25,8 @@ internal readonly struct TunedHdrStrategy<TThreshold> : IColorSpaceStrategy<Rgba
 {
     public long EarlyOutPerSampleError => TThreshold.Value;
 
+    public bool TryEndpointRefinement => default(HdrColorStrategy).TryEndpointRefinement;
+
     public (RgbaHdrColor Low, RgbaHdrColor High) Fit(ReadOnlySpan<RgbaHdrColor> texels)
         => default(HdrColorStrategy).Fit(texels);
 
