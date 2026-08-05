@@ -35,7 +35,7 @@ public class AstcFullImageDecodeBenchmark
         this.ldrHeight = ldr.Height;
         this.ldrFootprint = ldr.Footprint;
 
-        string hdrPath = BenchmarkTestDataLocator.FindTestData(Path.Combine("Astc", "HdrPipeline", "hdr-tile.astc"));
+        string hdrPath = BenchmarkTestDataLocator.FindTestData(Path.Combine("Astc", "Hdr", "hdr-tile.astc"));
         AstcFile hdr = AstcFile.FromMemory(File.ReadAllBytes(hdrPath));
         this.hdrBlocks = hdr.Blocks.ToArray();
         this.hdrWidth = hdr.Width;

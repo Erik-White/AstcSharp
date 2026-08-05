@@ -38,7 +38,7 @@ public class AstcFullImageEncodeBenchmark
         byte[] ldrFull = StreamCodec.DecodeLdr(ldrFile.Blocks, ldrFile.Width, ldrFile.Height, ldrFile.Footprint);
         this.pixels = ImageHelper.CropTopLeft(ldrFull, ldrFile.Width, TileSize, TileSize);
 
-        string hdrPath = BenchmarkTestDataLocator.FindTestData(Path.Combine("Astc", "HdrPipeline", "mixed-256-4x4.astc"));
+        string hdrPath = BenchmarkTestDataLocator.FindTestData(Path.Combine("Astc", "Hdr", "mixed-256-4x4.astc"));
         AstcFile hdrFile = AstcFile.FromMemory(File.ReadAllBytes(hdrPath));
         this.hdrFootprint = hdrFile.Footprint;
         Half[] hdrFull = StreamCodec.DecodeHdrHalf(hdrFile.Blocks, hdrFile.Width, hdrFile.Height, hdrFile.Footprint);

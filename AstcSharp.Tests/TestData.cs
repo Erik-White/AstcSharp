@@ -47,12 +47,12 @@ public static class TestData
 
         public static class Hdr
         {
-            public const string Hdr_A_1x1 = "HdrPipeline/hdr-a-1x1.astc";
-            public const string Ldr_A_1x1 = "HdrPipeline/ldr-a-1x1.astc";
-            public const string Hdr_Tile = "HdrPipeline/hdr-tile.astc";
-            public const string Ldr_Tile = "HdrPipeline/ldr-tile.astc";
-            public const string Hdr_Mixed_256_4x4 = "HdrPipeline/mixed-256-4x4.astc";
-            public const string Hdr_Mixed_256_8x8 = "HdrPipeline/mixed-256-8x8.astc";
+            public const string Hdr_A_1x1 = "Hdr/hdr-a-1x1.astc";
+            public const string Ldr_A_1x1 = "Hdr/ldr-a-1x1.astc";
+            public const string Hdr_Tile = "Hdr/hdr-tile.astc";
+            public const string Ldr_Tile = "Hdr/ldr-tile.astc";
+            public const string Hdr_Mixed_256_4x4 = "Hdr/mixed-256-4x4.astc";
+            public const string Hdr_Mixed_256_8x8 = "Hdr/mixed-256-8x8.astc";
         }
     }
 }

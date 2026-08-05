@@ -38,7 +38,7 @@ public class ReferenceDecoderHdrTests
     [InlineData("ldr-tile")]
     public void DecompressHdr_WithHdrImage_ShouldMatch(string basename)
     {
-        var filePath = Path.Combine("TestData", "Input", "Astc", "HdrPipeline", basename + ".astc");
+        var filePath = Path.Combine("TestData", "Input", "Astc", "Hdr", basename + ".astc");
 
         var bytes = File.ReadAllBytes(filePath);
         var astcFile = AstcFile.FromMemory(bytes);
@@ -187,7 +187,7 @@ public class ReferenceDecoderHdrTests
     [InlineData("ldr-tile")]
     public void DecompressHdrHalf_WithHdrImage_ShouldMatch(string basename)
     {
-        var filePath = Path.Combine("TestData", "Input", "Astc", "HdrPipeline", basename + ".astc");
+        var filePath = Path.Combine("TestData", "Input", "Astc", "Hdr", basename + ".astc");
 
         var bytes = File.ReadAllBytes(filePath);
         var astcFile = AstcFile.FromMemory(bytes);

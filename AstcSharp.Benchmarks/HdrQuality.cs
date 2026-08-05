@@ -13,7 +13,7 @@ namespace AstcSharp.Benchmarks;
 /// </summary>
 public static class HdrQuality
 {
-    private const string Fixture = "HdrPipeline/mixed-256-4x4";
+    private const string Fixture = "Hdr/mixed-256-4x4";
 
     // The FP16 bit pattern of the largest finite Half (65504), used as the PSNR peak — the fixed
     // reference the reconstruction error is measured against.
