@@ -4,8 +4,7 @@ using AstcSharp.Core;
 namespace AstcSharp.Encoding;
 
 /// <summary>
-/// Nested data and scratch types shared across <see cref="BlockEncoderCore"/>'s search files: the
-/// winning-config records, the per-block input bundle, and the single-plane scratch buffers.
+/// Nested data and scratch types shared across <see cref="BlockEncoderCore"/>
 /// </summary>
 internal static partial class BlockEncoderCore
 {
@@ -16,7 +15,7 @@ internal static partial class BlockEncoderCore
 
     /// <summary>
     /// A winning configuration of type <typeparamref name="TConfig"/> and its reconstruction error.
-    /// Returned by the config searches - <c>null</c> means nothing legal fit.
+    /// Returned by the config searches, <c>null</c> means nothing legal fit.
     /// </summary>
     private readonly record struct SearchResult<TConfig>(TConfig Config, long Error);
 
@@ -84,9 +83,7 @@ internal static partial class BlockEncoderCore
         public Span<int> EffectiveGrid { get; } = effectiveGrid;
         public Span<int> PerTexelWeights { get; } = perTexelWeights;
 
-        // Iterative endpoint⇄weight refinement working buffers: the recomputed endpoints'
-        // colour values / decoded channels, and the re-projected / re-fitted / re-quantised grid and
-        // per-texel weights for the pass under test.
+        // Iterative endpoint/weight refinement working buffers
         public Span<int> AltColorValues { get; } = altColorValues;
         public Span<int> AltEffectiveLow { get; } = altEffectiveLow;
         public Span<int> AltEffectiveHigh { get; } = altEffectiveHigh;

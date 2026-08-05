@@ -7,22 +7,21 @@ using static AstcSharp.Encoding.BlockLayout;
 namespace AstcSharp.Encoding;
 
 /// <summary>
-/// The single-partition dual-plane search of <see cref="BlockEncoderCore"/> (spec §C.2.20): one
-/// channel is driven by an independent second weight plane. Each of the four channels is tried as
-/// that channel, and for each the grid size, weight range, and colour mode are searched as in the
-/// single-plane path.
+/// The single-partition dual-plane search of <see cref="BlockEncoderCore"/> (spec §C.2.20)
 /// </summary>
 internal static partial class BlockEncoderCore
 {
     /// <summary>
     /// Tries single-partition dual-plane encodings (spec §C.2.20) and returns the lowest-error block
-    /// with its reconstruction error (<see cref="long.MaxValue"/> if none fits). One channel is
-    /// driven by an independent second weight plane; each of the four channels is tried as that
-    /// channel, and for each the grid size, weight range, and colour mode are searched as in the
-    /// single-plane path. Dual-plane doubles the weight count, so the grid is capped at 32 points.
-    /// Single-partition only: the colour/selector bit-budget arithmetic below assumes one partition
-    /// (no per-partition extra-CEM bits), supporting multi-partition would require accounting for them.
+    /// with its reconstruction error (<see cref="long.MaxValue"/> if none fits).
     /// </summary>
+    /// <remarks>
+    /// One channel is driven by an independent second weight plane and each of the four channels is tried
+    /// as that channel. Then, for each the grid size, weight range, and colour mode are searched as in the
+    /// single-plane path. Dual-plane doubles the weight count, so the grid is capped at 32 points.
+    /// Single-partition only, the colour/selector bit-budget arithmetic below assumes one partition
+    /// (no per-partition extra-CEM bits), supporting multi-partition would require accounting for them.
+    /// </remarks>
     private static UInt128 TryEncodeDualPlane<TTexel, TStrategy>(ReadOnlySpan<TTexel> texels, Footprint footprint, long earlyOutError, out long bestErrorOut)
         where TTexel : unmanaged
         where TStrategy : struct, IColorSpaceStrategy<TTexel>
@@ -57,8 +56,7 @@ internal static partial class BlockEncoderCore
             perTexelWeights0: stackalloc int[texelCount],
             perTexelWeights1: stackalloc int[texelCount]);
 
-        // Same content-aware candidate modes as the single-plane path; the search keeps whichever
-        // (mode, channel) pairing reconstructs best.
+        // Same content-aware candidate modes as the single-plane path; the search keeps whichever pairing reconstructs best.
         Span<ColorEndpointMode> candidateModes = stackalloc ColorEndpointMode[MaxCandidateModes];
         int modeCount = strategy.SelectCandidateModes(texels, candidateModes);
 
@@ -90,7 +88,7 @@ internal static partial class BlockEncoderCore
     /// <summary>
     /// Searches grid sizes, weight ranges, and endpoint modes for the lowest-error dual-plane
     /// configuration with <paramref name="dualPlaneChannel"/> driven by the second plane. Plane 0 is
-    /// fitted over the other three channels and plane 1 over the selected channel alone; both grids
+    /// fitted over the other three channels and plane 1 over the selected channel alone, both grids
     /// reconstruct through the decoder's infill and the dual-plane blend. Leaves the winning colour
     /// values and both grids in <paramref name="scratch"/>. Returns the winning configuration and its
     /// error, or <c>null</c> if nothing legal fits.
@@ -112,7 +110,7 @@ internal static partial class BlockEncoderCore
         foreach (ColorEndpointMode mode in candidateModes)
         {
             // Single-partition, so the colour-value count is just the mode's own (at most 8 for RGBA)
-            // and always within the 18-value budget; the bit budget is enforced by
+            // and always within the 18-value budget. The bit budget is enforced by
             // TryResolveDualPlaneConfig, which also reserves the dual-plane selector bits.
             int colorValueCount = mode.GetColorValuesCount();
 
@@ -190,9 +188,9 @@ internal static partial class BlockEncoderCore
     }
 
     /// <summary>
-    /// Dual-plane analogue of <see cref="PrepareConfig"/>: encodes/decodes the endpoints, then
-    /// projects each texel twice — plane 0 over the channels other than
-    /// <paramref name="dualPlaneChannel"/>, plane 1 over that channel alone — and fits both grids.
+    /// Dual-plane analogue of <see cref="PrepareConfig"/>. Encodes/decodes the endpoints, then
+    /// projects each texel twice (— )plane 0 over the channels other than
+    /// <paramref name="dualPlaneChannel"/>, plane 1 over that channel alone) and fits both grids.
     /// </summary>
     private static void PrepareDualPlaneConfig<TTexel, TStrategy>(
         in BlockInput<TTexel> block,
@@ -225,7 +223,7 @@ internal static partial class BlockEncoderCore
     }
 
     /// <summary>
-    /// Dual-plane analogue of <see cref="MeasureConfig"/>: quantises both grids to the weight range,
+    /// Dual-plane analogue of <see cref="MeasureConfig"/>. Quantises both grids to the weight range,
     /// infills both to per-texel weights, and sums the dual-plane reconstruction error (the selected
     /// channel using plane 1's weight, the rest plane 0's).
     /// </summary>
@@ -263,7 +261,7 @@ internal static partial class BlockEncoderCore
     }
 
     /// <summary>
-    /// The winning configuration of the dual-plane search: a single-plane <see cref="BestConfig"/>
+    /// The winning configuration of the dual-plane search, a single-plane <see cref="BestConfig"/>
     /// plus the colour-component selector (which channel the second weight plane drives).
     /// </summary>
     private readonly record struct DualPlaneConfig(BestConfig Config, int DualPlaneChannel);

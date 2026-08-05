@@ -5,8 +5,8 @@ using AstcSharp.Core;
 namespace AstcSharp.Encoding;
 
 /// <summary>
-/// The additive endpoint coordinate-descent for <see cref="BlockEncoderCore"/>: after a
-/// configuration is measured, perturb its quantised endpoint colour values by ±1 to find a better
+/// The additive endpoint coordinate-descent for <see cref="BlockEncoderCore"/>. After a
+/// configuration is measured, perturb its quantised endpoint colour values by +/- 1 to find a better
 /// reconstruction. Descent scores trials against fixed per-texel weights (a cheap proxy), then a
 /// single real grid re-fit decides the kept result — applied only on a strict improvement, so it can
 /// never worsen a block.
@@ -20,7 +20,7 @@ internal static partial class BlockEncoderCore
 
     /// <summary>
     /// Endpoint coordinate-descent: sweeps each quantised endpoint colour value in
-    /// <see cref="ConfigScratch.CandidateColorValues"/> by ±<see cref="EndpointRefineRadius"/>, keeping
+    /// <see cref="ConfigScratch.CandidateColorValues"/> by +/- <see cref="EndpointRefineRadius"/>, keeping
     /// moves that lower the block error. Handles any partition count, the colour values are the
     /// per-partition endpoints concatenated (all partitions share <paramref name="mode"/>).
     /// </summary>
@@ -109,7 +109,7 @@ internal static partial class BlockEncoderCore
             return currentError;
         }
 
-        // The descent moved the endpoints (on the fixed-weight proxy); re-fit the grid once for the new
+        // The descent moved the endpoints (on the fixed-weight proxy), re-fit the grid once for the new
         // endpoints and take the real error. Keep the moved config only on a strict improvement,
         // otherwise restore the snapshot so Candidate* stays the incoming winner (the proxy gain did not
         // survive the weight re-fit).
@@ -134,9 +134,9 @@ internal static partial class BlockEncoderCore
     }
 
     /// <summary>
-    /// Fixed weight proxy error for a set of quantised colour <paramref name="values"/>: decodes each
+    /// Fixed weight proxy error for a set of quantised colour <paramref name="values"/>. Decodes each
     /// partition's endpoints and sums the reconstruction error against the caller-supplied
-    /// <paramref name="fixedWeights"/> (no grid re-fit). O(texels) per call — the cheap inner step of
+    /// <paramref name="fixedWeights"/> (no grid re-fit). O(texels) per call, the cheap inner step of
     /// the endpoint coordinate-descent.
     /// </summary>
     private static long ProxyErrorAtValues<TTexel, TStrategy>(
@@ -168,7 +168,7 @@ internal static partial class BlockEncoderCore
     }
 
     /// <summary>
-    /// Real reconstruction error for a set of quantised colour <paramref name="values"/>: decodes the
+    /// Real reconstruction error for a set of quantised colour <paramref name="values"/>. Decodes the
     /// per-partition endpoints, projects each texel onto its partition's line, fits/quantises the shared
     /// weight grid (into <paramref name="quantGrid"/>), and measures through the real infill and
     /// interpolation. The full (grid-refitting) measure the endpoint descent applies once at the end.

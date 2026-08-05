@@ -1,6 +1,7 @@
 using AstcSharp.BiseEncoding.Quantize;
 using AstcSharp.ColorEncoding;
 using AstcSharp.Core;
+using System.Runtime.ConstrainedExecution;
 
 namespace AstcSharp.Encoding;
 
@@ -217,12 +218,12 @@ internal static class HdrEndpointEncoder
     /// decoder's own placement table (<see cref="HdrEndpointDecoder.DirectPlacements"/>).
     /// </remarks>
     /// <returns>
-    /// Returns false — leaving <paramref name="colorValues"/> untouched — when any field falls outside
+    /// False, leaving <paramref name="colorValues"/> untouched, when any field falls outside
     /// its range for this mode (so the caller keeps a representable candidate instead).
     /// </returns>
     private static bool TryEncodeRgbDirectFine(int mode, int major, int colorRange, Span<int> colorValues, RgbaHdrColor low, RgbaHdrColor high)
     {
-        // The decoder expands each stored field by valueShift = (mode >> 1) ^ 3 (spec §C.2.14).
+        // The decoder expands each stored field by valueShift (spec §C.2.14).
         int valueShift = (mode >> 1) ^ 3;
 
         // Un-swizzle into the decoder's (anchor, green, blue) order, in 12-bit intermediates, then round
@@ -261,10 +262,7 @@ internal static class HdrEndpointEncoder
     }
 
     /// <summary>
-    /// Packs the six field values into the six quantised colour values for CEM 11 sub-mode
-    /// <paramref name="mode"/>. Base bits occupy the low bits of each slot, the scattered high bits are
-    /// placed by inverting <see cref="HdrEndpointDecoder.DirectPlacements"/>, and the mode/major
-    /// selector bits go into the top bits of v1/v2/v3 (mode) and v4/v5 (major).
+    /// Packs the six field values into the six quantised colour values for CEM 11 sub-mode <paramref name="mode"/>.
     /// </summary>
     private static void PackDirectFields(int mode, int major, int colorRange, Span<int> colorValues, int a, int b0, int b1, int c, int d0, int d1)
     {
@@ -401,13 +399,15 @@ internal static class HdrEndpointEncoder
 
     /// <summary>
     /// CEM 7 (HDR RGB, base+scale): a base colour plus a shared scale, modelling a uniform log-space
-    /// darkening (a uniform multiplicative dim in linear space). Uses 4 colour values rather than CEM 11's
-    /// 6, leaving more of the 128-bit budget for weight precision. The spec defines six sub-modes
-    /// trading field precision (shift) against how many bits the deltas get. The coarsest (mode 5,
-    /// shift 9) stores R/G/B independently, the finer ones (0..4, shift 1..4) store green/blue as deltas
-    /// from a major-component anchor. This emits every sub-mode and keeps the one that reconstructs the
-    /// endpoints with the least error.
+    /// darkening (a uniform multiplicative dim in linear space).
     /// </summary>
+    /// <remarks>
+    /// Uses 4 colour values rather than CEM 11's 6, leaving more of the 128-bit budget for weight precision.
+    /// The spec defines six sub-modes trading field precision (shift) against how many bits the deltas get.
+    /// The coarsest (mode 5, shift 9) stores R/G/B independently, the finer ones (0..4, shift 1..4) store
+    /// green/blue as deltas from a major-component anchor. This emits every sub-mode and keeps the one that
+    /// reconstructs the endpoints with the least error.
+    /// </remarks>
     private static void EncodeRgbBaseScale(int colorRange, Span<int> colorValues, RgbaHdrColor low, RgbaHdrColor high)
     {
         EncodeBaseScaleMode5(colorRange, colorValues, low, high);
@@ -415,7 +415,7 @@ internal static class HdrEndpointEncoder
         // The finer sub-modes (0..4) shift by 1..4 instead of mode 5's 9 and carry per-channel deltas,
         // so they represent endpoints mode 5 rounds away. They are not always a better fit (the delta
         // fields are narrower), so each candidate is scored by real reconstruction error and kept only
-        // when it beats mode 5 — additive by construction, since mode 5 is always in the running.
+        // when it beats mode 5. Additive by construction, since mode 5 is always in the running.
         Span<int> trial = stackalloc int[BaseScaleSlotCount];
         Span<int> scoreBuffer = stackalloc int[BaseScaleSlotCount];
         int major = MajorComponent(high);
@@ -459,13 +459,12 @@ internal static class HdrEndpointEncoder
     }
 
     /// <summary>
-    /// Encodes CEM 7 sub-mode <paramref name="mode"/> (0..4) for major component
-    /// <paramref name="major"/>. These sub-modes shift by 1..4 (finer than mode 5's 9) and store the
-    /// green/blue channels as deltas from a per-mode "red" anchor (the major component), with a shared
-    /// scale, the inverse of <see cref="HdrEndpointDecoder"/>'s base+scale path. The scattered,
-    /// non-contiguous field bits are routed through the decoder's own placement table
-    /// (<see cref="HdrEndpointDecoder.BaseScalePlacements"/>) so the two share one source of truth.
+    /// Encodes CEM 7 sub-mode <paramref name="mode"/> (0..4) for major component <paramref name="major"/>.
     /// </summary>
+    /// <remarks>
+    /// These sub-modes shift by 1..4 (finer than mode 5's 9), the inverse of <see cref="HdrEndpointDecoder"/>'s
+    /// base+scale path. The scattered, non-contiguous field bits are routed through (<see cref="HdrEndpointDecoder.BaseScalePlacements"/>).
+    /// </remarks>
     private static void EncodeBaseScaleFine(int mode, int major, int colorRange, Span<int> colorValues, RgbaHdrColor low, RgbaHdrColor high)
     {
         int shift = HdrEndpointDecoder.BaseScaleShiftByMode[mode];
@@ -502,14 +501,15 @@ internal static class HdrEndpointEncoder
     private static void PackBaseScaleFields(int mode, int major, int colorRange, Span<int> colorValues, int anchorField, int greenField, int blueField, int scaleField)
     {
         Span<int> fields = [anchorField, greenField, blueField, scaleField];
-        Span<int> v = stackalloc int[BaseScaleSlotCount];
-
-        v[0] = anchorField & SixBitFieldMask;
-        v[1] = greenField & FiveBitFieldMask;
-        v[2] = blueField & FiveBitFieldMask;
-        v[3] = scaleField & FiveBitFieldMask;
-
+        Span<int> v =
+        [
+            anchorField & SixBitFieldMask,
+            greenField & FiveBitFieldMask,
+            blueField & FiveBitFieldMask,
+            scaleField & FiveBitFieldMask,
+        ];
         int oneHotMode = 1 << mode;
+
         foreach (HdrEndpointDecoder.BitPlacement placement in HdrEndpointDecoder.BaseScalePlacements)
         {
             if ((oneHotMode & placement.ModeMask) == 0)
@@ -558,13 +558,12 @@ internal static class HdrEndpointEncoder
     }
 
     /// <summary>
-    /// Reassembles the 4-bit mode selector the decoder reads from v0[7:6]/v1[7]/v2[7] for sub-modes
-    /// 0..4. Modes 0–3 store the mode in the low two bits and the major component in the next two.
-    /// Mode 4 sets both high selector bits and stores the major component in the low two.
+    /// Reassembles the 4-bit mode selector the decoder reads for sub-modes 0..4
     /// </summary>
-    private static int ModeValueFor(int mode, int major) => mode == 4
-        ? BaseScaleMode4SelectorBase | major
-        : (major << 2) | mode;
+    private static int ModeValueFor(int mode, int major)
+        => mode == 4
+            ? BaseScaleMode4SelectorBase | major
+            : (major << 2) | mode;
 
     /// <summary>
     /// Scores a base+scale colour-value set by its real reconstruction error: unquantise and decode
@@ -576,20 +575,21 @@ internal static class HdrEndpointEncoder
         quantValues[..BaseScaleSlotCount].CopyTo(scoreBuffer);
         Quantization.UnquantizeCEValuesBatch(scoreBuffer, colorRange);
         (RgbaHdrColor decodedLow, RgbaHdrColor decodedHigh) = HdrEndpointDecoder.DecodeHdrModeUnquantized(scoreBuffer, ColorEndpointMode.HdrRgbBaseScale);
+
         return LnsSquaredError(low, decodedLow) + LnsSquaredError(high, decodedHigh);
     }
 
     /// <summary>
     /// Sum of squared per-channel (R/G/B) differences between two HDR colours. The channels are already
     /// LNS-domain values, so they are compared directly — matching the block-level metric
-    /// in <see cref="ColorGeometry.ReconstructionError"/>. Applying <c>ToLns</c> again here would be a
-    /// double conversion that corrupts the sub-mode selection. Alpha is excluded (opaque for these modes).
+    /// in <see cref="ColorGeometry.ReconstructionError"/>. Alpha is excluded (opaque for these modes).
     /// </summary>
     private static long LnsSquaredError(RgbaHdrColor a, RgbaHdrColor b)
     {
         long deltaRed = a.R - b.R;
         long deltaGreen = a.G - b.G;
         long deltaBlue = a.B - b.B;
+
         return (deltaRed * deltaRed) + (deltaGreen * deltaGreen) + (deltaBlue * deltaBlue);
     }
 
@@ -603,30 +603,33 @@ internal static class HdrEndpointEncoder
         : (value + (unit >> 1)) / unit;
 
     /// <summary>
-    /// The shared 7-bit base+scale factor for CEM 7 mode 5: the mean per-channel high-minus-low field
-    /// difference, clamped to <c>[0, 0x7F]</c>. This is a least-squares-style average, not a per-channel
-    /// bound — a channel whose span is below the mean can have its low endpoint driven negative, which
-    /// the decoder clamps to 0.
+    /// The shared 7-bit base+scale factor for CEM 7 mode 5.
+    /// This is a least-squares-style average, not a per-channel bound, a channel whose span is
+    /// below the mean can have its low endpoint driven negative, which the decoder clamps to 0.
     /// </summary>
     private static int ScaleField(RgbaHdrColor low, int redField, int greenField, int blueField)
     {
         int lowRed = low.R >> BaseScaleFieldShift;
         int lowGreen = low.G >> BaseScaleFieldShift;
         int lowBlue = low.B >> BaseScaleFieldShift;
+
+        // The mean per-channel high-minus-low field difference
         int meanDifference = ((redField - lowRed) + (greenField - lowGreen) + (blueField - lowBlue) + 1) / 3;
+
         return Math.Clamp(meanDifference, 0, MaxSevenBitField);
     }
 
     /// <summary>
-    /// CEM 15 (HDR RGB + HDR alpha): RGB in values 0–5 exactly as CEM 11 direct, then the alpha pair
-    /// in v6/v7 via the simple alpha sub-mode. That sub-mode is selected when both v6[7] and v7[7] are
-    /// set, after which each alpha value is a 7-bit <c>(channel &gt;&gt; 9)</c> field, decoded as
-    /// <c>field &lt;&lt; 5</c> to the 12-bit intermediate (then <c>&lt;&lt; 4</c> to FP16). All four
-    /// channels blend in the LNS domain, so this needs no special reconstruction handling.
+    /// CEM 15 (HDR RGB + HDR alpha)
     /// </summary>
     private static void EncodeRgbDirectHdrAlpha(int colorRange, Span<int> colorValues, RgbaHdrColor low, RgbaHdrColor high)
     {
+        // RGB in values 0–5 exactly as CEM 11 direct, then the alpha pair in v6/v7 via the simple alpha sub-mode
         EncodeRgbDirect(colorRange, colorValues, low, high);
+
+        // The simple alpha sub-mode is selected when both v6[7] and v7[7] are set, after which each alpha value
+        // is a 7-bit field, decoded to the 12-bit intermediate. All four channels blend in the LNS domain, so
+        // this needs no special reconstruction handling.
         colorValues[6] = QuantizeByte(SimpleAlphaSelectorFlag | ((low.A >> 9) & AlphaFieldMask), colorRange);
         colorValues[7] = QuantizeByte(SimpleAlphaSelectorFlag | ((high.A >> 9) & AlphaFieldMask), colorRange);
     }

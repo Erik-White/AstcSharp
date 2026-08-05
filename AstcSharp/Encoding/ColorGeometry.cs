@@ -5,10 +5,7 @@ using AstcSharp.Core;
 namespace AstcSharp.Encoding;
 
 /// <summary>
-/// Colour-space geometry and codec operations the per-block encoder builds on. Endpoint
-/// encode/decode through the real codec, texel-onto-line weight projection, reconstruction error
-/// (single- and dual-plane), and weight-grid quantisation. Each is a pure function of its inputs,
-/// no per-block search state.
+/// Colour-space geometry and codec operations the per-block encoder builds on
 /// </summary>
 internal static class ColorGeometry
 {
@@ -108,9 +105,9 @@ internal static class ColorGeometry
         => ReconstructionErrorDualPlane<TTexel, TStrategy>(texel, low, high, weight, dualPlaneChannel: -1, secondaryWeight: 0);
 
     /// <summary>
-    /// Sum-of-squared error for a dual-plane texel: the channel named by
+    /// Sum-of-squared error for a dual-plane texel. The channel named by
     /// <paramref name="dualPlaneChannel"/> interpolates with <paramref name="secondaryWeight"/>, all
-    /// others with <paramref name="weight"/> — mirroring the decoder's dual-plane blend
+    /// others with <paramref name="weight"/>, mirroring the decoder's dual-plane blend
     /// (spec §C.2.20). A <paramref name="dualPlaneChannel"/> of -1 makes this the single-plane case.
     /// </summary>
     public static long ReconstructionErrorDualPlane<TTexel, TStrategy>(
