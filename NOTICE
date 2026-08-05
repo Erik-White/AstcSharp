@@ -1,0 +1,59 @@
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+------------------------------------------------------------------------
+Third-party attributions
+------------------------------------------------------------------------
+
+Basis Universal
+  https://github.com/BinomialLLC/basis_universal
+
+  The UASTC decoding support in AstcSharp (files under AstcSharp/Uastc/)
+  ports the UASTC block-format tables and decode logic from the Basis
+  Universal transcoder. Those files are modified derivatives of the Basis
+  Universal source and carry prominent change notices in their headers
+  (Apache License 2.0 §4(b)); the ported tables and algorithms remain under
+  the Apache License, Version 2.0. See AstcSharp/Uastc/README.md for detail
+  on what was ported.
+
+  The attribution notices from the upstream Basis Universal NOTICE file are
+  reproduced verbatim below (Apache License 2.0 §4(d)):
+
+  ----------------------------------------------------------------------
+  Basis Universal™ Supercompressed GPU Texture Compression Library
+
+  Copyright © 2016–2026 Binomial LLC.
+  All rights reserved except as granted under the Apache 2.0 license
+  (https://github.com/BinomialLLC/basis_universal/blob/master/LICENSE).
+  "Basis Universal" is a trademark of Binomial LLC.
+
+  The documents in the Basis Universal wiki, and the Basis Universal
+  library, example, and tool source code, fall under the Apache 2.0
+  license, unless otherwise explicitly indicated.
+
+  Redistributions or derivative works must include a readable copy of the
+  attribution notices from this NOTICE file (see Apache License 2.0 §4(d)).
+
+  If you modify the Basis Universal source code, specifications, or wiki
+  documents and redistribute the files, you must cause any modified files
+  to carry prominent notices stating that you changed the files (see
+  Apache 2.0 §4(b)).
+
+  This software, documentation and specifications are provided "as is",
+  without warranty of any kind (see Apache 2.0 §§7-8).
+  ----------------------------------------------------------------------
+
+------------------------------------------------------------------------
+References
+------------------------------------------------------------------------
+
+The ASTC encode/decode implementation is written from the Khronos Data
+Format Specification. ARM's astc-encoder and Google's astc-codec were used
+as references while implementing the format, and ARM's astc-encoder is used
+as a validation oracle in the test suite only.
+
+  ASTC Specification — Khronos Data Format Specification
+    https://www.khronos.org/registry/DataFormat/specs/1.3/dataformat.1.3.html
+  ARM astc-encoder (Apache-2.0)
+    https://github.com/ARM-software/astc-encoder
+  Google astc-codec (Apache-2.0)
+    https://github.com/google/astc-codec

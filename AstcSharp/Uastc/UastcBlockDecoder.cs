@@ -1,6 +1,6 @@
 // Portions of this file are derived from Basis Universal
-// (https://github.com/BinomialLLC/basis_universal), Copyright (c) 2019-2024
-// Binomial LLC, licensed under the Apache License, Version 2.0
+// (https://github.com/BinomialLLC/basis_universal), Copyright (c) 2016-2026
+// Binomial LLC, licensed under the Apache License, Version 2.0.
 
 using AstcSharp.BiseEncoding;
 using AstcSharp.BiseEncoding.Quantize;

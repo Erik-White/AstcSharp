@@ -89,10 +89,11 @@ AstcSharp's decoding performance is competitive with ARM's C++ implementation, w
 
 This implementation is based on:
 
-- **ASTC Specification**: [Khronos Data Format Specification](https://www.khronos.org/registry/DataFormat/specs/1.3/dataformat.1.3.html) - The official ASTC texture compression format specification
-- **ARM ASTC Codec**: [github.com/ARM-software/astc-encoder](https://github.com/ARM-software/astc-encoder)
+- **ASTC Specification**: [Khronos Data Format Specification](https://www.khronos.org/registry/DataFormat/specs/1.3/dataformat.1.3.html) — the official ASTC texture compression format specification
+- **ARM astc-encoder**: [github.com/ARM-software/astc-encoder](https://github.com/ARM-software/astc-encoder)
 - **Google astc-codec**: [github.com/google/astc-codec](https://github.com/google/astc-codec)
+- **Basis Universal** (UASTC decoding): [github.com/BinomialLLC/basis_universal](https://github.com/BinomialLLC/basis_universal)
 
 ## License
 
-See [LICENSE](LICENSE) for details.
+Licensed under the Apache License, Version 2.0 — see [LICENSE](LICENSE). Third-party attributions are in [NOTICE](NOTICE).

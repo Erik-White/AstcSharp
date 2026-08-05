@@ -1,10 +1,6 @@
 This product includes software derived from Basis Universal
-(https://github.com/BinomialLLC/basis_universal).
+(https://github.com/BinomialLLC/basis_universal), Copyright (c) 2016-2026
+Binomial LLC, licensed under the Apache License, Version 2.0.
 
-  Copyright (c) 2019-2024 Binomial LLC. All Rights Reserved.
-  Licensed under the Apache License, Version 2.0.
-
-The UASTC decoding support in AstcSharp (files under AstcSharp/Uastc/) ports
-the UASTC block format tables and decode logic from the Basis Universal
-transcoder. The original work is Apache-2.0 licensed;
-the ported tables and algorithms remain under that license.
+The files in this directory port the UASTC block-format tables and decode
+logic from the Basis Universal transcoder to C#.
